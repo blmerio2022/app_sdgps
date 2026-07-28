@@ -62,13 +62,7 @@
     flex: 1 1 auto; min-height: 0; overflow-y: auto;
     /* Gouttière pour la barre de défilement sans décaler le contenu. */
     padding-right: 8px; margin-right: -8px;
-    /* Défilement vertical aligné sur le design system (cf. listes, sidebar, profil). */
-    scrollbar-width: thin;
-    scrollbar-color: var(--border-color) transparent;
-    &::-webkit-scrollbar { width: 8px; }
-    &::-webkit-scrollbar-track { background: transparent; }
-    &::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box;
-      &:hover { background: var(--accent-color); background-clip: padding-box; } }
+
   }
   .modal-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 22px; border-top: 1px solid var(--border-color);
     .footer-actions { display: inline-flex; gap: 8px; flex-wrap: wrap; }

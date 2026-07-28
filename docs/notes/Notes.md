@@ -56,7 +56,7 @@
 
   - Fonctionnalites manquantes dans l'app
     - Ajout cachet + signature sur toutes les pages du rapport.
-
+    - Affectation pour chaque organisation d'un volume limite d'espace de stockage a ne pas depasser.
     - Preparation des sdgps multisession exemples
       - preparation des donnees des sessions des sdgps multisessions exemples : PLC/GPS - DLC/GPS
       - import donnees dans l'app + generation des sdgps des sessions + page de garde de tous les sdgps des sessions
@@ -70,15 +70,11 @@
     - Corrige lecture des noms des points contenant des espaces depuis html des fermetures des boucles.
     - Finaliser l'interface graphique UI/UX
       - revision des colonnes des entites
-        - ajout colonne nbr pieces dans sous entitees du projet
-        - suppression colonne "type de donnees" dans tablea liste des organisations (fait)
-      - ajout fonctionnalite de filtrage des tableaux dans l'entete des colonnes.  (fait)
-      - Sigle organisme 1er niveau dans tableau liste organismes 2eme niveau
-      - style etd esignd e tous les scroll verticaux et horizontaux de l'app.
-      - suppression de l'heure dans la date de bornage des affaires + date des sessions du ssdgps.
-      - Afficher le nom complet de l'utilisateur dans le champs creer par/modifier par/supprimer par.
-      - bouttons actions dans une seule ligne dans la liste des pieces.
-      - corriger elements par page des tableaux de l'app
+        - ajout colonne nbr pieces dans sous entitees du projet (fait)
+        - corrige le nombre total de pieces dans la liste des sessions (fait)
+      - redesigner pages consultation/modification des pieces.
+      - ajouter la vue en cartes de la liste des projets.
+      - style affichage du menu de filtre dans page liste des pieces.
   
 
 
@@ -199,7 +195,7 @@ Creer une branche pour la redaction du CPS de l'app (propose un nom parlant pour
 
 ### Prompte pour commit des modifs et synchronisation avec depot distant configure dans le projet
 
-commit les changements dans le dépôt local et synchronise ces commites  avec le dépôt distant global de l'app.
+commit les changements dans le dépôt local et synchronise ces commites avec le dépôt distant global de l'app.
 
 Quand le watcher a deja commiter maj le message du dernier commit dans le depot local et distant.
 Squaser les derniers commits watcher en un seul commit avec un message pertinent.

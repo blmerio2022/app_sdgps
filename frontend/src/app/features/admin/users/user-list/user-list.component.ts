@@ -1,3 +1,5 @@
+import { formatDateTime } from '../../../../shared/utils/date-format.util';
+import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from '../../../../shared/components/table-pagination/table-pagination.component';
 import { Component, OnInit, OnDestroy, HostListener, ChangeDetectorRef, ViewChild } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Subject } from 'rxjs';
@@ -119,8 +121,8 @@ export class UserListComponent implements OnInit, OnDestroy {
 
   // Pagination
   currentPage = 1;
-  pageSize = 10;
-  pageSizeOptions = [5, 8, 10, 20, 50];
+  pageSize = DEFAULT_PAGE_SIZE;
+  pageSizeOptions = [...PAGE_SIZE_OPTIONS];
 
   // Modales CRUD & Confirmation
   showAddModal = false;
@@ -778,15 +780,7 @@ export class UserListComponent implements OnInit, OnDestroy {
   }
 
   formatDate(value: any): string {
-    if (!value) return '—';
-    const date = new Date(value);
-    return date.toLocaleDateString('fr-FR', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return formatDateTime(value);
   }
 
   // ============================================

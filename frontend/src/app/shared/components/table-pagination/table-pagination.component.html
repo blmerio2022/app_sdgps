@@ -1,0 +1,50 @@
+<!-- Pagination unifiée du pied de tableau : plage · éléments par page · navigation. -->
+<div class="table-pagination">
+
+  <!-- Plage affichée : repère immédiat de la position dans la liste. -->
+  <span class="pg-range" *ngIf="total > 0">
+    <strong>{{ rangeStart }}</strong>–<strong>{{ rangeEnd }}</strong>
+    sur <strong>{{ total }}</strong>{{ entityPlural ? ' ' + entityPlural : '' }}
+  </span>
+  <span class="pg-range pg-range-empty" *ngIf="total === 0">Aucun élément</span>
+
+  <!-- Nombre d'éléments par page -->
+  <div class="pg-size">
+    <label class="pg-size-label" for="pgSize">Éléments par page</label>
+    <div class="pg-size-select-wrapper">
+      <!-- `[selected]` sur chaque <option> et NON `[value]` sur le <select> : la valeur du
+           select est appliquée avant que *ngFor n'ait créé les options, le sélecteur
+           retombait alors sur la première valeur au lieu de la taille réellement active. -->
+      <select id="pgSize" class="pg-size-select"
+              (change)="onPageSizeChange($any($event.target).value)">
+        <option *ngFor="let opt of pageSizeOptions" [value]="opt" [selected]="opt === pageSize">
+          {{ opt }}
+        </option>
+      </select>
+      <i class="fas fa-chevron-down pg-size-arrow"></i>
+    </div>
+  </div>
+
+  <!-- Navigation -->
+  <div class="pg-nav">
+    <button type="button" class="pg-btn" [disabled]="isFirst" (click)="first.emit()"
+            title="Première page" aria-label="Première page">
+      <i class="fas fa-angle-double-left"></i>
+    </button>
+    <button type="button" class="pg-btn" [disabled]="isFirst" (click)="prev.emit()"
+            title="Page précédente" aria-label="Page précédente">
+      <i class="fas fa-chevron-left"></i>
+    </button>
+
+    <span class="pg-current">Page <strong>{{ page }}</strong> sur <strong>{{ totalPages }}</strong></span>
+
+    <button type="button" class="pg-btn" [disabled]="isLast" (click)="next.emit()"
+            title="Page suivante" aria-label="Page suivante">
+      <i class="fas fa-chevron-right"></i>
+    </button>
+    <button type="button" class="pg-btn" [disabled]="isLast" (click)="last.emit()"
+            title="Dernière page" aria-label="Dernière page">
+      <i class="fas fa-angle-double-right"></i>
+    </button>
+  </div>
+</div>

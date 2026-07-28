@@ -452,26 +452,6 @@
       flex: 1;
       overflow: auto;
 
-    // Style de la barre de défilement
-    &::-webkit-scrollbar {
-      width: 8px;
-      height: 8px;
-    }
-
-    &::-webkit-scrollbar-track {
-      background: var(--primary-color);
-      border-radius: 10px;
-    }
-
-    &::-webkit-scrollbar-thumb {
-      background: var(--border-color);
-      border-radius: 4px;
-
-      &:hover {
-        background: var(--accent-color);
-      }
-    }
-
     .modern-table {
       width: 100%;
       border-collapse: collapse;
@@ -908,94 +888,9 @@
     }
 
     // ── Page Size ──
-    .pagination-size {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .pagination-size-label {
-      font-size: 13px;
-      color: var(--text-muted);
-      white-space: nowrap;
-    }
-
-    .pagination-size-select-wrapper {
-      position: relative;
-    }
-
-    .pagination-size-select {
-      padding: 6px 30px 6px 12px;
-      border: 1px solid var(--border-color);
-      border-radius: 6px;
-      background: transparent;
-      color: var(--text-color);
-      font-size: 13px;
-      outline: none;
-      appearance: none;
-      cursor: pointer;
-      transition: border-color 0.2s;
-
-      &:focus {
-        border-color: var(--accent-color);
-      }
-
-      option {
-        background: var(--primary-color);
-        color: var(--text-color);
-      }
-    }
-
-    .pagination-size-arrow {
-      position: absolute;
-      right: 10px;
-      top: 50%;
-      transform: translateY(-50%);
-      font-size: 10px;
-      color: var(--text-muted);
-      pointer-events: none;
-    }
 
     // ── Pagination Nav ──
-    .pagination-nav {
-      display: flex;
-      align-items: center;
-      gap: 2px;
-    }
 
-    .pagination-nav-btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 32px;
-      height: 32px;
-      border: 1px solid transparent;
-      border-radius: 6px;
-      background: transparent;
-      color: var(--text-muted);
-      cursor: pointer;
-      transition: all 0.15s;
-      font-size: 13px;
-
-      &:hover:not(:disabled) {
-        background: var(--hover-bg);
-        color: var(--accent-color);
-        border-color: var(--border-color);
-      }
-
-      &:disabled {
-        opacity: 0.2;
-        cursor: default;
-      }
-    }
-
-    .pagination-nav-label {
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--text-muted);
-      padding: 0 10px;
-      white-space: nowrap;
-    }
   }
 }
 

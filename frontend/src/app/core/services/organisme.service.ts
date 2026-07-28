@@ -57,6 +57,14 @@ export class OrganismeService {
   bulkDeleteNiveau1(ids: string[]): Observable<any> {
     return this.http.post(`${this.n1Url}bulk-delete/`, { ids });
   }
+  /** Suppression DÉFINITIVE (irréversible) — corbeille uniquement. */
+  permanentDeleteNiveau1(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.n1Url}${id}/permanent/`);
+  }
+  /** Suppression DÉFINITIVE en masse — corbeille uniquement. */
+  bulkPermanentDeleteNiveau1(ids: string[]): Observable<any> {
+    return this.http.post(`${this.n1Url}permanent-delete/`, { ids });
+  }
   bulkRestoreNiveau1(ids: string[]): Observable<any> {
     return this.http.post(`${this.n1Url}bulk-restore/`, { ids });
   }
@@ -80,6 +88,14 @@ export class OrganismeService {
   }
   bulkDeleteNiveau2(ids: string[]): Observable<any> {
     return this.http.post(`${this.n2Url}bulk-delete/`, { ids });
+  }
+  /** Suppression DÉFINITIVE (irréversible) — corbeille uniquement. */
+  permanentDeleteNiveau2(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.n2Url}${id}/permanent/`);
+  }
+  /** Suppression DÉFINITIVE en masse — corbeille uniquement. */
+  bulkPermanentDeleteNiveau2(ids: string[]): Observable<any> {
+    return this.http.post(`${this.n2Url}permanent-delete/`, { ids });
   }
   bulkRestoreNiveau2(ids: string[]): Observable<any> {
     return this.http.post(`${this.n2Url}bulk-restore/`, { ids });

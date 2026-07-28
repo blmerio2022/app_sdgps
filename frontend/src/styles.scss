@@ -5,6 +5,49 @@
    Thème Sombre par défaut avec toggle Clair
    ======================================== */
 
+/* ============================================================================
+   BARRES DE DÉFILEMENT — STYLE UNIQUE DE L'APPLICATION
+   ----------------------------------------------------------------------------
+   Référence : le défilement de la modale d'organisation des colonnes.
+   Cette règle GLOBALE s'applique à TOUS les défilements, verticaux comme
+   horizontaux, existants et à venir : ne JAMAIS redéfinir `::-webkit-scrollbar`
+   dans un composant (cf. CLAUDE.md, « Barres de défilement »).
+
+   Caractéristiques : rail transparent, pouce fin et arrondi en `--border-color`
+   détaché des bords (bordure transparente + `background-clip`), accentué en
+   `--accent-color` au survol. Firefox : `scrollbar-width: thin`.
+   ============================================================================ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;   /* défilement vertical   */
+  height: 8px;  /* défilement horizontal */
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+
+  &:hover {
+    background: var(--accent-color);
+    background-clip: padding-box;
+  }
+}
+
+/* Coin entre les deux barres (défilements croisés) : neutre. */
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 :root {
   // Dimensions layout
   --sidebar-width-expanded: 280px;

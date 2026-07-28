@@ -12,22 +12,7 @@
   // Barre de défilement verticale — fine, arrondie et discrète, avec un pouce « flottant »
   // (marge transparente via background-clip) qui s'accentue à l'accent au survol. 100 % tokens
   // du design system → s'adapte automatiquement aux thèmes clair/sombre.
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-color) transparent;
 
-  &::-webkit-scrollbar { width: 12px; }
-  &::-webkit-scrollbar-track { background: transparent; }
-  &::-webkit-scrollbar-thumb {
-    background: var(--border-color);
-    border-radius: 10px;
-    border: 3px solid transparent;
-    background-clip: padding-box;
-    transition: background 0.2s ease;
-  }
-  &::-webkit-scrollbar-thumb:hover {
-    background: var(--accent-color);
-    background-clip: padding-box;
-  }
 }
 
 .home {

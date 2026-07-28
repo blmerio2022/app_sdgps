@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from .models import Piece, PieceImage
 from .validators import validate_piece_coherence, points_without_photo
+from accounts.fields import AuthorDisplayField
 
 
 class PieceImageSerializer(serializers.ModelSerializer):
@@ -37,9 +38,9 @@ class PieceSerializer(serializers.ModelSerializer):
         source='session.numero_session', read_only=True, allow_null=True, default=None)
     niveau = serializers.SerializerMethodField()
     portee = serializers.SerializerMethodField()
-    created_by_email = serializers.EmailField(source='created_by.email', read_only=True)
-    updated_by_email = serializers.EmailField(source='updated_by.email', read_only=True)
-    deleted_by_email = serializers.EmailField(source='deleted_by.email', read_only=True)
+    created_by_email = AuthorDisplayField(source='created_by')
+    updated_by_email = AuthorDisplayField(source='updated_by')
+    deleted_by_email = AuthorDisplayField(source='deleted_by')
     images = PieceImageSerializer(many=True, read_only=True)
     orientation_effective = serializers.SerializerMethodField()
 

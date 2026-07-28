@@ -1,3 +1,5 @@
+import { formatDateTime } from '../../../shared/utils/date-format.util';
+import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from '../../../shared/components/table-pagination/table-pagination.component';
 import { Component, OnInit, OnDestroy, HostListener, ViewChild } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -115,9 +117,9 @@ export class ProjectSsdgpsListComponent implements OnInit, OnDestroy {
   resettingSort = false;
   private sortSaveTimer: any;
 
-  pageSize = 25;
+  pageSize = DEFAULT_PAGE_SIZE;
   currentPage = 1;
-  pageSizeOptions = [10, 25, 50, 100];
+  pageSizeOptions = [...PAGE_SIZE_OPTIONS];
 
   natureOptions = NATURE_SSDGPS_OPTIONS;
   typeOptions = TYPE_SSDGPS_OPTIONS;
@@ -487,8 +489,7 @@ export class ProjectSsdgpsListComponent implements OnInit, OnDestroy {
 
   // --- Valeur de cellule (affichage + CSV + filtre par champ) ---
   formatDate(value: any): string {
-    if (!value) return '—';
-    return new Date(value).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return formatDateTime(value);
   }
   getCellValue(s: Ssdgps, field: string): string {
     switch (field) {

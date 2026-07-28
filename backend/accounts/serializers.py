@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import Organization, Membership
+from accounts.fields import AuthorDisplayField
 
 User = get_user_model()
 
@@ -22,12 +23,7 @@ class OrganizationSerializer(serializers.ModelSerializer):
         label="Nombre de membres",
         help_text="Nombre total de membres actifs dans cette organisation"
     )
-    created_by_email = serializers.EmailField(
-        source='created_by.email',
-        read_only=True,
-        label="Email du créateur",
-        help_text="Adresse email de l'utilisateur ayant créé cette organisation"
-    )
+    created_by_email = AuthorDisplayField(source='created_by')
     full_path = serializers.CharField(
         read_only=True,
         label="Chemin hiérarchique",

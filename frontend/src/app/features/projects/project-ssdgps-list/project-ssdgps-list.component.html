@@ -241,23 +241,18 @@
         </div>
       </div>
       <div class="table-footer-right">
-        <div class="pagination-size">
-          <span class="pagination-size-label">Par page :</span>
-          <div class="pagination-size-select-wrapper">
-            <select class="pagination-size-select" [value]="pageSize" (change)="setPageSize(+$any($event.target).value)">
-              <option *ngFor="let opt of pageSizeOptions" [value]="opt">{{ opt }}</option>
-            </select>
-            <i class="fas fa-chevron-down pagination-size-arrow"></i>
-          </div>
-        </div>
-        <div class="pagination-nav">
-          <button class="pagination-nav-btn" [disabled]="currentPage <= 1" (click)="goToFirstPage()" title="Première page"><i class="fas fa-angle-double-left"></i></button>
-          <button class="pagination-nav-btn" [disabled]="currentPage <= 1" (click)="prevPage()" title="Page précédente"><i class="fas fa-chevron-left"></i></button>
-          <button *ngFor="let p of pageNumbers" class="pagination-page-btn" [class.active]="p === currentPage" (click)="goToPage(p)">{{ p }}</button>
-          <span class="pagination-nav-label">Page {{ currentPage }} / {{ totalPages }}</span>
-          <button class="pagination-nav-btn" [disabled]="currentPage >= totalPages" (click)="nextPage()" title="Page suivante"><i class="fas fa-chevron-right"></i></button>
-          <button class="pagination-nav-btn" [disabled]="currentPage >= totalPages" (click)="goToLastPage()" title="Dernière page"><i class="fas fa-angle-double-right"></i></button>
-        </div>
+        <app-table-pagination
+          [page]="currentPage"
+          [pageSize]="pageSize"
+          [total]="filteredItems.length"
+          [pageSizeOptions]="pageSizeOptions"
+      entityPlural="SSDGPS"
+          (pageSizeChange)="setPageSize($event)"
+          (first)="goToFirstPage()"
+          (prev)="prevPage()"
+          (next)="nextPage()"
+          (last)="goToLastPage()">
+        </app-table-pagination>
       </div>
     </div>
   </div>

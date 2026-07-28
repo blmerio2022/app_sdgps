@@ -1,3 +1,5 @@
+import { formatDateTime, formatFieldDate } from '../../../shared/utils/date-format.util';
+import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from '../../../shared/components/table-pagination/table-pagination.component';
 import { Component, HostListener, OnInit, ViewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { forkJoin, of } from 'rxjs';
@@ -119,8 +121,8 @@ export class PieceManagementPageComponent implements OnInit {
 
   // Pagination (vue Tableau)
   currentPage = 1;
-  pageSize = 10;
-  pageSizeOptions = [5, 10, 25, 50];
+  pageSize = DEFAULT_PAGE_SIZE;
+  pageSizeOptions = [...PAGE_SIZE_OPTIONS];
 
   // Suppression / restauration
   showDeleteModal = false;
@@ -348,9 +350,9 @@ export class PieceManagementPageComponent implements OnInit {
   statutBadgeClass(v: string): string {
     return { brouillon: 'badge-warning', valide: 'badge-success', rejete: 'badge-secondary' }[v] || 'badge-secondary';
   }
-  formatDate(value: any): string {
-    if (!value) return '—';
-    return new Date(value).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  /** Format unifié (cf. `date-format.util`) — passer le champ pour les dates sans heure. */
+  formatDate(value: any, field?: string): string {
+    return formatFieldDate(value, field);
   }
 
   changeScope(piece: Piece, sessionId: string): void {

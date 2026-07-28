@@ -1,3 +1,4 @@
+import { formatDateTime } from '../../../shared/utils/date-format.util';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { PieceImage } from '../../../core/models/piece.model';
 
@@ -79,9 +80,6 @@ export class PieceImageGalleryComponent {
   }
 
   formatDate(v: string | null): string {
-    if (!v) return '—';
-    return new Date(v).toLocaleString('fr-FR', {
-      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
-    });
+    return formatDateTime(v);
   }
 }

@@ -1,0 +1,112 @@
+/* =====================================================================
+   PAGINATION DE TABLEAU — composant partagé (pied de tableau).
+   Style UNIQUE de l'app : aligné sur le design system (variables CSS) et
+   sur les autres composants partagés (column-config, column-filter).
+   ===================================================================== */
+:host { display: block; }
+
+.table-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 18px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* ---------- Plage affichée ---------- */
+.pg-range {
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;   /* les chiffres ne « sautent » pas d'une page à l'autre */
+  white-space: nowrap;
+  strong { color: var(--text-color); font-weight: 700; }
+  &.pg-range-empty { font-style: italic; opacity: 0.8; }
+}
+
+/* ---------- Éléments par page ---------- */
+.pg-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  white-space: nowrap;
+
+  .pg-size-label { font-size: 12.5px; font-weight: 500; }
+
+  .pg-size-select-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .pg-size-select {
+    appearance: none; -webkit-appearance: none;
+    padding: 6px 28px 6px 11px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--secondary-color);
+    color: var(--text-color);
+    font-size: 12.5px; font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+
+    &:hover { border-color: var(--accent-color); color: var(--accent-color); }
+    &:focus {
+      outline: none;
+      border-color: var(--accent-color);
+      box-shadow: 0 0 0 3px rgba(204, 88, 88, 0.15);
+    }
+    /* Les options héritent du fond du système : on force le thème de l'app. */
+    option { background: var(--secondary-color); color: var(--text-color); }
+  }
+
+  .pg-size-arrow {
+    position: absolute; right: 10px;
+    pointer-events: none;                /* le clic traverse jusqu'au <select> */
+    font-size: 9px;
+    color: var(--text-muted);
+  }
+  .pg-size-select:hover + .pg-size-arrow { color: var(--accent-color); }
+}
+
+/* ---------- Navigation ---------- */
+.pg-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+
+  .pg-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--secondary-color);
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+
+    &:hover:not(:disabled) {
+      border-color: var(--accent-color);
+      color: var(--accent-color);
+      background: var(--hover-bg, rgba(0, 0, 0, 0.04));
+    }
+    &:disabled { opacity: 0.4; cursor: not-allowed; }
+  }
+
+  .pg-current {
+    padding: 0 10px;
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    strong { color: var(--text-color); font-weight: 700; }
+  }
+}
+
+/* Écrans étroits : la pagination se recentre et reste lisible. */
+@media (max-width: 720px) {
+  .table-pagination { justify-content: center; gap: 12px; }
+  .pg-size .pg-size-label { display: none; }   /* le select reste explicite à lui seul */
+}

@@ -185,6 +185,24 @@ assistants de codage IA comme aux contributeurs humains (cf. `AGENTS.md`).
 - Le `.env` (backend) contient les clés SendGrid, les identifiants d'amorçage du super-admin
   et les flags `ENVIRONMENT` / `SHOW_TEST_DATA`. Il est gitignoré mais présent en local.
 - Les composants Angular utilisent **SCSS** par défaut (schematics de `angular.json`).
+
+- **Barres de défilement : style UNIQUE, défini une seule fois (règle stricte).** Tous les
+  défilements de l'app — **verticaux comme horizontaux** — partagent le même style, déclaré
+  **globalement** dans `frontend/src/styles.scss` (section « BARRES DE DÉFILEMENT »). La référence
+  est le défilement de la modale d'organisation des colonnes.
+  - **Ne JAMAIS redéfinir `::-webkit-scrollbar`, `scrollbar-width` ou `scrollbar-color` dans un
+    composant.** La règle globale (`*::-webkit-scrollbar…`) s'applique automatiquement à tout
+    conteneur défilant, existant ou futur : un nouveau composant n'a **rien** à styler.
+  - Style de référence : rail **transparent**, pouce **fin et arrondi** en `--border-color`,
+    détaché des bords (`border: 2px solid transparent` + `background-clip: padding-box`), accentué
+    en `--accent-color` au survol ; `8px` en largeur (vertical) **et** en hauteur (horizontal) ;
+    `scrollbar-width: thin` + `scrollbar-color` pour Firefox ; coin (`-corner`) transparent.
+  - Côté composant, ne poser que ce qui relève de la **mise en page** : `overflow`, `max-height`,
+    `min-height: 0` (indispensable dans un conteneur flex pour que l'enfant défile), et
+    éventuellement une gouttière (`padding-right` + `margin-right` négatif) pour éviter que la
+    barre ne décale le contenu.
+  - Vérification : `grep -rn "webkit-scrollbar\|scrollbar-width\|scrollbar-color" frontend/src/app`
+    ne doit **rien** renvoyer (toutes les définitions vivent dans `styles.scss`).
 - Référence de design : `docs/ui-design-spec.md` ; notes de travail dans `docs/notes/`,
   plans dans `docs/plans/PLAN_DEV.md`.
 - **Tri multi-niveaux (parité obligatoire entre toutes les pages).** La fonctionnalité de tri
@@ -247,9 +265,15 @@ assistants de codage IA comme aux contributeurs humains (cf. `AGENTS.md`).
     cellules suit le patron générique (cf. `project-list`) : dates via `formatDate()`, `is_deleted`
     en badge Oui/Non, `*_by_email` avec repli `—`.
   - **Backend** : déclarer les 7 champs dans `TABLE_COLUMN_FIELDS[<clé>]` (`accounts/views.py`) et
-    dans l'allowlist de tri du tableau, et les exposer dans le serializer. ⚠️ Les champs
-    `*_by_email` dérivés d'une FK **doivent** porter `allow_null=True` : sans lui DRF **omet** le
-    champ quand la FK est nulle (`SkipField`) et la colonne disparaît du payload.
+    dans l'allowlist de tri du tableau, et les exposer dans le serializer.
+  - **Auteurs : toujours `AuthorDisplayField`** (`accounts/fields.py`), branché sur la **clé
+    étrangère** (`source='created_by'`, `'updated_by'`, `'modified_by'`, `'deleted_by'`) et non sur
+    `…​.email`. Il rend le **nom complet** de l'utilisateur (repli sur l'email si le compte n'a ni
+    prénom ni nom) et garantit que le champ vaut `null` au lieu d'être **omis** quand la FK est
+    nulle — un `EmailField(source='x.email')` sans `allow_null=True` déclenche `SkipField` et la
+    colonne disparaît alors du payload. ⚠️ Le **nom** des champs exposés reste `*_by_email` : il
+    est figé dans les allowlists et dans les configurations de colonnes déjà enregistrées par les
+    opérateurs ; seule la **valeur** est un nom complet.
   - **Capture des auteurs** : renseigner `created_by`/`updated_by` dans `perform_create` /
     `perform_update` et `deleted_by` (+ `deleted_at`) sur **tous** les chemins de suppression
     logique, y compris les suppressions **en masse**.

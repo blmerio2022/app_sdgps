@@ -4,6 +4,7 @@ from .models import Membership, Organization
 from .rbac import count_other_active_org_admins, MIN_ACTIVE_ORG_ADMINS
 import secrets
 import string
+from accounts.fields import AuthorDisplayField
 
 User = get_user_model()
 
@@ -15,12 +16,9 @@ class AuditEmailsMixin(serializers.Serializer):
     homogène avec les autres tableaux de l'app.
     """
     created_at = serializers.DateTimeField(source='date_joined', read_only=True)
-    created_by_email = serializers.EmailField(source='created_by.email', read_only=True,
-                                              allow_null=True)
-    updated_by_email = serializers.EmailField(source='updated_by.email', read_only=True,
-                                              allow_null=True)
-    deleted_by_email = serializers.EmailField(source='deleted_by.email', read_only=True,
-                                              allow_null=True)
+    created_by_email = AuthorDisplayField(source='created_by')
+    updated_by_email = AuthorDisplayField(source='updated_by')
+    deleted_by_email = AuthorDisplayField(source='deleted_by')
 
 
 class UserListSerializer(AuditEmailsMixin, serializers.ModelSerializer):

@@ -1,3 +1,5 @@
+import { formatDateTime } from '../../../../shared/utils/date-format.util';
+import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from '../../../../shared/components/table-pagination/table-pagination.component';
 import { Component, OnInit, HostListener, ViewChild } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
@@ -36,6 +38,7 @@ const N2_SORTABLE_FIELDS: { field: string; label: string }[] = [
   { field: 'code', label: 'Code' },
   { field: 'nom', label: 'Nom' },
   { field: 'niveau1_nom', label: 'Premier niveau' },
+  { field: 'niveau1_sigle', label: 'Sigle premier niveau' },
   { field: 'ville', label: 'Ville / province' },
   { field: 'sigle', label: 'Sigle' },
   { field: 'is_active', label: 'Statut' },
@@ -110,8 +113,8 @@ export class OrganismeListComponent implements OnInit {
 
   // Pagination
   currentPage = 1;
-  pageSize = 8;
-  pageSizeOptions = [5, 8, 10, 20, 50];
+  pageSize = DEFAULT_PAGE_SIZE;
+  pageSizeOptions = [...PAGE_SIZE_OPTIONS];
 
   // Menus
   showExportMenu = false;
@@ -139,6 +142,12 @@ export class OrganismeListComponent implements OnInit {
   showDeleteModal = false;
   toDelete: any = null;
   isBulkDelete = false;
+  // Suppression DÉFINITIVE (corbeille uniquement) — composant partagé de confirmation.
+  showPermanentDeleteModal = false;
+  permanentDeleteTarget: any = null;
+  isBulkPermanent = false;
+  permanentDeleting = false;
+
   showRestoreModal = false;
   toRestore: any = null;
   isBulkRestore = false;
@@ -149,6 +158,7 @@ export class OrganismeListComponent implements OnInit {
     sigle: 'Abréviation / sigle.',
     ville: 'Ville ou province de rattachement (deuxième niveau).',
     niveau1_nom: 'Organisme de premier niveau dont dépend cette entité.',
+    niveau1_sigle: "Sigle / abréviation de l'organisme de premier niveau de rattachement.",
     nbr_niveaux2: "Nombre d'organismes de deuxième niveau rattachés.",
     is_active: 'Organisme actif ou désactivé.',
     // Colonnes d'audit standard : descriptions unifiées (cf. CLAUDE.md).
@@ -209,6 +219,7 @@ export class OrganismeListComponent implements OnInit {
       { field: 'code', label: 'Code', visible: true, type: 'text' },
       { field: 'nom', label: 'Nom', visible: true, type: 'text' },
       { field: 'niveau1_nom', label: 'Premier niveau', visible: true, type: 'text' },
+      { field: 'niveau1_sigle', label: 'Sigle premier niveau', visible: true, type: 'text' },
       { field: 'ville', label: 'Ville / province', visible: true, type: 'text' },
       { field: 'sigle', label: 'Sigle', visible: false, type: 'text' },
       { field: 'is_active', label: 'Statut', visible: true, type: 'boolean' },
@@ -494,9 +505,7 @@ export class OrganismeListComponent implements OnInit {
   getStatusBadgeClass(active: boolean): string { return active ? 'badge badge-success' : 'badge badge-secondary'; }
   getStatusText(active: boolean): string { return active ? 'Actif' : 'Inactif'; }
   formatDate(v: string): string {
-    if (!v) return '-';
-    const d = new Date(v);
-    return isNaN(d.getTime()) ? '-' : d.toLocaleDateString('fr-FR');
+    return formatDateTime(v, '-');
   }
 
   // ------------------------------------------------------------------ CRUD
@@ -547,6 +556,79 @@ export class OrganismeListComponent implements OnInit {
     obs.subscribe({
       next: (r: any) => { this.toast.success('Succès', `${this.isBulkRestore ? (r?.restored_count ?? ids.length) : 1} organisme(s) restauré(s).`); this.bulkBusy = false; this.closeRestoreModal(); this.load(); },
       error: () => { this.bulkBusy = false; this.toast.error('Erreur', 'Restauration impossible.'); },
+    });
+  }
+
+  // ------------------------------------------------------- suppression DÉFINITIVE (corbeille)
+  /** Désignation de la cible dans la confirmation (nom, à défaut code). */
+  get permanentDeleteLabel(): string {
+    const t = this.permanentDeleteTarget;
+    return t ? (t.nom || t.code || '') : '';
+  }
+
+  /**
+   * Sous-données bloquant la purge : seuls les organismes de 1er niveau en portent.
+   * La clé étrangère est en `PROTECT` côté base — les enfants en corbeille bloquent AUSSI,
+   * on le dit explicitement pour que l'opérateur sache quoi purger en premier.
+   */
+  get permanentDeleteBlockedBy(): string {
+    return this.isN2 ? '' : 'organismes de deuxième niveau (y compris ceux en corbeille)';
+  }
+
+  askPermanentDelete(item: any): void {
+    if (!item?.is_deleted) return;      // purge réservée aux éléments en corbeille
+    this.permanentDeleteTarget = item;
+    this.isBulkPermanent = false;
+    this.showPermanentDeleteModal = true;
+  }
+
+  openBulkPermanentDelete(): void {
+    if (!this.showDeleted || !this.selectedIds.size) return;
+    this.permanentDeleteTarget = null;
+    this.isBulkPermanent = true;
+    this.showPermanentDeleteModal = true;
+  }
+
+  closePermanentDelete(): void {
+    this.permanentDeleteTarget = null;
+    this.isBulkPermanent = false;
+    this.showPermanentDeleteModal = false;
+  }
+
+  confirmPermanentDelete(): void {
+    if (this.permanentDeleting) return;
+    this.permanentDeleting = true;
+    const ids = this.isBulkPermanent
+      ? Array.from(this.selectedIds)
+      : [this.permanentDeleteTarget.id];
+    const obs: Observable<any> = this.isBulkPermanent
+      ? (this.isN2 ? this.service.bulkPermanentDeleteNiveau2(ids)
+                   : this.service.bulkPermanentDeleteNiveau1(ids))
+      : (this.isN2 ? this.service.permanentDeleteNiveau2(ids[0])
+                   : this.service.permanentDeleteNiveau1(ids[0]));
+    obs.subscribe({
+      next: (r: any) => {
+        this.permanentDeleting = false;
+        const purges = this.isBulkPermanent ? (r?.deleted_count ?? 0) : 1;
+        const conserves = this.isBulkPermanent ? (r?.errors?.length ?? 0) : 0;
+        if (purges) {
+          this.toast.success('Succès',
+            `${purges} organisme(s) supprimé(s) définitivement.`);
+        }
+        // Le serveur conserve les éléments portant encore des sous-données : on le dit.
+        if (conserves) {
+          this.toast.warning('Partiel',
+            `${conserves} organisme(s) conservé(s) : des sous-éléments y sont rattachés.`);
+        }
+        this.selectedIds.clear();
+        this.closePermanentDelete();
+        this.load();
+      },
+      error: (e: any) => {
+        this.permanentDeleting = false;
+        this.toast.error('Erreur',
+          e?.error?.detail || 'Suppression définitive impossible.');
+      },
     });
   }
 
@@ -647,7 +729,7 @@ export class OrganismeListComponent implements OnInit {
   onDocumentClick(): void { this.showExportMenu = false; this.showFilterMenu = false; this.showFieldFilterMenu = false; this.closeContextMenus(); }
 
   @HostListener('document:keydown.escape')
-  onEscape(): void { this.showFormModal = false; this.showDeleteModal = false; this.showRestoreModal = false; this.onDocumentClick(); }
+  onEscape(): void { this.showFormModal = false; this.showDeleteModal = false; this.showRestoreModal = false; this.showPermanentDeleteModal = false; this.onDocumentClick(); }
 
   private firstError(err: any): string {
     const e = err?.error; if (!e) return '';
