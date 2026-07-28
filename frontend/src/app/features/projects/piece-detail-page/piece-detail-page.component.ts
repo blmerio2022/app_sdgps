@@ -7,6 +7,7 @@ import { ToastService } from '../../../core/services/toast.service';
 import { BreadcrumbService } from '../../../core/layout/services/breadcrumb.service';
 import { BreadcrumbItem } from '../../../core/layout/interfaces/menu.interface';
 import { Piece, PieceTypeDef } from '../../../core/models/piece.model';
+import { AutoSaveState } from '../piece-detail-modal/piece-detail-modal.component';
 import { Ssdgps, Session, Projet } from '../../../core/models/project.model';
 
 /**
@@ -155,11 +156,26 @@ export class PieceDetailPageComponent implements OnInit, OnDestroy {
 
   onSaved(updated: Piece): void { this.piece = updated; }
 
-  /** Depuis la consultation, bascule vers la page d'édition (même pièce). */
-  goToEdit(): void {
-    this.router.navigate(
-      ['/projets', this.projectId, 'pieces', this.ssdgpsId, 'piece', this.pieceId, 'modifier'],
-      { queryParams: { proprieteId: this.proprieteId, affaireId: this.affaireId, session: this.sessionId } },
-    );
+  /** État de la sauvegarde automatique, remonté par le composant hébergé : la mention est
+   * affichée dans l'en-tête de page (et non dans le corps) pour économiser une bande. */
+  autoSaveState: AutoSaveState = 'idle';
+  onAutoSaveState(state: AutoSaveState): void { this.autoSaveState = state; }
+
+  /** Bascule vers l'autre mode pour la MÊME pièce (routes sœurs `…/piece/:id` et
+   * `…/piece/:id/modifier`). Le contexte de navigation est conservé pour que le retour
+   * et le fil d'Ariane restent justes. */
+  switchMode(target: 'view' | 'edit'): void {
+    if (target === this.mode) return;
+    const path = ['/projets', this.projectId, 'pieces', this.ssdgpsId, 'piece', this.pieceId];
+    if (target === 'edit') path.push('modifier');
+    this.router.navigate(path, {
+      queryParams: { proprieteId: this.proprieteId, affaireId: this.affaireId, session: this.sessionId },
+    });
   }
+
+  /** Depuis la consultation, bascule vers la page d'édition (même pièce). */
+  goToEdit(): void { this.switchMode('edit'); }
+
+  /** Depuis la modification, revient à la consultation (même pièce). */
+  goToView(): void { this.switchMode('view'); }
 }

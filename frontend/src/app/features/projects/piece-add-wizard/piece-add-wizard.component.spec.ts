@@ -19,6 +19,65 @@ describe('PieceAddWizardComponent (logique)', () => {
     cmp.existingPieces = [];
   });
 
+  describe('stepper', () => {
+    it('mono-session : 2 étapes (type, source) — pas d’étape Session', () => {
+      expect(cmp.wizardSteps.map(s => s.key)).toEqual(['type', 'source']);
+    });
+
+    it('multi-session : 3 étapes, Session insérée au milieu', () => {
+      cmp.ssdgps = { ...cmp.ssdgps, type_ssdgps: 'multi-session' } as any;
+      expect(cmp.wizardSteps.map(s => s.key)).toEqual(['type', 'scope', 'source']);
+    });
+
+    it('currentStepIndex suit l’étape courante', () => {
+      expect(cmp.currentStepIndex).toBe(0);
+      cmp.step = 'source';
+      expect(cmp.currentStepIndex).toBe(1);
+    });
+
+    it('l’étape « photos » reste rattachée au dernier rang (prolonge la source)', () => {
+      cmp.step = 'photos';
+      expect(cmp.currentStepIndex).toBe(1);
+    });
+
+    it('goToStep revient à une étape déjà franchie', () => {
+      cmp.selectType(def());
+      expect(cmp.step).toBe('source');
+      cmp.goToStep(0);
+      expect(cmp.step).toBe('type');
+      expect(cmp.selectedType).toBeNull();
+    });
+
+    it('goToStep ignore l’étape courante et les étapes à venir', () => {
+      cmp.selectType(def());
+      cmp.goToStep(1);           // étape courante
+      expect(cmp.step).toBe('source');
+      cmp.step = 'type';
+      cmp.goToStep(1);           // étape à venir
+      expect(cmp.step).toBe('type');
+    });
+  });
+
+  describe('cartes de type', () => {
+    it('existingCount compte les pièces du type, hors corbeille', () => {
+      cmp.existingPieces = [
+        { type_piece: 'RDL' }, { type_piece: 'RDL', is_deleted: true }, { type_piece: 'ROB' },
+      ] as any;
+      expect(cmp.existingCount(def())).toBe(1);
+      expect(cmp.existingCount(def({ code: 'ROB' }))).toBe(1);
+      expect(cmp.existingCount(def({ code: 'RDC' }))).toBe(0);
+    });
+
+    it('sourceLabel / sourceIcon décrivent la source attendue', () => {
+      expect(cmp.sourceLabel(def({ source: 'image' }))).toBe('Images');
+      expect(cmp.sourceLabel(def({ source: 'csv_manuel' }))).toBe('Tableau');
+      expect(cmp.sourceLabel(def({ computed: true }))).toBe('Calculée');
+      expect(cmp.sourceLabel(def({ assemble: true }))).toBe('Assemblée');
+      expect(cmp.sourceIcon(def({ source: 'image' }))).toBe('fa-image');
+      expect(cmp.sourceIcon(def({ computed: true }))).toBe('fa-calculator');
+    });
+  });
+
   describe('niveau & sélection du type', () => {
     it('isMulti reflète le type de SSDGPS', () => {
       expect(cmp.isMulti).toBeFalse();
@@ -108,6 +167,24 @@ describe('PieceAddWizardComponent (logique)', () => {
     it('maxPosition = pièces actives + 1', () => {
       cmp.existingPieces = [{ is_deleted: false } as any, { is_deleted: true } as any];
       expect(cmp.maxPosition).toBe(2);
+    });
+  });
+
+  describe('position d’insertion (contrôle segmenté)', () => {
+    it('setInsertAtEnd bascule le mode', () => {
+      cmp.setInsertAtEnd(true);
+      expect(cmp.insertAtEnd).toBeTrue();
+      cmp.setInsertAtEnd(false);
+      expect(cmp.insertAtEnd).toBeFalse();
+    });
+  });
+
+  describe('formatSessionDate', () => {
+    it('formate la date de session (sans heure)', () => {
+      expect(cmp.formatSessionDate({ date_session: '2026-03-15' } as any)).toBe('15/03/2026');
+    });
+    it('renvoie le marqueur « — » quand la date n’est pas renseignée', () => {
+      expect(cmp.formatSessionDate({ date_session: null } as any)).toBe('—');
     });
   });
 

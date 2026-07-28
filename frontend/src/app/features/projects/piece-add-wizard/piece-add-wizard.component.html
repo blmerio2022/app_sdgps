@@ -7,81 +7,191 @@
       <button class="close-btn" (click)="close()"><i class="fas fa-times"></i></button>
     </div>
 
-    <div class="wizard-steps">
-      <span class="wizard-step" [class.active]="step==='type'" [class.done]="step!=='type'">1. Type</span>
-      <ng-container *ngIf="isMulti">
-        <i class="fas fa-chevron-right"></i>
-        <span class="wizard-step" [class.active]="step==='scope'" [class.done]="step==='source'">2. Session</span>
-      </ng-container>
-      <i class="fas fa-chevron-right"></i>
-      <span class="wizard-step" [class.active]="step==='source'">{{ isMulti ? '3' : '2' }}. Source</span>
-    </div>
+    <!-- Stepper : pastilles numérotées reliées, état explicite (faite / en cours / à venir).
+         Une étape déjà franchie est cliquable — revenir en arrière ne doit pas obliger à
+         chercher un lien « Changer de type » enfoui plus bas dans la page. -->
+    <ol class="wizard-steps">
+      <li class="wizard-step" *ngFor="let s of wizardSteps; let i = index"
+          [class.done]="i < currentStepIndex" [class.active]="i === currentStepIndex"
+          [attr.aria-current]="i === currentStepIndex ? 'step' : null">
+        <button type="button" class="step-btn" [disabled]="i >= currentStepIndex"
+                (click)="goToStep(i)"
+                [attr.title]="i < currentStepIndex ? 'Revenir à cette étape' : null">
+          <span class="step-marker">
+            <i class="fas fa-check" *ngIf="i < currentStepIndex"></i>
+            <span *ngIf="i >= currentStepIndex">{{ i + 1 }}</span>
+          </span>
+          <span class="step-label">
+            <span class="step-rank">Étape {{ i + 1 }}</span>
+            <span class="step-name">{{ s.label }}</span>
+          </span>
+        </button>
+        <span class="step-line" *ngIf="i < wizardSteps.length - 1" aria-hidden="true"></span>
+      </li>
+    </ol>
 
     <div class="modal-body">
       <!-- Étape 1 : type -->
-      <div class="type-grid" *ngIf="step==='type'">
-        <button *ngFor="let def of applicableTypes" class="type-card" (click)="selectType(def)">
-          <span class="type-code">{{ def.code }}</span>
-          <span class="type-nom">{{ def.nom }}</span>
-        </button>
-      </div>
+      <ng-container *ngIf="step==='type'">
+        <!-- En-tête d'étape unifié : question à gauche, contexte en jetons, retour à droite.
+             Les valeurs déjà choisies deviennent des jetons plutôt que du gras en ligne —
+             elles se relisent d'un coup d'œil sans relire la phrase. -->
+        <div class="step-head">
+          <div class="step-head-text">
+            <h2 class="step-question">Quel type de pièce ajouter au rapport ?</h2>
+            <p class="step-hint">{{ applicableTypes.length }} type(s) applicable(s) à ce SSDGPS.</p>
+          </div>
+        </div>
+        <div class="type-grid">
+          <button *ngFor="let def of applicableTypes" class="type-card" (click)="selectType(def)"
+                  [attr.aria-label]="def.code + ' — ' + def.nom">
+            <span class="type-head">
+              <span class="type-code">{{ def.code }}</span>
+              <!-- Déjà présent : information décisive, mais jamais bloquante. -->
+              <span class="type-count" *ngIf="existingCount(def) as n" [title]="n + ' déjà dans ce rapport'">
+                <i class="fas fa-layer-group"></i> {{ n }}
+              </span>
+            </span>
+            <span class="type-nom">{{ def.nom }}</span>
+            <span class="type-meta">
+              <span class="type-tag"><i class="fas" [ngClass]="sourceIcon(def)"></i> {{ sourceLabel(def) }}</span>
+              <span class="type-tag" *ngIf="def.repeatable"><i class="fas fa-copy"></i> Répétable</span>
+            </span>
+            <i class="fas fa-arrow-right type-go" aria-hidden="true"></i>
+          </button>
+        </div>
+      </ng-container>
 
       <!-- Étape 2 : session (multi-session uniquement) -->
       <div class="scope-step" *ngIf="step==='scope'">
-        <p class="step-intro">À quelle <strong>session</strong> rattacher cette pièce (<strong>{{ selectedType?.nom }}</strong>) ?</p>
-        <div class="scope-options">
-          <div class="scope-option-sessions">
-            <button *ngFor="let s of sessions" class="scope-session-btn" [class.active]="selectedSessionId===s.id" (click)="chooseNiveauSession(s.id)">
-              <i class="fas fa-clock"></i> Session n°{{ s.numero_session }}
-            </button>
+        <div class="step-head">
+          <div class="step-head-text">
+            <h2 class="step-question">À quelle session rattacher cette pièce ?</h2>
+            <p class="step-context">
+              <span class="ctx-chip"><span class="ctx-code">{{ selectedType?.code }}</span>{{ selectedType?.nom }}</span>
+            </p>
           </div>
+          <button class="btn-back" (click)="backToType()">
+            <i class="fas fa-arrow-left"></i> Changer de type
+          </button>
         </div>
-        <button class="btn-back" (click)="backToType()"><i class="fas fa-arrow-left"></i> Changer de type</button>
+        <div class="scope-option-sessions">
+          <button *ngFor="let s of sessions" class="scope-session-btn"
+                  [class.active]="selectedSessionId===s.id"
+                  [attr.aria-pressed]="selectedSessionId===s.id"
+                  (click)="chooseNiveauSession(s.id)">
+            <span class="session-marker"><i class="fas fa-clock"></i></span>
+            <span class="session-body">
+              <span class="session-title">Session n°{{ s.numero_session }}</span>
+              <span class="session-date" *ngIf="s.date_session">{{ formatSessionDate(s) }}</span>
+              <span class="session-date muted" *ngIf="!s.date_session">Date non renseignée</span>
+            </span>
+            <span class="session-tag" *ngIf="s.id === defaultSessionId">Session courante</span>
+            <i class="fas fa-check session-check" *ngIf="selectedSessionId===s.id" aria-hidden="true"></i>
+          </button>
+        </div>
       </div>
 
       <!-- Étape 3 : source -->
       <div class="source-step" *ngIf="step==='source'">
-        <p class="step-intro">Source des données pour <strong>{{ selectedType?.nom }}</strong>
-          <span *ngIf="selectedNiveau==='session'"> (Session n°{{ selectedSessionNumero }})</span>
-        </p>
-
-        <div class="position-selector">
-          <label class="position-option">
-            <input type="radio" name="position" [checked]="insertAtEnd" (change)="insertAtEnd=true">
-            <span>Ajouter à la fin du rapport</span>
-          </label>
-          <label class="position-option">
-            <input type="radio" name="position" [checked]="!insertAtEnd" (change)="insertAtEnd=false">
-            <span>Position spécifique :</span>
-            <input type="number" class="position-input" min="1" [max]="maxPosition" [(ngModel)]="customPosition" [disabled]="insertAtEnd" (focus)="insertAtEnd=false">
-            <span class="position-hint">/ {{ maxPosition }}</span>
-          </label>
+        <div class="step-head">
+          <div class="step-head-text">
+            <h2 class="step-question">D'où proviennent les données ?</h2>
+            <p class="step-context">
+              <span class="ctx-chip"><span class="ctx-code">{{ selectedType?.code }}</span>{{ selectedType?.nom }}</span>
+              <span class="ctx-chip" *ngIf="selectedNiveau==='session'">
+                <i class="fas fa-clock"></i> Session n°{{ selectedSessionNumero }}
+              </span>
+              <span class="ctx-chip" *ngIf="selectedNiveau==='ssdgps'">
+                <i class="fas fa-globe"></i> Commune au SSDGPS
+              </span>
+            </p>
+          </div>
+          <button class="btn-back" *ngIf="!selectedSource" (click)="backToNiveau()">
+            <i class="fas fa-arrow-left"></i> {{ isMulti ? 'Changer de session' : 'Changer de type' }}
+          </button>
         </div>
 
+        <!-- Position d'insertion : deux choix exclusifs → contrôle segmenté. Le champ
+             numérique n'apparaît qu'en mode « position précise », au lieu d'être présent
+             mais désactivé. -->
+        <div class="position-selector">
+          <span class="position-label"><i class="fas fa-hashtag"></i> Position dans le rapport</span>
+          <div class="position-switch" role="group" aria-label="Position d'insertion de la pièce">
+            <button type="button" class="position-seg" [class.active]="insertAtEnd"
+                    [attr.aria-pressed]="insertAtEnd" (click)="setInsertAtEnd(true)">
+              <i class="fas fa-arrow-down-long"></i> À la fin du rapport
+            </button>
+            <button type="button" class="position-seg" [class.active]="!insertAtEnd"
+                    [attr.aria-pressed]="!insertAtEnd" (click)="setInsertAtEnd(false)">
+              <i class="fas fa-arrows-up-down"></i> Position précise
+            </button>
+          </div>
+          <div class="position-field" *ngIf="!insertAtEnd">
+            <input type="number" class="position-input" min="1" [max]="maxPosition"
+                   [(ngModel)]="customPosition" aria-label="Position précise dans le rapport">
+            <span class="position-hint">sur {{ maxPosition }}</span>
+          </div>
+        </div>
+
+        <!-- Cartes-options : chaque source porte une description d'une ligne, sans quoi rien
+             ne distingue « Calculer » d'« Assembler » sans connaissance métier préalable. -->
         <div class="source-options" *ngIf="!selectedSource">
           <button class="source-option" *ngIf="sourceAllows('image') && !isPhotoPoints" (click)="selectSource('image')">
-            <i class="fas fa-images"></i><span>Importer des images</span>
+            <span class="source-option-icon"><i class="fas fa-images"></i></span>
+            <span class="source-option-body">
+              <span class="source-option-name">Importer des images</span>
+              <span class="source-option-desc">Une ou plusieurs images, rendues en pleine page dans le rapport.</span>
+            </span>
           </button>
           <button class="source-option" *ngIf="sourceAllows('csv')" (click)="selectSource('csv')">
-            <i class="fas fa-file-csv"></i><span>Importer un fichier CSV/Excel</span>
+            <span class="source-option-icon"><i class="fas fa-file-csv"></i></span>
+            <span class="source-option-body">
+              <span class="source-option-name">Importer un fichier CSV / Excel</span>
+              <span class="source-option-desc">Vous associez ensuite chaque colonne du fichier au champ correspondant.</span>
+            </span>
           </button>
           <button class="source-option" *ngIf="sourceAllows('manuel')" (click)="selectSource('manuel')">
-            <i class="fas fa-keyboard"></i><span>Saisie manuelle</span>
+            <span class="source-option-icon"><i class="fas fa-keyboard"></i></span>
+            <span class="source-option-body">
+              <span class="source-option-name">Saisie manuelle</span>
+              <span class="source-option-desc">Un tableau vide à remplir directement dans l'application.</span>
+            </span>
           </button>
           <button class="source-option" *ngIf="selectedType?.html_import" (click)="selectSource('html')">
-            <i class="fas fa-file-code"></i><span>Importer le rapport HTML (TBC)</span>
+            <span class="source-option-icon"><i class="fas fa-file-code"></i></span>
+            <span class="source-option-body">
+              <span class="source-option-name">Importer un rapport HTML (TBC)</span>
+              <span class="source-option-desc">Les lignes sont extraites automatiquement du rapport produit par TBC.</span>
+            </span>
           </button>
           <button class="source-option" *ngIf="supportsBulkHtml" (click)="openBulkModal()">
-            <i class="fas fa-layer-group"></i><span>Créer plusieurs {{ selectedType?.code }} en masse (rapports HTML TBC)</span>
+            <span class="source-option-icon"><i class="fas fa-layer-group"></i></span>
+            <span class="source-option-body">
+              <span class="source-option-name">Créer plusieurs {{ selectedType?.code }} en une fois</span>
+              <span class="source-option-desc">Un dossier de rapports TBC produit une pièce par rapport détecté.</span>
+            </span>
           </button>
           <button class="source-option" *ngIf="selectedType?.computed" (click)="selectSource('compute')">
-            <i class="fas fa-calculator"></i><span>Calculer automatiquement (depuis LPA + déterminations)</span>
+            <span class="source-option-icon"><i class="fas fa-calculator"></i></span>
+            <span class="source-option-body">
+              <span class="source-option-name">Calculer automatiquement</span>
+              <span class="source-option-desc">Croise la liste des points anciens (LPA) avec les déterminations du dossier.</span>
+            </span>
           </button>
           <button class="source-option" *ngIf="supportsAssemble" (click)="selectSource('assemble')">
-            <i class="fas fa-object-group"></i><span>Assembler depuis les déterminations du dossier</span>
+            <span class="source-option-icon"><i class="fas fa-object-group"></i></span>
+            <span class="source-option-body">
+              <span class="source-option-name">Assembler depuis le dossier</span>
+              <span class="source-option-desc">Réunit les déterminations déjà présentes dans ce dossier en un seul rapport.</span>
+            </span>
           </button>
           <button class="source-option" *ngIf="supportsAssemble" (click)="selectSource('assemble-files')">
-            <i class="fas fa-file-import"></i><span>Importer & assembler des fichiers (CSV / Excel / HTML)</span>
+            <span class="source-option-icon"><i class="fas fa-file-import"></i></span>
+            <span class="source-option-body">
+              <span class="source-option-name">Importer puis assembler des fichiers</span>
+              <span class="source-option-desc">Mêmes règles, mais depuis des fichiers CSV, Excel ou HTML de votre disque.</span>
+            </span>
           </button>
         </div>
 
@@ -125,7 +235,15 @@
 
         <!-- Sous-formulaire : import CSV/Excel -->
         <div class="source-form" *ngIf="selectedSource==='csv'">
-          <input type="file" accept=".csv,.xlsx" (change)="onImportFileSelected($event)">
+          <div class="file-row">
+            <label class="btn-secondary file-label">
+              <input type="file" accept=".csv,.xlsx" hidden (change)="onImportFileSelected($event)">
+              <i class="fas fa-paperclip"></i> {{ selectedFile ? 'Changer de fichier' : 'Choisir un fichier CSV / Excel…' }}
+            </label>
+            <span class="file-chosen" *ngIf="selectedFile" [title]="selectedFile.name">
+              <i class="fas fa-file-csv"></i> {{ selectedFile.name }}
+            </span>
+          </div>
           <app-piece-column-mapper
             *ngIf="importPreview"
             [champs]="importPreview.champs"
@@ -156,7 +274,7 @@
         <div class="source-form" *ngIf="selectedSource==='html'">
           <!-- Aucune donnée encore importée : inviter à ouvrir la fenêtre d'import -->
           <div class="html-empty" *ngIf="!manualForm && !htmlPreviewing">
-            <p class="step-intro subtle"><i class="fas fa-info-circle"></i> Importez le rapport HTML (TBC) pour générer automatiquement le tableau de données de la pièce.</p>
+            <p class="wizard-note"><i class="fas fa-info-circle"></i><span>Importez le rapport HTML (TBC) pour générer automatiquement le tableau de données de la pièce.</span></p>
             <button class="btn-secondary" (click)="openHtmlModal()"><i class="fas fa-file-code"></i> Choisir un rapport HTML…</button>
           </div>
 
@@ -182,7 +300,7 @@
 
         <!-- Sous-formulaire : calcul automatique (RC — depuis LPA + déterminations) -->
         <div class="source-form" *ngIf="selectedSource==='compute'">
-          <p class="step-intro subtle"><i class="fas fa-info-circle"></i> Le tableau est calculé automatiquement en croisant la « Liste des points anciens » (coordonnées fixes) avec les coordonnées calculées, prises soit dans les « Rapports de la détermination N°k » (RDN), soit dans le « Rapport des déterminations intermédiaires assemblé » (RDIA). Vérifiez/ajustez puis créez.</p>
+          <p class="wizard-note"><i class="fas fa-info-circle"></i><span>Le tableau est calculé automatiquement en croisant la « Liste des points anciens » (coordonnées fixes) avec les coordonnées calculées, prises soit dans les « Rapports de la détermination N°k » (RDN), soit dans le « Rapport des déterminations intermédiaires assemblé » (RDIA). Vérifiez/ajustez puis créez.</span></p>
 
           <!-- Choix de la source des coordonnées calculées (seulement si RDN ET RDIA disponibles). -->
           <div class="rc-source-choice" *ngIf="!computing && rcAvailableSources.length > 1">
@@ -219,7 +337,7 @@
         <!-- Sous-formulaire : assemblage RDIA (RDL + RDNₖ → une pièce) -->
         <div class="source-form" *ngIf="selectedSource==='assemble'">
           <div class="html-empty" *ngIf="!manualForm && !assembling">
-            <p class="step-intro subtle"><i class="fas fa-info-circle"></i> Assemblez la détermination libre et les déterminations intermédiaires (RDNₖ) déjà présentes dans le dossier en un seul rapport (une colonne « Détermination » : Libre / N°1 / N°2…).</p>
+            <p class="wizard-note"><i class="fas fa-info-circle"></i><span>Assemblez la détermination libre et les déterminations intermédiaires (RDNₖ) déjà présentes dans le dossier en un seul rapport (une colonne « Détermination » : Libre / N°1 / N°2…).</span></p>
             <button class="btn-secondary" (click)="openAssembleModal()"><i class="fas fa-object-group"></i> Choisir les déterminations à assembler…</button>
           </div>
 
@@ -244,7 +362,7 @@
         <!-- Sous-formulaire : import & assemblage de FICHIERS de déterminations -->
         <div class="source-form" *ngIf="selectedSource==='assemble-files'">
           <div class="html-empty" *ngIf="!manualForm && !assembleFilesParsing">
-            <p class="step-intro subtle"><i class="fas fa-info-circle"></i> Importez les fichiers CSV/Excel/HTML des déterminations séparées, ordonnez-les, puis assemblez-les en un seul rapport (colonne « Détermination » : Libre / N°1 / N°2…).</p>
+            <p class="wizard-note"><i class="fas fa-info-circle"></i><span>Importez les fichiers CSV/Excel/HTML des déterminations séparées, ordonnez-les, puis assemblez-les en un seul rapport (colonne « Détermination » : Libre / N°1 / N°2…).</span></p>
             <button class="btn-secondary" (click)="openAssembleFilesModal()"><i class="fas fa-file-import"></i> Importer les fichiers des déterminations…</button>
           </div>
 
@@ -266,9 +384,6 @@
           </div>
         </div>
 
-        <button class="btn-back" *ngIf="!selectedSource" (click)="backToNiveau()">
-          <i class="fas fa-arrow-left"></i> {{ isMulti ? 'Changer de session' : 'Changer de type' }}
-        </button>
       </div>
 
       <!-- Étape photos (PPA/PPN) : rattacher les photos aux points -->

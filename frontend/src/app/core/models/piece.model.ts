@@ -89,7 +89,10 @@ export interface Piece {
   orientation_effective?: 'portrait' | 'paysage';
   /** RDL/RDN/RDIA : version(s) affichée(s) dans le rapport PDF (brute / écarts / les deux). */
   versions_rapport?: 'brut' | 'ecarts' | 'both';
+  /** Observations : reprises dans la colonne « Observations » de la page de garde du SSDGPS. */
   commentaire?: string;
+  /** Notes internes à l'app : jamais reprises dans le rapport PDF. */
+  notes_internes?: string;
   organization_id?: string;
   created_at?: string;
   updated_at?: string;

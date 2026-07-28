@@ -6,6 +6,7 @@ import { PieceSortConfigService, PieceSortConfig, brutSortLevels } from '../../.
 import { PieceFieldsConfig, PieceFieldsConfigService } from '../../../core/services/piece-fields-config.service';
 import { Piece, PieceChampDef, PieceImportPreview, PieceTypeDef } from '../../../core/models/piece.model';
 import { Ssdgps, Session } from '../../../core/models/project.model';
+import { formatFieldDate } from '../../../shared/utils/date-format.util';
 import { findTbcReports, TbcReportCandidate } from '../tbc-report.util';
 import { assembleDeterminationRows, sortDeterminationItems, relabelDeterminationItems,
          fixesLabel, DeterminationFileItem, DetSortKey } from '../rdia.util';
@@ -118,6 +119,57 @@ export class PieceAddWizardComponent implements OnInit {
    * (type, session, numéro) diffère — vérifié côté serveur à la confirmation. */
   isTypeDisabled(_def: PieceTypeDef): boolean { return false; }
 
+  // --- Aide à la décision sur les cartes de type -------------------------------
+
+  /** Nombre de pièces de ce type DÉJÀ présentes dans le rapport (hors corbeille). Affiché
+   * sur la carte : ajouter un type déjà présent est légitime (types répétables) mais doit
+   * être un choix informé, pas une surprise. */
+  existingCount(def: PieceTypeDef): number {
+    return this.existingPieces.filter(p => p.type_piece === def.code && !p.is_deleted).length;
+  }
+
+  /** Icône représentant la source de données attendue par un type. */
+  sourceIcon(def: PieceTypeDef): string {
+    if (def.computed || def.assemble) return 'fa-calculator';
+    return { image: 'fa-image', csv_manuel: 'fa-table', manuel: 'fa-keyboard' }[def.source as string]
+      || 'fa-file-lines';
+  }
+
+  /** Libellé court de la source, pour la ligne de méta d'une carte. */
+  sourceLabel(def: PieceTypeDef): string {
+    if (def.computed) return 'Calculée';
+    if (def.assemble) return 'Assemblée';
+    return { image: 'Images', csv_manuel: 'Tableau', manuel: 'Saisie', ui: 'Automatique' }[def.source as string]
+      || 'Données';
+  }
+
+  // --- Stepper -----------------------------------------------------------------
+
+  /** Étapes du parcours, dans l'ordre. L'étape « Session » n'existe qu'en multi-session. */
+  get wizardSteps(): { key: Step; label: string; icon: string }[] {
+    const etapes: { key: Step; label: string; icon: string }[] = [
+      { key: 'type', label: 'Type de pièce', icon: 'fa-shapes' },
+    ];
+    if (this.isMulti) etapes.push({ key: 'scope', label: 'Session', icon: 'fa-clock' });
+    etapes.push({ key: 'source', label: 'Source des données', icon: 'fa-database' });
+    return etapes;
+  }
+
+  /** Rang de l'étape courante (0-indexé) — sert à marquer les étapes faites/à venir. */
+  get currentStepIndex(): number {
+    // L'étape « photos » prolonge la saisie de la source : elle reste sur le dernier rang.
+    const key: Step = this.step === 'photos' ? 'source' : this.step;
+    return Math.max(0, this.wizardSteps.findIndex(s => s.key === key));
+  }
+
+  /** Une étape déjà franchie est cliquable : revenir en arrière est un besoin courant. */
+  goToStep(index: number): void {
+    if (index >= this.currentStepIndex) return;
+    const target = this.wizardSteps[index];
+    if (target.key === 'type') this.backToType();
+    else if (target.key === 'scope') { this.selectedSource = null; this.step = 'scope'; }
+  }
+
   selectType(def: PieceTypeDef): void {
     this.selectedType = def;
     if (this.isMulti) {
@@ -135,6 +187,14 @@ export class PieceAddWizardComponent implements OnInit {
   }
 
   chooseNiveauSession(sessionId: string): void { this.selectedNiveau = 'session'; this.selectedSessionId = sessionId; this.step = 'source'; }
+
+  /** Date d'une session au format unifié de l'app (`date_session` s'affiche SANS heure). */
+  formatSessionDate(s: Session): string { return formatFieldDate(s.date_session, 'date_session'); }
+
+  /** Position d'insertion : `true` = à la fin du rapport, `false` = position précise.
+   * Passe par une méthode plutôt qu'une affectation en ligne pour que le contrôle segmenté
+   * reste testable et que la remise à zéro éventuelle vive à un seul endroit. */
+  setInsertAtEnd(atEnd: boolean): void { this.insertAtEnd = atEnd; }
 
   get selectedSessionNumero(): number | undefined {
     return this.sessions.find(s => s.id === this.selectedSessionId)?.numero_session;

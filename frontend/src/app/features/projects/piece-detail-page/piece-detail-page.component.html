@@ -1,25 +1,39 @@
 <div class="piece-page" *ngIf="piece && ssdgps">
-  <nav class="page-crumb">
-    <button class="crumb-back" (click)="backToList()">
-      <i class="fas fa-arrow-left"></i> Retour aux pièces
+  <!-- En-tête sur UNE ligne : retour + identité de la pièce à gauche, état de sauvegarde et
+       bascule de mode à droite. La bascule porte à la fois l'état courant (segment actif) et
+       l'action (segment inactif cliquable) — un seul contrôle au lieu d'un badge + un bouton. -->
+  <header class="page-head">
+    <button class="head-back" (click)="backToList()" title="Retour aux pièces" aria-label="Retour aux pièces">
+      <i class="fas fa-arrow-left"></i>
     </button>
 
-    <div class="page-title">
-      <span class="page-title-icon"><i class="fas" [ngClass]="mode==='edit' ? 'fa-pen-to-square' : 'fa-eye'"></i></span>
-      <div class="page-title-text">
-        <span class="page-title-eyebrow">{{ mode==='edit' ? 'Modification de la pièce' : 'Consultation de la pièce' }}</span>
-        <span class="page-title-main">
-          <span class="type-code">{{ piece.type_piece }}</span>
-          <span class="type-name">{{ catalogDef?.nom || piece.type_piece_display }}</span>
-          <span class="type-numero" *ngIf="piece.numero">n°{{ piece.numero }}</span>
-        </span>
+    <span class="head-icon"><i class="fas fa-file-lines"></i></span>
+
+    <h1 class="head-main">
+      <span class="type-code">{{ piece.type_piece }}</span>
+      <span class="type-name" [title]="catalogDef?.nom || piece.type_piece_display">{{ catalogDef?.nom || piece.type_piece_display }}</span>
+      <span class="type-numero" *ngIf="piece.numero">n°{{ piece.numero }}</span>
+    </h1>
+
+    <div class="head-actions">
+      <span class="autosave-note" *ngIf="mode==='edit'" aria-live="polite" [ngSwitch]="autoSaveState">
+        <span class="saving" *ngSwitchCase="'saving'"><i class="fas fa-spinner fa-spin"></i> Enregistrement…</span>
+        <span class="saved" *ngSwitchCase="'saved'"><i class="fas fa-circle-check"></i> Modifications enregistrées</span>
+        <span class="idle" *ngSwitchDefault><i class="fas fa-bolt"></i> Les modifications sont enregistrées automatiquement</span>
+      </span>
+
+      <div class="mode-switch" role="group" aria-label="Mode d'affichage de la pièce">
+        <button type="button" class="mode-seg" [class.active]="mode==='view'"
+                [attr.aria-pressed]="mode==='view'" (click)="goToView()">
+          <i class="fas fa-eye"></i> Consultation
+        </button>
+        <button type="button" class="mode-seg" [class.active]="mode==='edit'"
+                [attr.aria-pressed]="mode==='edit'" (click)="goToEdit()">
+          <i class="fas fa-pen-to-square"></i> Modification
+        </button>
       </div>
     </div>
-
-    <button class="crumb-edit" *ngIf="mode==='view'" (click)="goToEdit()">
-      <i class="fas fa-pen-to-square"></i> Modifier
-    </button>
-  </nav>
+  </header>
 
   <div class="page-body">
     <app-piece-detail-modal
@@ -30,6 +44,7 @@
       [sessions]="sessions"
       [catalog]="catalog"
       (saved)="onSaved($event)"
+      (autoSaveStateChange)="onAutoSaveState($event)"
       (closed)="backToList()">
     </app-piece-detail-modal>
   </div>

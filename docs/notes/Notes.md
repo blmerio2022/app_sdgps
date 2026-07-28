@@ -57,6 +57,9 @@
   - Fonctionnalites manquantes dans l'app
     - Ajout cachet + signature sur toutes les pages du rapport.
     - Affectation pour chaque organisation d'un volume limite d'espace de stockage a ne pas depasser.
+      - Lorsque le quota d'espace de stockage atteint. l'app affiche page de suppression des ssdgps mono-session/ssdgps-multi-session a supprimer. 
+      - Affiche pour chaque element (ssdgps mono / sessions du ssdgps) la taille de l'espace de stockage restauree.
+      - possibiliter de compression donnees des pieces du ssdgps-mono et/ou ssdgps-multi.
     - Preparation des sdgps multisession exemples
       - preparation des donnees des sessions des sdgps multisessions exemples : PLC/GPS - DLC/GPS
       - import donnees dans l'app + generation des sdgps des sessions + page de garde de tous les sdgps des sessions
@@ -69,10 +72,8 @@
     - Ajoute calcul nombre de lignes par page (dans le rapport PDF) pour les pieces contenant des tableaux de donnees.
     - Corrige lecture des noms des points contenant des espaces depuis html des fermetures des boucles.
     - Finaliser l'interface graphique UI/UX
-      - revision des colonnes des entites
-        - ajout colonne nbr pieces dans sous entitees du projet (fait)
-        - corrige le nombre total de pieces dans la liste des sessions (fait)
-      - redesigner pages consultation/modification des pieces.
+      - redesigner pages consultation/modification des pieces. (fait)
+      - redesigner les pages de creation de nouvelles pieces.
       - ajouter la vue en cartes de la liste des projets.
       - style affichage du menu de filtre dans page liste des pieces.
   
@@ -88,7 +89,7 @@
 
 
 
-Le tout afin de rendre l'interface beaucoup plus intuitive, pro, simple, visuellement attrayante et conforme aux bonnes pratiques UI/UX. Le tout egalement dans un style et design élégant, pro et conforme au design system de l'app.
+Le tout afin de rendre l'interface beaucoup plus intuitive, pro, simple, visuellement attrayante et conforme aux bonnes pratiques UI/UX. Le tout egalement dans un style et design élégant, pro et conforme au design system de l'app. Utilise le plugin design pour un design et UI/UX  élégante, pro, intuitive, visuellement attrayante
 
 - Fonctionnalites futures:
   - Ajouter une page de changelog + ajouter version dans l'app

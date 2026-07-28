@@ -907,7 +907,7 @@ TABLE_SORT_FIELDS = {
     # du tri des DONNÉES internes d'une pièce (piece_sort_config, par type, via Profil).
     'pieces': {
         'ordre', 'type_piece_display', 'numero', 'portee_label', 'source_saisie', 'statut',
-        'commentaire', 'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+        'commentaire', 'notes_internes', 'created_at', 'updated_at', 'is_deleted', 'deleted_at',
         'created_by_email', 'updated_by_email', 'deleted_by_email',
     },
 }
@@ -1061,8 +1061,8 @@ TABLE_COLUMN_FIELDS = {
     # Liste des PIÈCES d'un rapport SSDGPS (features/projects/piece-management-page).
     'pieces': {
         'ordre', 'type_piece_display', 'numero', 'portee_label', 'source_saisie', 'statut',
-        'commentaire', 'created_at', 'updated_at', 'is_deleted', 'deleted_at', 'created_by_email',
-        'updated_by_email', 'deleted_by_email',
+        'commentaire', 'notes_internes', 'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+        'created_by_email', 'updated_by_email', 'deleted_by_email',
     },
 }
 

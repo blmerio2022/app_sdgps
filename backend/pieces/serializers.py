@@ -51,7 +51,7 @@ class PieceSerializer(serializers.ModelSerializer):
             'session_numero', 'niveau', 'portee', 'ordre',
             'fichier', 'fichier_url', 'taille_octets', 'images', 'payload', 'source_saisie', 'statut',
             'orientation', 'orientation_effective', 'versions_rapport',
-            'commentaire', 'organization_id', 'created_at', 'updated_at', 'is_deleted',
+            'commentaire', 'notes_internes', 'organization_id', 'created_at', 'updated_at', 'is_deleted',
             'deleted_at', 'created_by_email', 'updated_by_email', 'deleted_by_email',
         ]
         read_only_fields = ['id', 'ordre', 'taille_octets', 'created_at', 'updated_at', 'is_deleted', 'deleted_at']

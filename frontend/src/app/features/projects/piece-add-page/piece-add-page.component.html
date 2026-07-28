@@ -1,10 +1,25 @@
 <div class="piece-page" *ngIf="ssdgps">
-  <nav class="page-crumb">
-    <button class="crumb-back" (click)="backToList()">
-      <i class="fas fa-arrow-left"></i> Retour aux pièces
+  <!-- En-tête sur une ligne, identique à celui de la page pièce (retour, icône, titre,
+       contexte à droite) : passer de la création à la consultation ne doit pas donner
+       l'impression de changer d'application. -->
+  <header class="page-head">
+    <button class="head-back" (click)="backToList()" title="Retour aux pièces" aria-label="Retour aux pièces">
+      <i class="fas fa-arrow-left"></i>
     </button>
-    <span class="crumb-title"><i class="fas fa-plus-circle"></i> Ajouter une pièce</span>
-  </nav>
+
+    <span class="head-icon"><i class="fas fa-plus"></i></span>
+
+    <h1 class="head-main">Ajouter une pièce</h1>
+
+    <div class="head-actions">
+      <span class="head-context">
+        <i class="fas fa-satellite-dish"></i>
+        SSDGPS n°{{ ssdgps.numero_ssdgps }}
+        <span class="context-sep">·</span>
+        {{ ssdgps.type_ssdgps === 'multi-session' ? 'Multi-session' : 'Mono-session' }}
+      </span>
+    </div>
+  </header>
 
   <div class="page-body">
     <app-piece-add-wizard

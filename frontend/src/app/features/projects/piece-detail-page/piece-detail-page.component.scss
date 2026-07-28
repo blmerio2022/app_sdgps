@@ -1,53 +1,86 @@
 :host { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .piece-page {
   flex: 1; min-width: 0; min-height: 0; overflow-y: auto;
-  padding: 20px 24px; width: 100%;
+  padding: 14px 20px 20px; width: 100%;
 }
 
-.page-crumb {
-  display: flex; align-items: center; gap: 14px; margin-bottom: 18px;
-  .crumb-back {
-    display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px;
-    background: transparent; border: 1px solid var(--border-color); border-radius: 7px;
-    color: var(--accent-color); font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s;
-    &:hover { background: var(--hover-bg); border-color: var(--accent-color); }
+/* ---------- En-tête de page ----------
+   Une seule ligne : retour + identité à gauche, état + action à droite. Le filet de
+   séparation remplace une marge épaisse — il structure sans consommer de hauteur. */
+.page-head {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding-bottom: 10px; margin-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+
+  /* Retour : icône seule (le libellé est porté par le fil d'Ariane du topbar). */
+  .head-back {
+    flex-shrink: 0; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; border: 1px solid var(--border-color); border-radius: 8px;
+    color: var(--text-muted); font-size: 14px; cursor: pointer; transition: all 0.15s;
+    &:hover { background: var(--hover-bg); border-color: var(--accent-color); color: var(--accent-color); }
   }
-  .page-title {
-    display: inline-flex; align-items: center; gap: 12px; min-width: 0;
-    .page-title-icon {
-      flex-shrink: 0; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center;
-      border-radius: 11px; font-size: 18px;
-      color: var(--accent-color); background: rgba(204, 88, 88, 0.14); border: 1px solid rgba(204, 88, 88, 0.28);
+
+  .head-icon {
+    flex-shrink: 0; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+    border-radius: 9px; font-size: 15px;
+    color: var(--accent-color); background: rgba(204, 88, 88, 0.13); border: 1px solid rgba(204, 88, 88, 0.26);
+  }
+
+  /* Titre sur UNE ligne : code, libellé et numéro alignés horizontalement. */
+  .head-main {
+    margin: 0; flex: 1; display: inline-flex; align-items: center; gap: 8px; min-width: 0;
+    font-size: 16px; font-weight: 600; color: var(--text-color); line-height: 1.3;
+    .type-code {
+      flex-shrink: 0; font-size: 11.5px; font-weight: 700; letter-spacing: 0.5px; padding: 2px 9px; border-radius: 6px;
+      font-family: 'Consolas', monospace;
+      color: var(--accent-color); background: rgba(204, 88, 88, 0.13); border: 1px solid rgba(204, 88, 88, 0.26);
     }
-    .page-title-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-    .page-title-eyebrow {
-      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted);
-    }
-    .page-title-main {
-      display: inline-flex; align-items: center; gap: 8px; min-width: 0;
-      font-size: 17px; font-weight: 600; color: var(--text-color);
-      .type-code {
-        flex-shrink: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; padding: 2px 9px; border-radius: 7px;
-        color: var(--accent-color); background: rgba(204, 88, 88, 0.14); border: 1px solid rgba(204, 88, 88, 0.28);
-      }
-      .type-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .type-numero {
-        flex-shrink: 0; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 7px;
-        color: var(--text-muted); background: var(--hover-bg); border: 1px solid var(--border-color);
-      }
+    .type-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .type-numero {
+      flex-shrink: 0; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 6px;
+      color: var(--text-muted); background: var(--hover-bg); border: 1px solid var(--border-color);
     }
   }
-  .crumb-edit {
-    margin-left: auto; display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px;
-    background: linear-gradient(135deg, var(--accent-color), #b84949); border: none; border-radius: 7px;
-    color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s;
-    &:hover { box-shadow: 0 4px 12px rgba(204, 88, 88, 0.4); }
+
+  /* Cluster d'actions : état de sauvegarde + bascule de mode, alignés à droite du titre. */
+  .head-actions { display: inline-flex; align-items: center; gap: 12px; margin-left: auto; flex-shrink: 0; }
+
+  /* Mention d'enregistrement : information de confort, volontairement discrète face au
+     titre et à la bascule (elle ne doit jamais leur disputer l'attention). */
+  .autosave-note span {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11.5px; font-weight: 500; color: var(--text-muted); white-space: nowrap;
+    i { font-size: 11px; }
+  }
+  .autosave-note .idle i { color: var(--accent-color); opacity: 0.75; }
+  .autosave-note .saving { color: var(--accent-color); }
+  .autosave-note .saved { color: #2ecc71; }
+
+  /* Bascule Consultation / Modification : porte l'ÉTAT (segment actif) et l'ACTION
+     (segment inactif cliquable) — même vocabulaire que le sélecteur de statut d'une pièce. */
+  .mode-switch {
+    display: inline-flex; gap: 4px; padding: 4px; flex-shrink: 0;
+    background: var(--primary-color); border: 1px solid var(--border-color); border-radius: 9px;
+
+    .mode-seg {
+      display: inline-flex; align-items: center; gap: 7px; padding: 6px 13px;
+      border: 1px solid transparent; border-radius: 6px; background: transparent;
+      color: var(--text-muted); font-size: 12.5px; font-weight: 600;
+      cursor: pointer; white-space: nowrap; transition: all 0.15s;
+      i { font-size: 11.5px; }
+      &:hover:not(.active) { color: var(--text-color); background: var(--hover-bg); }
+      &:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(204, 88, 88, 0.35); }
+      &.active {
+        background: rgba(204, 88, 88, 0.14); color: var(--accent-color);
+        border-color: rgba(204, 88, 88, 0.4); cursor: default;
+      }
+    }
   }
 }
 
 .page-body {
   background: var(--secondary-color); border: 1px solid var(--border-color);
-  border-radius: 14px; padding: 20px; box-shadow: 0 1px 3px var(--shadow-color);
+  border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 3px var(--shadow-color);
 }
 
 .page-loading {
