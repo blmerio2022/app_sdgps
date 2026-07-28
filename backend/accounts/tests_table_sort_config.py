@@ -93,3 +93,9 @@ class TableSortConfigEndpointTests(APITestCase):
         for key in ('users', 'projects', 'project_proprietes', 'project_affaires',
                     'project_ssdgps', 'project_sessions'):
             self.assertIn(key, TABLE_SORT_FIELDS)
+
+    def test_explorateur_trie_sur_identifiant_et_compteur_de_pieces(self):
+        # Colonnes « ID propriété » et « Pièces » de l'explorateur de projet.
+        self.assertIn('id_propriete', TABLE_SORT_FIELDS['project_proprietes'])
+        self.assertIn('nbr_total_pieces', TABLE_SORT_FIELDS['project_proprietes'])
+        self.assertIn('nbr_total_pieces', TABLE_SORT_FIELDS['project_affaires'])

@@ -107,3 +107,9 @@ class TableColumnsConfigEndpointTests(APITestCase):
                     'project_proprietes', 'project_affaires', 'project_ssdgps', 'project_sessions',
                     'ssdgps', 'pieces'):
             self.assertIn(key, TABLE_COLUMN_FIELDS)
+
+    def test_explorateur_expose_identifiant_et_compteur_de_pieces(self):
+        # Colonnes « ID propriété » et « Pièces » de l'explorateur de projet.
+        self.assertIn('id_propriete', TABLE_COLUMN_FIELDS['project_proprietes'])
+        self.assertIn('nbr_total_pieces', TABLE_COLUMN_FIELDS['project_proprietes'])
+        self.assertIn('nbr_total_pieces', TABLE_COLUMN_FIELDS['project_affaires'])

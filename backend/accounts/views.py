@@ -770,7 +770,7 @@ ORGANISME_N1_SORT_FIELDS = {
     'deleted_at', 'deleted_by_email',
 }
 ORGANISME_N2_SORT_FIELDS = {
-    'code', 'nom', 'niveau1_nom', 'ville', 'sigle', 'is_active',
+    'code', 'nom', 'niveau1_nom', 'niveau1_sigle', 'ville', 'sigle', 'is_active',
     'created_at', 'created_by_email', 'updated_at', 'updated_by_email',
     'deleted_at', 'deleted_by_email',
 }
@@ -884,13 +884,13 @@ TABLE_SORT_FIELDS = {
     },
     # EXPLORATEUR de projet — un tableau par niveau (colonnes distinctes).
     'project_proprietes': {
-        'nom_propriete', 'id_requisition', 'id_titre', 'nbr_total_affaires',
-        'nbr_total_ssdgps', 'nbr_total_sessions', 'created_at', 'updated_at',
+        'nom_propriete', 'id_propriete', 'id_requisition', 'id_titre', 'nbr_total_affaires',
+        'nbr_total_ssdgps', 'nbr_total_sessions', 'nbr_total_pieces', 'created_at', 'updated_at',
         'is_deleted', 'deleted_at', 'created_by_email', 'updated_by_email', 'deleted_by_email',
     },
     'project_affaires': {
         'numero_sd_affaire', 'nature_procedure_affaire', 'nature_affaire', 'date_bornage',
-        'nbr_total_ssdgps', 'nbr_total_sessions', 'created_at', 'updated_at',
+        'nbr_total_ssdgps', 'nbr_total_sessions', 'nbr_total_pieces', 'created_at', 'updated_at',
         'is_deleted', 'deleted_at', 'created_by_email', 'updated_by_email', 'deleted_by_email',
     },
     'project_ssdgps': {
@@ -1010,7 +1010,7 @@ TABLE_COLUMN_FIELDS = {
         'created_by_email', 'updated_by_email', 'deleted_by_email',
     },
     'organisme_niveau2': {
-        'code', 'nom', 'niveau1_nom', 'ville', 'sigle', 'is_active',
+        'code', 'nom', 'niveau1_nom', 'niveau1_sigle', 'ville', 'sigle', 'is_active',
         'created_at', 'updated_at', 'is_deleted', 'deleted_at',
         'created_by_email', 'updated_by_email', 'deleted_by_email',
     },
@@ -1031,13 +1031,15 @@ TABLE_COLUMN_FIELDS = {
     },
     # EXPLORATEUR de projet — un tableau par niveau (colonnes distinctes).
     'project_proprietes': {
-        'nom_propriete', 'id_requisition', 'id_titre', 'nbr_total_affaires', 'nbr_total_ssdgps',
-        'nbr_total_sessions', 'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+        'nom_propriete', 'id_propriete', 'id_requisition', 'id_titre', 'nbr_total_affaires',
+        'nbr_total_ssdgps', 'nbr_total_sessions', 'nbr_total_pieces',
+        'created_at', 'updated_at', 'is_deleted', 'deleted_at',
         'created_by_email', 'updated_by_email', 'deleted_by_email',
     },
     'project_affaires': {
         'numero_sd_affaire', 'nature_procedure_affaire', 'nature_affaire', 'date_bornage',
-        'nbr_total_ssdgps', 'nbr_total_sessions', 'created_at', 'updated_at', 'is_deleted',
+        'nbr_total_ssdgps', 'nbr_total_sessions', 'nbr_total_pieces',
+        'created_at', 'updated_at', 'is_deleted',
         'deleted_at', 'created_by_email', 'updated_by_email', 'deleted_by_email',
     },
     'project_ssdgps': {
