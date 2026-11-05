@@ -694,3 +694,445 @@ class SsdgpsSortConfigResetView(APIView):
         request.user.ssdgps_sort_config = copy.deepcopy(source)
         request.user.save(update_fields=['ssdgps_sort_config'])
         return Response(request.user.ssdgps_sort_config, status=status.HTTP_200_OK)
+
+
+# Colonnes triables du tableau de la liste des ORGANISATIONS (allowlist de validation serveur).
+ORG_SORT_FIELDS = {
+    'code', 'name', 'type_display', 'legal_id', 'address', 'phone', 'email', 'website',
+    'is_active', 'member_count',
+    # Colonnes d'audit standard (cf. CLAUDE.md) ; `modified_by_email` conservé pour compatibilité.
+    'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+    'created_by_email', 'modified_by_email', 'updated_by_email', 'deleted_by_email',
+}
+
+
+class OrgSortConfigView(APIView):
+    """Tri MULTI-NIVEAUX par défaut du tableau de la liste des ORGANISATIONS, propre à l'opérateur.
+
+    GET/PUT /api/auth/me/org-sort-config/
+    Corps PUT : liste ordonnée `[{'field': '<colonne>', 'dir': 'asc'|'desc'}, ..]` (niveau 1 =
+    prioritaire). Champs validés contre `ORG_SORT_FIELDS` ; doublons supprimés ; `dir`
+    normalisé (défaut 'asc'). Miroir de `SsdgpsSortConfigView`."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(request.user.org_sort_config or [], status=status.HTTP_200_OK)
+
+    def put(self, request):
+        data = request.data
+        if not isinstance(data, list):
+            return Response({'detail': "Une liste de niveaux [{field, dir}] est attendue."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        cleaned, seen = [], set()
+        for level in data:
+            if not isinstance(level, dict):
+                return Response({'detail': "Chaque niveau doit être un objet {field, dir}."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            field = (level.get('field') or '').strip()
+            if field not in ORG_SORT_FIELDS:
+                return Response({'detail': f"Champ de tri invalide : « {field} »."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            if field in seen:
+                continue  # un champ ne peut apparaître qu'une fois
+            seen.add(field)
+            cleaned.append({'field': field, 'dir': 'desc' if level.get('dir') == 'desc' else 'asc'})
+        request.user.org_sort_config = cleaned
+        request.user.save(update_fields=['org_sort_config'])
+        return Response(cleaned, status=status.HTTP_200_OK)
+
+
+class OrgSortConfigResetView(APIView):
+    """Réinitialise le tri multi-niveaux de la liste des ORGANISATIONS de l'opérateur avec la
+    configuration SOURCE (compte super admin). POST .../reset/ → config appliquée, ou 400 si
+    aucune source disponible."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        import copy
+        from .piece_defaults import superadmin_org_sort_config
+        source = superadmin_org_sort_config()
+        if not source:
+            return Response(
+                {'detail': "Aucune configuration source disponible : le compte administrateur "
+                           "n'a pas encore de tri des organisations configuré."},
+                status=status.HTTP_400_BAD_REQUEST)
+        request.user.org_sort_config = copy.deepcopy(source)
+        request.user.save(update_fields=['org_sort_config'])
+        return Response(request.user.org_sort_config, status=status.HTTP_200_OK)
+
+
+# Colonnes triables des tableaux des listes d'ORGANISMES (allowlists de validation serveur).
+# Les colonnes triables diffèrent selon le niveau (le niveau 2 ajoute `niveau1_nom`/`ville`,
+# le niveau 1 ajoute `nbr_niveaux2`).
+ORGANISME_N1_SORT_FIELDS = {
+    'code', 'nom', 'sigle', 'nbr_niveaux2', 'is_active',
+    'created_at', 'created_by_email', 'updated_at', 'updated_by_email',
+    'deleted_at', 'deleted_by_email',
+}
+ORGANISME_N2_SORT_FIELDS = {
+    'code', 'nom', 'niveau1_nom', 'niveau1_sigle', 'ville', 'sigle', 'is_active',
+    'created_at', 'created_by_email', 'updated_at', 'updated_by_email',
+    'deleted_at', 'deleted_by_email',
+}
+
+# Par niveau (1 / 2) : nom du champ modèle, allowlist et fonction source (super admin).
+_ORGANISME_SORT_BY_NIVEAU = {
+    1: ('organisme_niveau1_sort_config', ORGANISME_N1_SORT_FIELDS, 'niveau1'),
+    2: ('organisme_niveau2_sort_config', ORGANISME_N2_SORT_FIELDS, 'niveau2'),
+}
+
+
+class OrganismeSortConfigView(APIView):
+    """Tri MULTI-NIVEAUX par défaut des tableaux des listes d'ORGANISMES, propre à l'opérateur.
+
+    GET/PUT /api/auth/me/organisme-sort-config/<niveau>/  (niveau ∈ {1, 2})
+    Corps PUT : liste ordonnée `[{'field': '<colonne>', 'dir': 'asc'|'desc'}, ..]` (niveau 1 =
+    prioritaire). Champs validés contre l'allowlist du niveau ; doublons supprimés ; `dir`
+    normalisé (défaut 'asc'). Miroir de `OrgSortConfigView`."""
+    permission_classes = [IsAuthenticated]
+
+    def _resolve(self, niveau):
+        return _ORGANISME_SORT_BY_NIVEAU.get(niveau)
+
+    def get(self, request, niveau):
+        cfg = self._resolve(niveau)
+        if not cfg:
+            return Response({'detail': "Niveau d'organisme invalide (attendu 1 ou 2)."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        attr, _fields, _src = cfg
+        return Response(getattr(request.user, attr) or [], status=status.HTTP_200_OK)
+
+    def put(self, request, niveau):
+        cfg = self._resolve(niveau)
+        if not cfg:
+            return Response({'detail': "Niveau d'organisme invalide (attendu 1 ou 2)."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        attr, allowed, _src = cfg
+        data = request.data
+        if not isinstance(data, list):
+            return Response({'detail': "Une liste de niveaux [{field, dir}] est attendue."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        cleaned, seen = [], set()
+        for level in data:
+            if not isinstance(level, dict):
+                return Response({'detail': "Chaque niveau doit être un objet {field, dir}."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            field = (level.get('field') or '').strip()
+            if field not in allowed:
+                return Response({'detail': f"Champ de tri invalide : « {field} »."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            if field in seen:
+                continue  # un champ ne peut apparaître qu'une fois
+            seen.add(field)
+            cleaned.append({'field': field, 'dir': 'desc' if level.get('dir') == 'desc' else 'asc'})
+        setattr(request.user, attr, cleaned)
+        request.user.save(update_fields=[attr])
+        return Response(cleaned, status=status.HTTP_200_OK)
+
+
+class OrganismeSortConfigResetView(APIView):
+    """Réinitialise le tri multi-niveaux d'une liste d'organismes de l'opérateur avec la
+    configuration SOURCE (compte super admin). POST .../<niveau>/reset/ → config appliquée, ou
+    400 si aucune source disponible."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, niveau):
+        import copy
+        from .piece_defaults import (
+            superadmin_organisme_niveau1_sort_config,
+            superadmin_organisme_niveau2_sort_config,
+        )
+        cfg = _ORGANISME_SORT_BY_NIVEAU.get(niveau)
+        if not cfg:
+            return Response({'detail': "Niveau d'organisme invalide (attendu 1 ou 2)."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        attr, _fields, _src = cfg
+        source = (superadmin_organisme_niveau1_sort_config() if niveau == 1
+                  else superadmin_organisme_niveau2_sort_config())
+        if not source:
+            return Response(
+                {'detail': "Aucune configuration source disponible : le compte administrateur "
+                           "n'a pas encore de tri des organismes configuré."},
+                status=status.HTTP_400_BAD_REQUEST)
+        setattr(request.user, attr, copy.deepcopy(source))
+        request.user.save(update_fields=[attr])
+        return Response(getattr(request.user, attr), status=status.HTTP_200_OK)
+
+
+# ============================================================================
+# Tri MULTI-NIVEAUX GÉNÉRIQUE par tableau (utilisateurs, projets, explorateur, ...)
+# ----------------------------------------------------------------------------
+# Un seul champ `CustomUser.table_sort_configs` (dict `{clé: [{field,dir}]}`) et un seul couple
+# de vues, plutôt qu'un champ + une migration + une vue par nouvelle liste. Chaque tableau
+# déclare son allowlist de colonnes triables dans `TABLE_SORT_FIELDS`. Même contrat que les vues
+# dédiées (validation, doublons supprimés, `dir` normalisé, réinitialisation depuis le super admin).
+# ============================================================================
+TABLE_SORT_FIELDS = {
+    # Liste des UTILISATEURS (features/admin/users/user-list).
+    'users': {
+        'first_name', 'email', 'role', 'organization_name', 'is_active',
+        'last_connection_at', 'must_change_password', 'date_joined',
+        'password_changed_at', 'is_deleted', 'is_superuser',
+    },
+    # Liste des PROJETS (features/projects/project-list).
+    'projects': {
+        'code_projet', 'nom_projet', 'statut', 'organization_name',
+        'nbr_total_proprietes', 'nbr_total_affaires', 'nbr_total_ssdgps',
+        'nbr_total_sessions', 'nbr_total_pieces', 'created_at', 'updated_at',
+        'is_deleted', 'deleted_at', 'created_by_email', 'updated_by_email',
+        'deleted_by_email',
+    },
+    # EXPLORATEUR de projet — un tableau par niveau (colonnes distinctes).
+    'project_proprietes': {
+        'nom_propriete', 'id_propriete', 'id_requisition', 'id_titre', 'nbr_total_affaires',
+        'nbr_total_ssdgps', 'nbr_total_sessions', 'nbr_total_pieces', 'created_at', 'updated_at',
+        'is_deleted', 'deleted_at', 'created_by_email', 'updated_by_email', 'deleted_by_email',
+    },
+    'project_affaires': {
+        'numero_sd_affaire', 'nature_procedure_affaire', 'nature_affaire', 'date_bornage',
+        'nbr_total_ssdgps', 'nbr_total_sessions', 'nbr_total_pieces', 'created_at', 'updated_at',
+        'is_deleted', 'deleted_at', 'created_by_email', 'updated_by_email', 'deleted_by_email',
+    },
+    'project_ssdgps': {
+        'nature_ssdgps', 'numero_ssdgps', 'type_ssdgps', 'nbr_total_sessions', 'nbr_total_pieces',
+        'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+        'created_by_email', 'updated_by_email', 'deleted_by_email',
+    },
+    'project_sessions': {
+        'numero_session', 'date_session', 'nbr_total_pieces',
+        'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+        'created_by_email', 'updated_by_email', 'deleted_by_email',
+    },
+    # Liste des PIÈCES d'un rapport SSDGPS (features/projects/piece-management-page). NB : distinct
+    # du tri des DONNÉES internes d'une pièce (piece_sort_config, par type, via Profil).
+    'pieces': {
+        'ordre', 'type_piece_display', 'numero', 'portee_label', 'source_saisie', 'statut',
+        'commentaire', 'notes_internes', 'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+        'created_by_email', 'updated_by_email', 'deleted_by_email',
+    },
+}
+
+
+class TableSortConfigView(APIView):
+    """Tri MULTI-NIVEAUX par défaut d'un tableau GÉNÉRIQUE, propre à l'opérateur.
+
+    GET/PUT /api/auth/me/table-sort-config/<key>/  (key ∈ clés de `TABLE_SORT_FIELDS`)
+    Corps PUT : liste ordonnée `[{'field': '<colonne>', 'dir': 'asc'|'desc'}, ..]` (niveau 1 =
+    prioritaire). Champs validés contre l'allowlist de la clé ; doublons supprimés ; `dir`
+    normalisé (défaut 'asc'). Stocké dans `CustomUser.table_sort_configs[<key>]`. Miroir des vues
+    dédiées (organisations/organismes/SSDGPS)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, key):
+        if key not in TABLE_SORT_FIELDS:
+            return Response({'detail': f"Tableau inconnu : « {key} »."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response((request.user.table_sort_configs or {}).get(key, []),
+                        status=status.HTTP_200_OK)
+
+    def put(self, request, key):
+        allowed = TABLE_SORT_FIELDS.get(key)
+        if allowed is None:
+            return Response({'detail': f"Tableau inconnu : « {key} »."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        data = request.data
+        if not isinstance(data, list):
+            return Response({'detail': "Une liste de niveaux [{field, dir}] est attendue."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        cleaned, seen = [], set()
+        for level in data:
+            if not isinstance(level, dict):
+                return Response({'detail': "Chaque niveau doit être un objet {field, dir}."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            field = (level.get('field') or '').strip()
+            if field not in allowed:
+                return Response({'detail': f"Champ de tri invalide : « {field} »."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            if field in seen:
+                continue  # un champ ne peut apparaître qu'une fois
+            seen.add(field)
+            cleaned.append({'field': field, 'dir': 'desc' if level.get('dir') == 'desc' else 'asc'})
+        configs = dict(request.user.table_sort_configs or {})
+        configs[key] = cleaned
+        request.user.table_sort_configs = configs
+        request.user.save(update_fields=['table_sort_configs'])
+        return Response(cleaned, status=status.HTTP_200_OK)
+
+
+class TableSortConfigResetView(APIView):
+    """Réinitialise le tri multi-niveaux d'un tableau générique de l'opérateur avec la
+    configuration SOURCE (compte super admin). POST .../<key>/reset/ → config appliquée, ou 400 si
+    clé inconnue / aucune source disponible."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, key):
+        import copy
+        from .piece_defaults import superadmin_table_sort_config
+        if key not in TABLE_SORT_FIELDS:
+            return Response({'detail': f"Tableau inconnu : « {key} »."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        source = superadmin_table_sort_config(key)
+        if not source:
+            return Response(
+                {'detail': "Aucune configuration source disponible : le compte administrateur "
+                           "n'a pas encore de tri configuré pour ce tableau."},
+                status=status.HTTP_400_BAD_REQUEST)
+        configs = dict(request.user.table_sort_configs or {})
+        configs[key] = copy.deepcopy(source)
+        request.user.table_sort_configs = configs
+        request.user.save(update_fields=['table_sort_configs'])
+        return Response(configs[key], status=status.HTTP_200_OK)
+
+
+# ============================================================================
+# Configuration des COLONNES GÉNÉRIQUE par tableau (visibilité + ordre)
+# ----------------------------------------------------------------------------
+# Miroir de `table_sort_configs` : un seul champ `CustomUser.table_columns_configs`
+# (dict `{clé: [{field, visible}]}`, l'ordre de la liste = ordre d'affichage) et un couple de
+# vues pour TOUS les tableaux. Chaque tableau déclare le catalogue COMPLET de ses colonnes
+# (colonnes triables ET non triables) dans `TABLE_COLUMN_FIELDS`. La source d'héritage /
+# réinitialisation est la configuration du compte super admin (comme le tri).
+# ============================================================================
+TABLE_COLUMN_FIELDS = {
+    # Liste des ORGANISATIONS (features/dashboard/organization-list).
+    'organizations': {
+        'code', 'name', 'type_display', 'legal_id', 'address', 'phone', 'email', 'website',
+        'is_active', 'member_count',
+        # Colonnes d'audit standard (cf. CLAUDE.md). `modified_by_email` est conservé pour
+        # compatibilité, `updated_by_email` est le nom unifié.
+        'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+        'created_by_email', 'modified_by_email', 'updated_by_email', 'deleted_by_email',
+    },
+    # Listes des ORGANISMES niveau 1 / niveau 2 (features/admin/organismes/organisme-list).
+    'organisme_niveau1': {
+        'code', 'nom', 'sigle', 'nbr_niveaux2', 'is_active',
+        'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+        'created_by_email', 'updated_by_email', 'deleted_by_email',
+    },
+    'organisme_niveau2': {
+        'code', 'nom', 'niveau1_nom', 'niveau1_sigle', 'ville', 'sigle', 'is_active',
+        'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+        'created_by_email', 'updated_by_email', 'deleted_by_email',
+    },
+    # Liste des UTILISATEURS (features/admin/users/user-list).
+    'users': {
+        'first_name', 'email', 'role', 'organization_name', 'is_active', 'last_connection_at',
+        'must_change_password', 'date_joined', 'password_changed_at', 'is_superuser',
+        # Colonnes d'audit standard (cf. CLAUDE.md).
+        'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+        'created_by_email', 'updated_by_email', 'deleted_by_email',
+    },
+    # Liste des PROJETS (features/projects/project-list).
+    'projects': {
+        'code_projet', 'nom_projet', 'statut', 'organization_name', 'nbr_total_proprietes',
+        'nbr_total_affaires', 'nbr_total_ssdgps', 'nbr_total_sessions', 'nbr_total_pieces',
+        'created_at', 'updated_at', 'is_deleted', 'deleted_at', 'created_by_email',
+        'updated_by_email', 'deleted_by_email',
+    },
+    # EXPLORATEUR de projet — un tableau par niveau (colonnes distinctes).
+    'project_proprietes': {
+        'nom_propriete', 'id_propriete', 'id_requisition', 'id_titre', 'nbr_total_affaires',
+        'nbr_total_ssdgps', 'nbr_total_sessions', 'nbr_total_pieces',
+        'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+        'created_by_email', 'updated_by_email', 'deleted_by_email',
+    },
+    'project_affaires': {
+        'numero_sd_affaire', 'nature_procedure_affaire', 'nature_affaire', 'date_bornage',
+        'nbr_total_ssdgps', 'nbr_total_sessions', 'nbr_total_pieces',
+        'created_at', 'updated_at', 'is_deleted',
+        'deleted_at', 'created_by_email', 'updated_by_email', 'deleted_by_email',
+    },
+    'project_ssdgps': {
+        'nature_ssdgps', 'numero_ssdgps', 'type_ssdgps', 'nbr_total_sessions', 'nbr_total_pieces',
+        'created_at', 'updated_at', 'is_deleted', 'deleted_at', 'created_by_email',
+        'updated_by_email', 'deleted_by_email',
+    },
+    'project_sessions': {
+        'numero_session', 'date_session', 'nbr_total_pieces', 'created_at', 'updated_at',
+        'is_deleted', 'deleted_at', 'created_by_email', 'updated_by_email', 'deleted_by_email',
+    },
+    # Liste des SSDGPS d'un projet (features/projects/project-ssdgps-list).
+    'ssdgps': {
+        'numero_ssdgps', 'nature_ssdgps', 'type_ssdgps', 'propriete_label', 'affaire_numero',
+        'nbr_total_sessions', 'nbr_total_pieces', 'propriete_nom', 'propriete_id_titre',
+        'propriete_id_requisition', 'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+        'created_by_email', 'updated_by_email', 'deleted_by_email',
+    },
+    # Liste des PIÈCES d'un rapport SSDGPS (features/projects/piece-management-page).
+    'pieces': {
+        'ordre', 'type_piece_display', 'numero', 'portee_label', 'source_saisie', 'statut',
+        'commentaire', 'notes_internes', 'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+        'created_by_email', 'updated_by_email', 'deleted_by_email',
+    },
+}
+
+
+class TableColumnsConfigView(APIView):
+    """Configuration des COLONNES par défaut d'un tableau GÉNÉRIQUE, propre à l'opérateur.
+
+    GET/PUT /api/auth/me/table-columns-config/<key>/  (key ∈ clés de `TABLE_COLUMN_FIELDS`)
+    Corps PUT : liste ORDONNÉE `[{'field': '<colonne>', 'visible': true|false}, ..]` (l'ordre de la
+    liste est l'ordre d'affichage). Champs validés contre l'allowlist de la clé ; doublons
+    supprimés ; `visible` normalisé en booléen. Stocké dans `CustomUser.table_columns_configs[<key>]`.
+    Miroir de `TableSortConfigView`."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, key):
+        if key not in TABLE_COLUMN_FIELDS:
+            return Response({'detail': f"Tableau inconnu : « {key} »."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response((request.user.table_columns_configs or {}).get(key, []),
+                        status=status.HTTP_200_OK)
+
+    def put(self, request, key):
+        allowed = TABLE_COLUMN_FIELDS.get(key)
+        if allowed is None:
+            return Response({'detail': f"Tableau inconnu : « {key} »."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        data = request.data
+        if not isinstance(data, list):
+            return Response({'detail': "Une liste de colonnes [{field, visible}] est attendue."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        cleaned, seen = [], set()
+        for column in data:
+            if not isinstance(column, dict):
+                return Response({'detail': "Chaque colonne doit être un objet {field, visible}."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            field = (column.get('field') or '').strip()
+            if field not in allowed:
+                return Response({'detail': f"Colonne invalide : « {field} »."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            if field in seen:
+                continue  # une colonne ne peut apparaître qu'une fois
+            seen.add(field)
+            cleaned.append({'field': field, 'visible': bool(column.get('visible', True))})
+        configs = dict(request.user.table_columns_configs or {})
+        configs[key] = cleaned
+        request.user.table_columns_configs = configs
+        request.user.save(update_fields=['table_columns_configs'])
+        return Response(cleaned, status=status.HTTP_200_OK)
+
+
+class TableColumnsConfigResetView(APIView):
+    """Réinitialise la configuration de colonnes d'un tableau générique de l'opérateur avec la
+    configuration SOURCE (compte super admin). POST .../<key>/reset/ → config appliquée, ou 400 si
+    clé inconnue / aucune source disponible. Miroir de `TableSortConfigResetView`."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, key):
+        import copy
+        from .piece_defaults import superadmin_table_columns_config
+        if key not in TABLE_COLUMN_FIELDS:
+            return Response({'detail': f"Tableau inconnu : « {key} »."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        source = superadmin_table_columns_config(key)
+        if not source:
+            return Response(
+                {'detail': "Aucune configuration source disponible : le compte administrateur "
+                           "n'a pas encore de colonnes configurées pour ce tableau."},
+                status=status.HTTP_400_BAD_REQUEST)
+        configs = dict(request.user.table_columns_configs or {})
+        configs[key] = copy.deepcopy(source)
+        request.user.table_columns_configs = configs
+        request.user.save(update_fields=['table_columns_configs'])
+        return Response(configs[key], status=status.HTTP_200_OK)

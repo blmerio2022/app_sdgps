@@ -323,3 +323,123 @@ def default_ssdgps_sort_config():
     admin ; à défaut, repli sur `DEFAULT_SSDGPS_SORT_CONFIG` (tri par numéro croissant)."""
     cfg = superadmin_ssdgps_sort_config()
     return copy.deepcopy(cfg if cfg else DEFAULT_SSDGPS_SORT_CONFIG)
+
+
+# --- Tri MULTI-NIVEAUX de la liste des ORGANISATIONS (miroir du tri SSDGPS) --------------
+DEFAULT_ORG_SORT_CONFIG = [{'field': 'name', 'dir': 'asc'}]
+
+
+def superadmin_org_sort_config():
+    """Config de tri multi-niveaux de la liste des ORGANISATIONS du super admin de référence,
+    ou `None` si indisponible (aucun super admin, ou config vide). Super admin le plus ancien.
+
+    Même logique défensive que `superadmin_ssdgps_sort_config` : le savepoint `atomic()` est
+    INDISPENSABLE (la valeur par défaut est évaluée pendant la migration qui CRÉE la colonne)."""
+    from django.contrib.auth import get_user_model
+    try:
+        with transaction.atomic():
+            User = get_user_model()
+            admin = (User.objects.filter(is_superuser=True)
+                     .order_by('date_joined', 'email').first())
+            cfg = getattr(admin, 'org_sort_config', None) if admin else None
+        return cfg or None
+    except Exception:
+        return None
+
+
+def default_org_sort_config():
+    """Valeur par défaut du champ `org_sort_config` (copie profonde). Source = config du super
+    admin ; à défaut, repli sur `DEFAULT_ORG_SORT_CONFIG` (tri par nom croissant)."""
+    cfg = superadmin_org_sort_config()
+    return copy.deepcopy(cfg if cfg else DEFAULT_ORG_SORT_CONFIG)
+
+
+# --- Tri MULTI-NIVEAUX des listes d'ORGANISMES (niveau 1 et niveau 2, miroir des organisations) --
+DEFAULT_ORGANISME_N1_SORT_CONFIG = [{'field': 'nom', 'dir': 'asc'}]
+DEFAULT_ORGANISME_N2_SORT_CONFIG = [{'field': 'nom', 'dir': 'asc'}]
+
+
+def _superadmin_organisme_sort_config(attr):
+    """Config de tri multi-niveaux d'une liste d'organismes du super admin de référence (le plus
+    ancien), ou `None` si indisponible. `attr` = nom du champ (`organisme_niveau1_sort_config` /
+    `organisme_niveau2_sort_config`).
+
+    Même logique défensive que `superadmin_org_sort_config` : le savepoint `atomic()` est
+    INDISPENSABLE (la valeur par défaut est évaluée pendant la migration qui CRÉE la colonne)."""
+    from django.contrib.auth import get_user_model
+    try:
+        with transaction.atomic():
+            User = get_user_model()
+            admin = (User.objects.filter(is_superuser=True)
+                     .order_by('date_joined', 'email').first())
+            cfg = getattr(admin, attr, None) if admin else None
+        return cfg or None
+    except Exception:
+        return None
+
+
+def superadmin_organisme_niveau1_sort_config():
+    """Config de tri des organismes de PREMIER niveau du super admin source (ou `None`)."""
+    return _superadmin_organisme_sort_config('organisme_niveau1_sort_config')
+
+
+def superadmin_organisme_niveau2_sort_config():
+    """Config de tri des organismes de DEUXIÈME niveau du super admin source (ou `None`)."""
+    return _superadmin_organisme_sort_config('organisme_niveau2_sort_config')
+
+
+def default_organisme_niveau1_sort_config():
+    """Valeur par défaut du champ `organisme_niveau1_sort_config` (copie profonde). Source = config
+    du super admin ; à défaut, repli sur `DEFAULT_ORGANISME_N1_SORT_CONFIG` (tri par nom croissant)."""
+    cfg = superadmin_organisme_niveau1_sort_config()
+    return copy.deepcopy(cfg if cfg else DEFAULT_ORGANISME_N1_SORT_CONFIG)
+
+
+def default_organisme_niveau2_sort_config():
+    """Valeur par défaut du champ `organisme_niveau2_sort_config` (copie profonde). Source = config
+    du super admin ; à défaut, repli sur `DEFAULT_ORGANISME_N2_SORT_CONFIG` (tri par nom croissant)."""
+    cfg = superadmin_organisme_niveau2_sort_config()
+    return copy.deepcopy(cfg if cfg else DEFAULT_ORGANISME_N2_SORT_CONFIG)
+
+
+# --- Tri MULTI-NIVEAUX GÉNÉRIQUE par tableau (utilisateurs, projets, explorateur, ...) ----------
+# Stocké dans le dictionnaire `CustomUser.table_sort_configs` (clé = identifiant du tableau).
+# La source d'héritage/réinitialisation reste le compte super admin, comme les configs dédiées.
+def superadmin_table_sort_config(key):
+    """Config de tri multi-niveaux du tableau `key` du super admin de référence (le plus ancien),
+    ou `None` si indisponible (aucun super admin, dictionnaire absent, ou entrée vide).
+
+    Même logique défensive/`atomic()` que `superadmin_org_sort_config` (la colonne peut être créée
+    par une migration au moment où le défaut est évalué)."""
+    from django.contrib.auth import get_user_model
+    try:
+        with transaction.atomic():
+            User = get_user_model()
+            admin = (User.objects.filter(is_superuser=True)
+                     .order_by('date_joined', 'email').first())
+            configs = getattr(admin, 'table_sort_configs', None) if admin else None
+            cfg = (configs or {}).get(key) if isinstance(configs, dict) else None
+        return cfg or None
+    except Exception:
+        return None
+
+
+# --- Configuration des COLONNES GÉNÉRIQUE par tableau (visibilité + ordre) ----------------------
+# Stockée dans `CustomUser.table_columns_configs` (clé = identifiant du tableau). La source
+# d'héritage/réinitialisation reste le compte super admin, comme le tri générique ci-dessus.
+def superadmin_table_columns_config(key):
+    """Config de colonnes (visibilité + ordre) du tableau `key` du super admin de référence (le
+    plus ancien), ou `None` si indisponible (aucun super admin, dictionnaire absent, ou entrée vide).
+
+    Même logique défensive/`atomic()` que `superadmin_table_sort_config`."""
+    from django.contrib.auth import get_user_model
+    try:
+        with transaction.atomic():
+            User = get_user_model()
+            admin = (User.objects.filter(is_superuser=True)
+                     .order_by('date_joined', 'email').first())
+            configs = getattr(admin, 'table_columns_configs', None) if admin else None
+            cfg = (configs or {}).get(key) if isinstance(configs, dict) else None
+        return cfg or None
+    except Exception:
+        return None

@@ -11,6 +11,9 @@ import { resolveViewChamps } from '../piece-table.util';
 import { assembleDeterminationRows, sortDeterminationItems, relabelDeterminationItems,
          fixesLabel, DeterminationFileItem, DetSortKey } from '../rdia.util';
 
+/** État de la sauvegarde automatique, tel que rapporté à l'hôte du composant. */
+export type AutoSaveState = 'idle' | 'saving' | 'saved';
+
 const STATUT_OPTIONS: { value: Piece['statut']; label: string }[] = [
   { value: 'brouillon', label: 'Brouillon' },
   { value: 'valide', label: 'Validée' },
@@ -68,6 +71,17 @@ export class PieceDetailModalComponent implements OnInit, OnDestroy {
   statutBadgeClass(v: string): string {
     return { brouillon: 'badge-warning', valide: 'badge-success', rejete: 'badge-secondary' }[v] || 'badge-secondary';
   }
+  /** Icône sémantique d'un statut (pastille d'en-tête, sélecteur segmenté, encart de synthèse). */
+  statutIcon(v: string): string {
+    return { brouillon: 'fa-pen-ruler', valide: 'fa-circle-check', rejete: 'fa-circle-xmark' }[v]
+      || 'fa-circle-question';
+  }
+  /** Statut à afficher : la valeur en cours d'édition si le formulaire est actif, sinon celle
+   * enregistrée. Permet à la pastille de l'en-tête de suivre la saisie en temps réel — et de
+   * rester lisible quand la section est repliée. */
+  get currentStatut(): string {
+    return (this.mode === 'edit' && this.metaForm?.value?.statut) || this.piece?.statut || '';
+  }
   get isImageFile(): boolean {
     return !!this.piece.fichier_url && /\.(png|jpe?g|gif|webp|bmp)$/i.test(this.piece.fichier_url);
   }
@@ -82,12 +96,11 @@ export class PieceDetailModalComponent implements OnInit, OnDestroy {
   editRows: any[] = [];
   savingManual = false;
 
-  /** Enregistrement AUTOMATIQUE des données éditées (grille) : quand actif, chaque
-   * modification déclenche une sauvegarde anti-rebond, sans clic « Enregistrer ». Préférence
-   * mémorisée par navigateur (localStorage), désactivée par défaut. Ne concerne QUE l'édition
-   * manuelle : les imports gardent leur confirmation explicite (remplacement destructif). */
-  private static readonly AUTOSAVE_KEY = 'piece_data_autosave';
-  autoSaveData = false;
+  /** Enregistrement AUTOMATIQUE, TOUJOURS actif : chaque modification (champs du formulaire
+   * comme données de la grille) déclenche une sauvegarde anti-rebond, sans clic
+   * « Enregistrer ». Il n'y a plus de bascule ni de mode manuel — l'état de la sauvegarde
+   * est simplement rapporté à l'utilisateur. Ne concerne QUE l'édition manuelle : les imports
+   * gardent leur confirmation explicite (remplacement destructif). */
   /** Affiche brièvement « Modifications enregistrées » après une sauvegarde auto réussie
    * (aussi bien les données du tableau que les champs du formulaire). */
   autoSavedFlash = false;
@@ -96,6 +109,17 @@ export class PieceDetailModalComponent implements OnInit, OnDestroy {
   private metaValueSub: any;
   /** Vrai si une sauvegarde (données OU champs du formulaire) est en cours. */
   get autoSaving(): boolean { return this.savingManual || this.savingMeta; }
+
+  /** État de la sauvegarde automatique, dérivé des drapeaux internes. */
+  get autoSaveState(): AutoSaveState {
+    if (this.autoSaving) return 'saving';
+    return this.autoSavedFlash ? 'saved' : 'idle';
+  }
+  /** Remonte l'état au parent : en page dédiée (`embedded`), la mention est affichée dans
+   * l'en-tête de page et non dans le corps. Émis depuis des rappels asynchrones uniquement
+   * (souscriptions, minuteries) — jamais pendant un cycle de détection en cours. */
+  @Output() autoSaveStateChange = new EventEmitter<AutoSaveState>();
+  private emitAutoSaveState(): void { this.autoSaveStateChange.emit(this.autoSaveState); }
 
   replacingFile = false;
 
@@ -157,18 +181,14 @@ export class PieceDetailModalComponent implements OnInit, OnDestroy {
       orientation: [this.piece.orientation || 'auto'],
       versions_rapport: [this.piece.versions_rapport || 'both'],
       commentaire: [this.piece.commentaire || ''],
+      notes_internes: [this.piece.notes_internes || ''],
     });
     this.ordreInput = this.piece.ordre + 1;
-    // Enregistrement automatique ACTIVÉ par défaut ; l'utilisateur peut le désactiver (choix
-    // mémorisé par navigateur). Aucune préférence stockée ⇒ activé.
-    try {
-      const stored = localStorage.getItem(PieceDetailModalComponent.AUTOSAVE_KEY);
-      this.autoSaveData = stored === null ? true : stored === '1';
-    } catch { this.autoSaveData = true; }
-    // Enregistrement automatique des CHAMPS du formulaire (statut, orientation, versions au
-    // rapport, commentaire) : toute modification programme une sauvegarde anti-rebond.
+    // Enregistrement automatique des CHAMPS du formulaire (statut, observations, notes
+    // internes, orientation, versions au rapport) : toute modification programme une
+    // sauvegarde anti-rebond.
     this.metaValueSub = this.metaForm.valueChanges.subscribe(() => {
-      if (this.autoSaveData && this.mode === 'edit') this.queueAutoSaveMeta();
+      if (this.mode === 'edit') this.queueAutoSaveMeta();
     });
     if (this.isTabularData) this.initManualForm();
     // Tri par défaut du type (config /tri-pieces), par version : repli quand la pièce n'a pas
@@ -544,15 +564,18 @@ export class PieceDetailModalComponent implements OnInit, OnDestroy {
       }
     }
     clearTimeout(this.metaSaveTimer);
-    this.savingMeta = true;
+    this.savingMeta = true; this.emitAutoSaveState();
     this.piecesService.update(this.piece.id, this.metaForm.value).subscribe({
       next: (updated) => {
         this.savingMeta = false; this.piece = updated;
         if (silent) this.flashSaved();
-        else this.toast.success('Succès', 'Pièce mise à jour');
+        else { this.emitAutoSaveState(); this.toast.success('Succès', 'Pièce mise à jour'); }
         this.saved.emit(updated);
       },
-      error: (e) => { this.savingMeta = false; if (!silent) this.toast.error('Échec', e?.error?.detail || 'Enregistrement impossible'); },
+      error: (e) => {
+        this.savingMeta = false; this.emitAutoSaveState();
+        if (!silent) this.toast.error('Échec', e?.error?.detail || 'Enregistrement impossible');
+      },
     });
   }
 
@@ -647,29 +670,32 @@ export class PieceDetailModalComponent implements OnInit, OnDestroy {
   saveManual(silent = false): void {
     if (this.savingManual) return;
     clearTimeout(this.dataSaveTimer);  // une sauvegarde en cours annule un éventuel auto-save en attente
-    this.savingManual = true;
+    this.savingManual = true; this.emitAutoSaveState();
     this.piecesService.update(this.piece.id, { payload: { rows: this.editRows } }).subscribe({
       next: (updated) => {
         this.savingManual = false; this.piece = updated;
         if (silent) this.flashSaved();
-        else this.toast.success('Succès', 'Données enregistrées');
+        else { this.emitAutoSaveState(); this.toast.success('Succès', 'Données enregistrées'); }
         this.saved.emit(updated);
       },
-      error: (e) => { this.savingManual = false; this.toast.error('Échec', e?.error?.detail || 'Enregistrement impossible'); },
+      error: (e) => {
+        this.savingManual = false; this.emitAutoSaveState();
+        this.toast.error('Échec', e?.error?.detail || 'Enregistrement impossible');
+      },
     });
   }
 
   /** Affiche brièvement l'indicateur « Modifications enregistrées » (sauvegarde auto réussie). */
   private flashSaved(): void {
-    this.autoSavedFlash = true;
-    setTimeout(() => { this.autoSavedFlash = false; }, 2500);
+    this.autoSavedFlash = true; this.emitAutoSaveState();
+    setTimeout(() => { this.autoSavedFlash = false; this.emitAutoSaveState(); }, 2500);
   }
 
-  /** Édition d'une ligne dans la grille : met à jour `editRows` et, si l'enregistrement
-   * automatique est actif, programme une sauvegarde anti-rebond. */
+  /** Édition d'une ligne dans la grille : met à jour `editRows` et programme une sauvegarde
+   * anti-rebond. */
   onEditRowsChange(rows: any[]): void {
     this.editRows = rows;
-    if (this.autoSaveData) this.queueAutoSaveData();
+    this.queueAutoSaveData();
   }
 
   /** Programme une sauvegarde automatique (anti-rebond) des données éditées. */
@@ -684,14 +710,6 @@ export class PieceDetailModalComponent implements OnInit, OnDestroy {
     this.metaSaveTimer = setTimeout(() => this.saveMeta(true), 600);
   }
 
-  /** Active/désactive l'enregistrement automatique (préférence mémorisée). À l'activation,
-   * une sauvegarde est programmée pour persister l'état courant (données + champs). */
-  toggleAutoSaveData(): void {
-    this.autoSaveData = !this.autoSaveData;
-    try { localStorage.setItem(PieceDetailModalComponent.AUTOSAVE_KEY, this.autoSaveData ? '1' : '0'); } catch { /* localStorage indisponible */ }
-    if (this.autoSaveData) { this.queueAutoSaveData(); this.queueAutoSaveMeta(); }
-    else { clearTimeout(this.dataSaveTimer); clearTimeout(this.metaSaveTimer); }
-  }
 
   /** Enregistrement immédiat déclenché par une suppression en masse confirmée dans le tableau. */
   saveManualRows(rows: any[]): void { this.editRows = rows; this.saveManual(); }

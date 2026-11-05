@@ -1,5 +1,6 @@
 import { of, throwError } from 'rxjs';
 import { OrganizationListComponent } from './organization-list.component';
+import { toColumnPrefs } from '../../../shared/components/column-config/column-config.util';
 
 /**
  * Helpers purs de la liste des organisations (filtres, tri, sélection, pagination, badges).
@@ -19,6 +20,8 @@ describe('OrganizationListComponent (logique)', () => {
       {} as any, {} as any, {} as any,
       { markForCheck: () => {} } as any,
       {} as any, {} as any,
+      { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any,
+      { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any,
     );
     cmp.organizations = [...orgs];
     cmp.filteredOrganizations = [...orgs];
@@ -40,6 +43,36 @@ describe('OrganizationListComponent (logique)', () => {
       expect(cmp.getSortIcon('name')).toBe('fas fa-sort');
       cmp.sort('name');
       expect(cmp.getSortIcon('name')).toBe('fas fa-sort-up');
+    });
+  });
+
+  describe('tri multi-niveaux', () => {
+    // La modale (ajout/retrait/déplacement/effacement des niveaux) est désormais dans le composant
+    // partagé <app-multi-level-sort> (testé séparément). Ici : application du tri + branchements.
+    it('compareByLevels : niveau 1 puis départage par niveau 2', () => {
+      // is_active desc → true (Alpha 3, Gamma 7) avant false (Beta 1) ; départage member_count desc.
+      cmp.sortLevels = [{ field: 'is_active', dir: 'desc' }, { field: 'member_count', dir: 'desc' }];
+      (cmp as any).applyFiltersAndSort();
+      expect(cmp.filteredOrganizations.map(o => o.id)).toEqual(['3', '1', '2']);
+    });
+    it('le tri multi-niveaux prime sur le tri mono-colonne', () => {
+      cmp.sortColumn = 'name'; cmp.sortDirection = 'asc';
+      cmp.sortLevels = [{ field: 'member_count', dir: 'asc' }];
+      (cmp as any).applyFiltersAndSort();
+      expect(cmp.filteredOrganizations.map(o => o.member_count)).toEqual([1, 3, 7]);
+    });
+    it('sortLevelOf / sortDirOf', () => {
+      cmp.sortLevels = [{ field: 'name', dir: 'asc' }, { field: 'code', dir: 'desc' }];
+      expect(cmp.sortLevelOf('name')).toBe(1);
+      expect(cmp.sortLevelOf('code')).toBe(2);
+      expect(cmp.sortLevelOf('email')).toBe(0);
+      expect(cmp.sortDirOf('code')).toBe('desc');
+    });
+    it('onSortLevelsChange applique les niveaux reçus de la modale partagée', () => {
+      cmp.sortLevels = [];
+      cmp.onSortLevelsChange([{ field: 'member_count', dir: 'asc' }]);
+      expect(cmp.sortLevels).toEqual([{ field: 'member_count', dir: 'asc' }]);
+      expect(cmp.filteredOrganizations.map(o => o.member_count)).toEqual([1, 3, 7]);
     });
   });
 
@@ -69,27 +102,9 @@ describe('OrganizationListComponent (logique)', () => {
     });
   });
 
-  describe('colonnes', () => {
-    it('toggleColumnVisibility inverse la visibilité', () => {
-      const before = cmp.columns[0].visible;
-      cmp.toggleColumnVisibility(cmp.columns[0].field);
-      expect(cmp.columns[0].visible).toBe(!before);
-    });
-    it('getColumnStats', () => {
-      const stats = cmp.getColumnStats();
-      expect(stats.total).toBe(cmp.columns.length);
-      expect(stats.visible + stats.hidden).toBe(stats.total);
-    });
-    it('moveColumnUp / moveColumnToTop', () => {
-      const second = cmp.columns[1].field;
-      cmp.moveColumnToTop(1);
-      expect(cmp.columns[0].field).toBe(second);
-    });
-    it('getFilteredColumns selon columnFilter', () => {
-      cmp.columnFilter = 'visible';
-      expect(cmp.getFilteredColumns().every(c => c.visible)).toBeTrue();
-    });
-  });
+  // La gestion des colonnes (visibilité/ordre/filtre) est désormais dans le composant partagé
+  // <app-column-config> (testé séparément). Les branchements du parent (onColumnsChange /
+  // onResetColumns / openColumnConfigFromContext) sont couverts dans le describe « config colonnes ».
 
   describe('pagination', () => {
     beforeEach(() => {
@@ -138,10 +153,6 @@ describe('OrganizationListComponent (logique)', () => {
       expect(cmp.formatTypeDisplay('PRIVATE', 'x')).toBe('Entreprise');
       expect(cmp.formatTypeDisplay('AUTRE', 'Libellé')).toBe('Libellé');
     });
-    it('getTestDataText', () => {
-      expect(cmp.getTestDataText(true)).toBe('TEST');
-      expect(cmp.getTestDataText(false)).toBe('RÉEL');
-    });
     it('formatDate renvoie un tiret si vide', () => {
       expect(cmp.formatDate('')).toBe('-');
       expect(cmp.formatDate('2026-07-21T10:00:00Z')).toContain('2026');
@@ -182,6 +193,8 @@ describe('OrganizationListComponent (logique)', () => {
       toast = jasmine.createSpyObj('ToastService', ['success', 'error', 'warning']);
       cmp = new OrganizationListComponent(
         orgService, {} as any, {} as any, { markForCheck: () => {} } as any, {} as any, toast,
+        { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any,
+        { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any,
       );
       cmp.activeOrganizations = [{ id: '1', name: 'Active' }] as any;
       cmp.deletedOrganizations = [{ id: '2', name: 'Deleted' }] as any;
@@ -260,5 +273,93 @@ describe('OrganizationListComponent (logique)', () => {
       cmp.confirmPermanentDelete();
       expect(toast.warning).toHaveBeenCalled();
     });
+  });
+});
+
+describe('OrganizationListComponent (config colonnes)', () => {
+  let cmp: OrganizationListComponent;
+  let toast: any;
+  let columnsSvc: any;
+
+  beforeEach(() => {
+    toast = jasmine.createSpyObj('ToastService', ['success', 'error']);
+    columnsSvc = {
+      get: jasmine.createSpy('get').and.returnValue(of([])),
+      save: jasmine.createSpy('save').and.returnValue(of([])),
+      resetToSource: jasmine.createSpy('resetToSource').and.returnValue(of([])),
+    };
+    cmp = new OrganizationListComponent(
+      {} as any, {} as any, {} as any, { markForCheck: () => {} } as any, {} as any, toast,
+      { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any,
+      columnsSvc,
+    );
+    cmp.columns = [
+      { field: 'code', label: 'Code', visible: true } as any,
+      { field: 'name', label: 'Nom', visible: true } as any,
+    ];
+  });
+
+  it('onColumnsChange applique les colonnes et programme l’enregistrement (clé « organizations »)', (done) => {
+    const cols = [{ field: 'name', label: 'Nom', visible: false }] as any;
+    cmp.onColumnsChange(cols);
+    expect(cmp.columns).toBe(cols);
+    setTimeout(() => {
+      expect(columnsSvc.save).toHaveBeenCalledWith('organizations', [{ field: 'name', visible: false }]);
+      done();
+    }, 600);
+  });
+
+  it('onResetColumns appelle le service pour la clé « organizations » et réapplique', () => {
+    columnsSvc.resetToSource.and.returnValue(of([{ field: 'name', visible: true }, { field: 'code', visible: false }]));
+    cmp.onResetColumns();
+    expect(columnsSvc.resetToSource).toHaveBeenCalledWith('organizations');
+    expect(cmp.columns.map(c => c.field)).toEqual(['name', 'code']);
+    expect(toast.success).toHaveBeenCalled();
+  });
+
+  it('openColumnConfigFromContext ferme les menus et ouvre la modale de colonnes', () => {
+    const open = jasmine.createSpy('open');
+    (cmp as any).columnCfg = { open };
+    cmp.showColumnContextMenu = true;
+    cmp.openColumnConfigFromContext();
+    expect(cmp.showColumnContextMenu).toBeFalse();
+    expect(open).toHaveBeenCalled();
+  });
+
+  it('getFieldDescription : repli hors-ligne quand le backend ne fournit pas la description', () => {
+    cmp.fieldDescriptions = {};
+    // Repli codé en dur (parité avec l'ancienne modale inline).
+    expect(cmp.getFieldDescription('name')).toContain('Nom officiel');
+    expect(cmp.getFieldDescription('type_display')).toContain('Cabinet privé');
+    // Champ inconnu → chaîne vide.
+    expect(cmp.getFieldDescription('inconnu')).toBe('');
+  });
+
+  it('getFieldDescription : le backend est prioritaire sur le repli codé en dur', () => {
+    cmp.fieldDescriptions = { name: 'Description backend' };
+    expect(cmp.getFieldDescription('name')).toBe('Description backend');
+  });
+
+  it('loadColumnMetadata enrichit le catalogue curé SANS y ajouter de champ hors allowlist', () => {
+    // Le backend renvoie des champs du modèle ABSENTS du catalogue (type, parent, logo, ...) :
+    // ils ne doivent PAS être injectés dans this.columns, sinon la sauvegarde échoue (400).
+    const metadataMap = new Map<string, any>([
+      ['code', { field: 'code', label: 'Code (backend)', type: 'CharField' }],
+      ['name', { field: 'name', label: 'Nom (backend)', type: 'CharField' }],
+      ['type', { field: 'type', label: 'Type brut', type: 'CharField' }],
+      ['parent', { field: 'parent', label: 'Parent', type: 'ForeignKey' }],
+      ['logo', { field: 'logo', label: 'Logo', type: 'ImageField' }],
+    ]);
+    (cmp as any).preferencesService = { getColumnMetadata: () => of(metadataMap) };
+    (cmp as any).loadUserPreferences = () => {};
+    (cmp as any).loadColumnMetadata();
+    // Colonnes limitées au catalogue, labels enrichis depuis le backend.
+    expect(cmp.columns.map(c => c.field)).toEqual(['code', 'name']);
+    expect(cmp.columns.find(c => c.field === 'code')?.label).toBe('Code (backend)');
+    // Sérialisation persistée : aucun champ hors allowlist.
+    const fields = toColumnPrefs(cmp.columns).map(p => p.field);
+    expect(fields).not.toContain('type');
+    expect(fields).not.toContain('parent');
+    expect(fields).not.toContain('logo');
   });
 });

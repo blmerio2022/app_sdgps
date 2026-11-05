@@ -1,10 +1,19 @@
-import { Component, OnInit, HostListener } from '@angular/core';
+import { formatDateTime } from '../../../../shared/utils/date-format.util';
+import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from '../../../../shared/components/table-pagination/table-pagination.component';
+import { Component, OnInit, HostListener, ViewChild } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Observable, forkJoin } from 'rxjs';
 import { OrganismeService } from '../../../../core/services/organisme.service';
 import { ToastService } from '../../../../core/services/toast.service';
+import { OrganismeSortConfigService, OrgSortLevel } from '../../../../core/services/organisme-sort-config.service';
 import { OrganismeNiveau1 } from '../../../../core/models/organisme.model';
+import { MultiLevelSortComponent } from '../../../../shared/components/multi-level-sort/multi-level-sort.component';
+import { ColumnConfigComponent } from '../../../../shared/components/column-config/column-config.component';
+import { applyColumnsConfig, toColumnPrefs, ManagedColumn } from '../../../../shared/components/column-config/column-config.util';
+import { ColumnFilterMap, withColumnFilter, rowMatchesColumnFilters, activeFilterCount } from '../../../../shared/components/column-filter/column-filter.util';
+import { TableColumnsConfigService } from '../../../../core/services/table-columns-config.service';
+import { auditColumns, AUDIT_COLUMN_DESCRIPTIONS, AUDIT_COLUMN_LABELS, AUDIT_COLUMN_ORDER } from '../../../../shared/components/column-config/audit-columns';
 
 interface ColumnConfig {
   field: string;
@@ -12,6 +21,30 @@ interface ColumnConfig {
   visible: boolean;
   type: 'text' | 'number' | 'boolean' | 'date';
 }
+
+/** Colonnes triables (allowlist alignée sur le backend ORGANISME_N1_SORT_FIELDS), avec libellé. */
+const N1_SORTABLE_FIELDS: { field: string; label: string }[] = [
+  { field: 'code', label: 'Code' },
+  { field: 'nom', label: 'Nom' },
+  { field: 'sigle', label: 'Sigle' },
+  { field: 'nbr_niveaux2', label: 'Nb. 2e niveau' },
+  { field: 'is_active', label: 'Statut' },
+  // Colonnes d'audit standard : libellés unifiés (cf. CLAUDE.md).
+  ...AUDIT_COLUMN_ORDER.map(field => ({ field, label: AUDIT_COLUMN_LABELS[field] })),
+];
+
+/** Colonnes triables (allowlist alignée sur le backend ORGANISME_N2_SORT_FIELDS), avec libellé. */
+const N2_SORTABLE_FIELDS: { field: string; label: string }[] = [
+  { field: 'code', label: 'Code' },
+  { field: 'nom', label: 'Nom' },
+  { field: 'niveau1_nom', label: 'Premier niveau' },
+  { field: 'niveau1_sigle', label: 'Sigle premier niveau' },
+  { field: 'ville', label: 'Ville / province' },
+  { field: 'sigle', label: 'Sigle' },
+  { field: 'is_active', label: 'Statut' },
+  // Colonnes d'audit standard : libellés unifiés (cf. CLAUDE.md).
+  ...AUDIT_COLUMN_ORDER.map(field => ({ field, label: AUDIT_COLUMN_LABELS[field] })),
+];
 
 /**
  * Gestion (CRUD) des organismes — composant unique piloté par `route.data.niveau` (1 ou 2).
@@ -44,11 +77,29 @@ export class OrganismeListComponent implements OnInit {
   niveau1Options: OrganismeNiveau1[] = [];
 
   columns: ColumnConfig[] = [];
-  private columnsBackup: ColumnConfig[] = [];
+  // --- Configuration des COLONNES (config opérateur, héritée du super admin) — composant partagé ---
+  @ViewChild(ColumnConfigComponent) private columnCfg?: ColumnConfigComponent;
+  /** Description d'une colonne pour la modale partagée (référence stable). */
+  describeColumn = (field: string): string => this.getFieldDescription(field);
+  savingColumns = false;
+  savedColumnsFlash = false;
+  resettingColumns = false;
+  private columnsSaveTimer: any;
+  /** Clé backend de la config de colonnes selon le niveau (1 ou 2). */
+  private get columnsKey(): string { return this.isN2 ? 'organisme_niveau2' : 'organisme_niveau1'; }
 
-  // Tri
+  // Tri mono-colonne (clic en-tête) — conservé comme repli quand aucun tri multi-niveaux.
   sortColumn: string | null = 'nom';
   sortDirection: 'asc' | 'desc' = 'asc';
+
+  // --- Tri MULTI-NIVEAUX (config opérateur, héritée du super admin) — miroir des organisations ---
+  /** Niveaux de tri appliqués au tableau (niveau 0 = prioritaire). */
+  sortLevels: OrgSortLevel[] = [];
+  @ViewChild(MultiLevelSortComponent) private sortCmp?: MultiLevelSortComponent;
+  savingSort = false;
+  savedSortFlash = false;
+  resettingSort = false;
+  private sortSaveTimer: any;
 
   // Recherche + filtres
   searchQuery = '';
@@ -62,20 +113,13 @@ export class OrganismeListComponent implements OnInit {
 
   // Pagination
   currentPage = 1;
-  pageSize = 8;
-  pageSizeOptions = [5, 8, 10, 20, 50];
+  pageSize = DEFAULT_PAGE_SIZE;
+  pageSizeOptions = [...PAGE_SIZE_OPTIONS];
 
   // Menus
   showExportMenu = false;
   showFilterMenu = false;
   showFieldFilterMenu = false;
-  showColumnConfig = false;
-  showColumnFilterMenu = false;
-  columnFilter: 'all' | 'visible' = 'all';
-
-  // Drag & drop colonnes
-  draggedColumnIndex: number | null = null;
-  dragOverIndex: number | null = null;
 
   // Menus contextuels
   showColumnContextMenu = false;
@@ -98,6 +142,12 @@ export class OrganismeListComponent implements OnInit {
   showDeleteModal = false;
   toDelete: any = null;
   isBulkDelete = false;
+  // Suppression DÉFINITIVE (corbeille uniquement) — composant partagé de confirmation.
+  showPermanentDeleteModal = false;
+  permanentDeleteTarget: any = null;
+  isBulkPermanent = false;
+  permanentDeleting = false;
+
   showRestoreModal = false;
   toRestore: any = null;
   isBulkRestore = false;
@@ -108,14 +158,11 @@ export class OrganismeListComponent implements OnInit {
     sigle: 'Abréviation / sigle.',
     ville: 'Ville ou province de rattachement (deuxième niveau).',
     niveau1_nom: 'Organisme de premier niveau dont dépend cette entité.',
+    niveau1_sigle: "Sigle / abréviation de l'organisme de premier niveau de rattachement.",
     nbr_niveaux2: "Nombre d'organismes de deuxième niveau rattachés.",
     is_active: 'Organisme actif ou désactivé.',
-    created_at: 'Date de création.',
-    updated_at: 'Date de dernière modification.',
-    deleted_at: 'Date de suppression (corbeille).',
-    created_by_email: "Utilisateur ayant créé l'organisme.",
-    updated_by_email: "Utilisateur ayant effectué la dernière modification.",
-    deleted_by_email: "Utilisateur ayant supprimé l'organisme.",
+    // Colonnes d'audit standard : descriptions unifiées (cf. CLAUDE.md).
+    ...AUDIT_COLUMN_DESCRIPTIONS,
   };
 
   constructor(
@@ -123,6 +170,8 @@ export class OrganismeListComponent implements OnInit {
     private service: OrganismeService,
     private toast: ToastService,
     private route: ActivatedRoute,
+    private sortConfigService: OrganismeSortConfigService,
+    private columnsConfigService: TableColumnsConfigService,
   ) {}
 
   ngOnInit(): void {
@@ -131,12 +180,15 @@ export class OrganismeListComponent implements OnInit {
       this.title = d['title'] || (this.niveau === 1 ? 'Organismes — premier niveau'
                                                     : 'Organismes — deuxième niveau');
       this.sortColumn = 'nom';
+      this.sortLevels = [];
       this.showDeleted = false;
       this.selectedIds.clear();
       this.initColumns();
+      this.loadColumnsConfig();
       this.buildForm();
       this.loadNiveau1Options();
       this.load();
+      this.loadSortConfig();
     });
   }
 
@@ -158,21 +210,16 @@ export class OrganismeListComponent implements OnInit {
   }
 
   // ------------------------------------------------------------------ colonnes
-  private storageKey(): string { return `sdgps_organismes_n${this.niveau}_cols`; }
-
   private initColumns(): void {
-    const audit: ColumnConfig[] = [
-      { field: 'created_at', label: 'Créé le', visible: true, type: 'date' },
-      { field: 'created_by_email', label: 'Créé par', visible: false, type: 'text' },
-      { field: 'updated_at', label: 'Modifié le', visible: false, type: 'date' },
-      { field: 'updated_by_email', label: 'Modifié par', visible: false, type: 'text' },
-      { field: 'deleted_at', label: 'Supprimé le', visible: false, type: 'date' },
-      { field: 'deleted_by_email', label: 'Supprimé par', visible: false, type: 'text' },
-    ];
+    // Colonnes d'audit standard (libellés unifiés, cf. CLAUDE.md). `created_at` reste visible
+    // par défaut pour ce tableau, contrairement au défaut du catalogue partagé.
+    const audit: ColumnConfig[] = (auditColumns() as unknown as ColumnConfig[])
+      .map(c => (c.field === 'created_at' ? { ...c, visible: true } : { ...c }));
     const defaults: ColumnConfig[] = this.isN2 ? [
       { field: 'code', label: 'Code', visible: true, type: 'text' },
       { field: 'nom', label: 'Nom', visible: true, type: 'text' },
       { field: 'niveau1_nom', label: 'Premier niveau', visible: true, type: 'text' },
+      { field: 'niveau1_sigle', label: 'Sigle premier niveau', visible: true, type: 'text' },
       { field: 'ville', label: 'Ville / province', visible: true, type: 'text' },
       { field: 'sigle', label: 'Sigle', visible: false, type: 'text' },
       { field: 'is_active', label: 'Statut', visible: true, type: 'boolean' },
@@ -185,28 +232,15 @@ export class OrganismeListComponent implements OnInit {
       { field: 'is_active', label: 'Statut', visible: true, type: 'boolean' },
       ...audit,
     ];
-    try {
-      const saved = JSON.parse(localStorage.getItem(this.storageKey()) || 'null');
-      if (Array.isArray(saved) && saved.length) {
-        const known = new Map(defaults.map(c => [c.field, c]));
-        const ordered: ColumnConfig[] = [];
-        saved.forEach((s: any) => {
-          const c = known.get(s.field);
-          if (c) { ordered.push({ ...c, visible: !!s.visible }); known.delete(s.field); }
-        });
-        known.forEach(c => ordered.push(c));
-        this.columns = ordered;
-        return;
-      }
-    } catch {}
+    // Catalogue par défaut ; la config opérateur (visibilité + ordre) est appliquée par
+    // loadColumnsConfig() (backend, source super admin).
     this.columns = defaults;
   }
 
-  private saveColumns(): void {
-    try {
-      localStorage.setItem(this.storageKey(),
-        JSON.stringify(this.columns.map(c => ({ field: c.field, visible: c.visible }))));
-    } catch {}
+  private loadColumnsConfig(): void {
+    this.columnsConfigService.get(this.columnsKey).subscribe(prefs => {
+      this.columns = applyColumnsConfig(this.columns, prefs);
+    });
   }
 
   getVisibleColumns(): ColumnConfig[] { return this.columns.filter(c => c.visible); }
@@ -263,8 +297,36 @@ export class OrganismeListComponent implements OnInit {
   }
 
   // ------------------------------------------------------------------ filtres/tri
+  // --- FILTRES DE COLONNE (façon Excel, composant partagé `<app-column-filter>`) ---
+  /** Valeurs retenues par colonne ; une colonne absente n'est pas filtrée. */
+  columnFilters: ColumnFilterMap = {};
+
+  /** Texte affiché d'une cellule — doit refléter le rendu du tableau (référence stable). */
+  cellText = (row: any, field: string): string => {
+    const col = this.columns.find(c => c.field === field);
+    if (field === 'is_active') return this.getStatusText(row.is_active);
+    if (col?.type === 'date') return this.formatDate(row[field]);
+    const v = row[field];
+    return v != null && v !== '' ? String(v) : '-';
+  };
+
+  onColumnFilterChange(field: string, values: string[] | null): void {
+    this.columnFilters = withColumnFilter(this.columnFilters, field, values);
+    this.applyFilters();
+  }
+
+  /** Masque une colonne (depuis le menu de filtre) — auto-save comme la modale des colonnes. */
+  hideColumnField(field: string): void {
+    this.onColumnsChange(this.columns.map(c => (c.field === field ? { ...c, visible: false } : { ...c })));
+  }
+
   applyFilters(): void {
     let data = [...this.rows];
+
+    // Filtres de colonne (ET entre colonnes, OU entre valeurs d'une même colonne).
+    if (activeFilterCount(this.columnFilters)) {
+      data = data.filter(r => rowMatchesColumnFilters(r, this.columnFilters, this.cellText));
+    }
 
     if (this.displayMode === 'selected') data = data.filter(r => this.selectedIds.has(r.id));
 
@@ -285,7 +347,10 @@ export class OrganismeListComponent implements OnInit {
       data = data.filter(r => String(r[f] ?? '').toLowerCase().includes(fv));
     }
 
-    if (this.sortColumn) {
+    // Tri : le tri MULTI-NIVEAUX prime ; à défaut, repli sur le tri mono-colonne (clic en-tête).
+    if (this.sortLevels.length) {
+      data.sort((a, b) => this.compareByLevels(a, b));
+    } else if (this.sortColumn) {
       const col = this.sortColumn, dir = this.sortDirection === 'asc' ? 1 : -1;
       data.sort((a, b) => {
         const av = a[col] ?? '', bv = b[col] ?? '';
@@ -310,6 +375,90 @@ export class OrganismeListComponent implements OnInit {
   getSortIcon(field: string): string {
     if (this.sortColumn !== field) return 'fas fa-sort';
     return this.sortDirection === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down';
+  }
+
+  // ============================================
+  // Tri MULTI-NIVEAUX (config opérateur, héritée du super admin) — miroir des organisations
+  // ============================================
+  /** Champs triables proposés dans le panneau, selon le niveau (1 ou 2). */
+  get sortableFields(): { field: string; label: string }[] {
+    return this.isN2 ? N2_SORTABLE_FIELDS : N1_SORTABLE_FIELDS;
+  }
+
+  /** Charge le tri multi-niveaux de l'opérateur pour le niveau courant (hérité du super admin). */
+  private loadSortConfig(): void {
+    this.sortConfigService.get(this.niveau).subscribe(levels => {
+      this.sortLevels = levels;
+      this.applyFilters();
+    });
+  }
+
+  /** Comparateur multi-niveaux : parcourt les niveaux dans l'ordre, le premier départage. */
+  private compareByLevels(a: any, b: any): number {
+    for (const lvl of this.sortLevels) {
+      const va = this.fieldSortValue(a, lvl.field);
+      const vb = this.fieldSortValue(b, lvl.field);
+      const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+      if (cmp !== 0) return lvl.dir === 'desc' ? -cmp : cmp;
+    }
+    return 0;
+  }
+  private fieldSortValue(o: any, field: string): number | string {
+    const v = o?.[field];
+    if (v == null) return '';
+    if (typeof v === 'boolean') return v ? 1 : 0;
+    return typeof v === 'string' ? v.toLowerCase() : v;
+  }
+
+  /** Rang (1..n) du champ dans le tri multi-niveaux, ou 0 s'il n'est pas trié. */
+  sortLevelOf(field: string): number {
+    const i = this.sortLevels.findIndex(l => l.field === field);
+    return i < 0 ? 0 : i + 1;
+  }
+  /** Sens de tri du champ ('asc'/'desc') s'il est trié, sinon ''. */
+  sortDirOf(field: string): '' | 'asc' | 'desc' {
+    return this.sortLevels.find(l => l.field === field)?.dir || '';
+  }
+  /** Ouvre la modale de tri (composant partagé). */
+  openSortConfig(): void { this.sortCmp?.open(); }
+  /** Ouvre la modale de tri multi-niveaux depuis le menu contextuel (clic droit en-tête). */
+  openSortConfigFromContext(): void { this.closeContextMenus(); this.openSortConfig(); }
+
+  /** Réception d'une modification depuis la modale partagée : applique + enregistrement auto. */
+  onSortLevelsChange(levels: OrgSortLevel[]): void {
+    this.sortLevels = levels;
+    this.currentPage = 1;
+    this.applyFilters();
+    clearTimeout(this.sortSaveTimer);
+    this.sortSaveTimer = setTimeout(() => this.saveSortConfig(), 500);
+  }
+  private saveSortConfig(): void {
+    this.savingSort = true;
+    this.sortConfigService.save(this.niveau, this.sortLevels).subscribe({
+      next: (saved) => {
+        this.sortLevels = saved; this.savingSort = false; this.savedSortFlash = true;
+        this.applyFilters();
+        setTimeout(() => { this.savedSortFlash = false; }, 2500);
+      },
+      error: (err) => { this.savingSort = false; this.toast.error('Erreur', err?.error?.detail || 'Enregistrement du tri impossible'); },
+    });
+  }
+
+  // --- Réinitialisation avec la configuration SOURCE (compte administrateur) ---
+  onResetSort(): void {
+    if (this.resettingSort) return;
+    this.resettingSort = true;
+    this.sortConfigService.resetToSource(this.niveau).subscribe({
+      next: (levels) => {
+        this.sortLevels = levels; this.resettingSort = false;
+        this.currentPage = 1; this.applyFilters();
+        this.toast.success('Succès', 'Tri réinitialisé avec la configuration source');
+      },
+      error: (e) => {
+        this.resettingSort = false;
+        this.toast.error('Erreur', e?.error?.detail || 'Réinitialisation impossible');
+      },
+    });
   }
 
   // Footer gauche : menu filtres
@@ -356,9 +505,7 @@ export class OrganismeListComponent implements OnInit {
   getStatusBadgeClass(active: boolean): string { return active ? 'badge badge-success' : 'badge badge-secondary'; }
   getStatusText(active: boolean): string { return active ? 'Actif' : 'Inactif'; }
   formatDate(v: string): string {
-    if (!v) return '-';
-    const d = new Date(v);
-    return isNaN(d.getTime()) ? '-' : d.toLocaleDateString('fr-FR');
+    return formatDateTime(v, '-');
   }
 
   // ------------------------------------------------------------------ CRUD
@@ -412,6 +559,79 @@ export class OrganismeListComponent implements OnInit {
     });
   }
 
+  // ------------------------------------------------------- suppression DÉFINITIVE (corbeille)
+  /** Désignation de la cible dans la confirmation (nom, à défaut code). */
+  get permanentDeleteLabel(): string {
+    const t = this.permanentDeleteTarget;
+    return t ? (t.nom || t.code || '') : '';
+  }
+
+  /**
+   * Sous-données bloquant la purge : seuls les organismes de 1er niveau en portent.
+   * La clé étrangère est en `PROTECT` côté base — les enfants en corbeille bloquent AUSSI,
+   * on le dit explicitement pour que l'opérateur sache quoi purger en premier.
+   */
+  get permanentDeleteBlockedBy(): string {
+    return this.isN2 ? '' : 'organismes de deuxième niveau (y compris ceux en corbeille)';
+  }
+
+  askPermanentDelete(item: any): void {
+    if (!item?.is_deleted) return;      // purge réservée aux éléments en corbeille
+    this.permanentDeleteTarget = item;
+    this.isBulkPermanent = false;
+    this.showPermanentDeleteModal = true;
+  }
+
+  openBulkPermanentDelete(): void {
+    if (!this.showDeleted || !this.selectedIds.size) return;
+    this.permanentDeleteTarget = null;
+    this.isBulkPermanent = true;
+    this.showPermanentDeleteModal = true;
+  }
+
+  closePermanentDelete(): void {
+    this.permanentDeleteTarget = null;
+    this.isBulkPermanent = false;
+    this.showPermanentDeleteModal = false;
+  }
+
+  confirmPermanentDelete(): void {
+    if (this.permanentDeleting) return;
+    this.permanentDeleting = true;
+    const ids = this.isBulkPermanent
+      ? Array.from(this.selectedIds)
+      : [this.permanentDeleteTarget.id];
+    const obs: Observable<any> = this.isBulkPermanent
+      ? (this.isN2 ? this.service.bulkPermanentDeleteNiveau2(ids)
+                   : this.service.bulkPermanentDeleteNiveau1(ids))
+      : (this.isN2 ? this.service.permanentDeleteNiveau2(ids[0])
+                   : this.service.permanentDeleteNiveau1(ids[0]));
+    obs.subscribe({
+      next: (r: any) => {
+        this.permanentDeleting = false;
+        const purges = this.isBulkPermanent ? (r?.deleted_count ?? 0) : 1;
+        const conserves = this.isBulkPermanent ? (r?.errors?.length ?? 0) : 0;
+        if (purges) {
+          this.toast.success('Succès',
+            `${purges} organisme(s) supprimé(s) définitivement.`);
+        }
+        // Le serveur conserve les éléments portant encore des sous-données : on le dit.
+        if (conserves) {
+          this.toast.warning('Partiel',
+            `${conserves} organisme(s) conservé(s) : des sous-éléments y sont rattachés.`);
+        }
+        this.selectedIds.clear();
+        this.closePermanentDelete();
+        this.load();
+      },
+      error: (e: any) => {
+        this.permanentDeleting = false;
+        this.toast.error('Erreur',
+          e?.error?.detail || 'Suppression définitive impossible.');
+      },
+    });
+  }
+
   // ------------------------------------------------------------------ export
   toggleExportMenu(): void { this.showExportMenu = !this.showExportMenu; }
   exportCSV(selectedOnly: boolean): void {
@@ -437,37 +657,39 @@ export class OrganismeListComponent implements OnInit {
     URL.revokeObjectURL(a.href);
   }
 
-  // ------------------------------------------------------------------ config colonnes
-  toggleColumnConfig(): void {
-    this.showColumnConfig = !this.showColumnConfig;
-    if (this.showColumnConfig) { this.columnsBackup = this.columns.map(c => ({ ...c })); this.columnFilter = 'all'; }
+  // ------------------------------------------------------------------ config colonnes (composant partagé)
+  /** Ouvre la modale d'organisation des colonnes (composant partagé). */
+  openColumnConfig(): void { this.columnCfg?.open(); }
+  onColumnsChange(cols: ManagedColumn[]): void {
+    this.columns = cols as ColumnConfig[];
+    const key = this.columnsKey;
+    const prefs = toColumnPrefs(cols);
+    clearTimeout(this.columnsSaveTimer);
+    this.columnsSaveTimer = setTimeout(() => this.saveColumnsConfig(key, prefs), 500);
   }
-  toggleColumnFilterMenu(ev: Event): void { ev.stopPropagation(); this.showColumnFilterMenu = !this.showColumnFilterMenu; }
-  getColumnFilterLabel(): string { return this.columnFilter === 'visible' ? 'Colonnes visibles' : 'Toutes les colonnes'; }
-  applyColumnFilter(mode: 'all' | 'visible'): void { this.columnFilter = mode; this.showColumnFilterMenu = false; }
-  getFilteredColumns(): ColumnConfig[] { return this.columnFilter === 'visible' ? this.columns.filter(c => c.visible) : this.columns; }
-  getColumnStats() { const total = this.columns.length; const visible = this.columns.filter(c => c.visible).length; return { total, visible, hidden: total - visible }; }
-  toggleColumnVisibility(field: string): void { const c = this.columns.find(x => x.field === field); if (c) c.visible = !c.visible; }
-  selectAllColumns(): void { this.columns.forEach(c => (c.visible = true)); }
-  deselectAllColumns(): void { this.columns.forEach(c => (c.visible = false)); }
-  invertColumnSelection(): void { this.columns.forEach(c => (c.visible = !c.visible)); }
-  moveColumnUp(i: number): void { if (i > 0) [this.columns[i - 1], this.columns[i]] = [this.columns[i], this.columns[i - 1]]; }
-  moveColumnDown(i: number): void { if (i < this.columns.length - 1) [this.columns[i + 1], this.columns[i]] = [this.columns[i], this.columns[i + 1]]; }
-  moveColumnToTop(i: number): void { if (i > 0) { const [c] = this.columns.splice(i, 1); this.columns.unshift(c); } }
-  moveColumnToBottom(i: number): void { if (i < this.columns.length - 1) { const [c] = this.columns.splice(i, 1); this.columns.push(c); } }
-  cancelColumnConfig(): void { this.columns = this.columnsBackup.map(c => ({ ...c })); this.showColumnConfig = false; }
-  confirmColumnConfig(): void { this.saveColumns(); this.showColumnConfig = false; }
-
-  onDragStart(i: number): void { this.draggedColumnIndex = i; }
-  onDragOver(ev: DragEvent, i: number): void { ev.preventDefault(); this.dragOverIndex = i; }
-  onDragLeave(): void { this.dragOverIndex = null; }
-  onDrop(i: number): void {
-    if (this.draggedColumnIndex === null || this.draggedColumnIndex === i) return;
-    const [c] = this.columns.splice(this.draggedColumnIndex, 1);
-    this.columns.splice(i, 0, c);
-    this.draggedColumnIndex = null; this.dragOverIndex = null;
+  private saveColumnsConfig(key: string, prefs: { field: string; visible: boolean }[]): void {
+    this.savingColumns = true;
+    this.columnsConfigService.save(key, prefs).subscribe({
+      next: () => {
+        this.savingColumns = false; this.savedColumnsFlash = true;
+        setTimeout(() => { this.savedColumnsFlash = false; }, 2500);
+      },
+      error: (err) => { this.savingColumns = false; this.toast.error('Erreur', err?.error?.detail || 'Enregistrement des colonnes impossible'); },
+    });
   }
-  onDragEnd(): void { this.draggedColumnIndex = null; this.dragOverIndex = null; }
+  onResetColumns(): void {
+    if (this.resettingColumns) return;
+    this.resettingColumns = true;
+    const key = this.columnsKey;
+    this.columnsConfigService.resetToSource(key).subscribe({
+      next: (prefs) => {
+        this.columns = applyColumnsConfig(this.columns, prefs);
+        this.resettingColumns = false;
+        this.toast.success('Succès', 'Colonnes réinitialisées avec la configuration source');
+      },
+      error: (e) => { this.resettingColumns = false; this.toast.error('Erreur', e?.error?.detail || 'Réinitialisation impossible'); },
+    });
+  }
 
   // ------------------------------------------------------------------ menus contextuels
   onColumnHeaderRightClick(ev: MouseEvent, col: ColumnConfig): void {
@@ -484,8 +706,13 @@ export class OrganismeListComponent implements OnInit {
     this.rowForContext = row; this.cellForContext = { row, field, value: row[field] };
     this.contextMenuPosition = { x: ev.clientX, y: ev.clientY }; this.showRowContextMenu = true;
   }
-  hideColumnFromContext(): void { if (this.columnForContext) this.columnForContext.visible = false; this.saveColumns(); this.closeContextMenus(); }
-  openColumnConfigFromContext(): void { this.closeContextMenus(); this.toggleColumnConfig(); }
+  hideColumnFromContext(): void {
+    const field = this.columnForContext?.field;
+    this.closeContextMenus();
+    if (!field) return;
+    this.onColumnsChange(this.columns.map(c => (c.field === field ? { ...c, visible: false } : { ...c })));
+  }
+  openColumnConfigFromContext(): void { this.closeContextMenus(); this.openColumnConfig(); }
   toggleRowSelectionFromContext(): void { if (this.rowForContext) this.toggleSelection(this.rowForContext.id); this.closeContextMenus(); }
   selectAllFromContext(): void { this.selectAll(); this.closeContextMenus(); }
   copyCellValueFromContext(): void {
@@ -499,10 +726,10 @@ export class OrganismeListComponent implements OnInit {
 
   // ------------------------------------------------------------------ global
   @HostListener('document:click')
-  onDocumentClick(): void { this.showExportMenu = false; this.showFilterMenu = false; this.showFieldFilterMenu = false; this.showColumnFilterMenu = false; this.closeContextMenus(); }
+  onDocumentClick(): void { this.showExportMenu = false; this.showFilterMenu = false; this.showFieldFilterMenu = false; this.closeContextMenus(); }
 
   @HostListener('document:keydown.escape')
-  onEscape(): void { this.showFormModal = false; this.showDeleteModal = false; this.showRestoreModal = false; this.showColumnConfig = false; this.onDocumentClick(); }
+  onEscape(): void { this.showFormModal = false; this.showDeleteModal = false; this.showRestoreModal = false; this.showPermanentDeleteModal = false; this.onDocumentClick(); }
 
   private firstError(err: any): string {
     const e = err?.error; if (!e) return '';

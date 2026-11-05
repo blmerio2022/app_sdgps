@@ -1,0 +1,184 @@
+/* =====================================================================
+   Configuration des COLONNES — composant partagé. Styles AUTONOMES
+   (encapsulation Angular), alignés sur <app-multi-level-sort> et le design
+   system de l'app (variables CSS globales).
+   ===================================================================== */
+:host { display: inline-flex; }
+
+/* Bouton « Colonnes » — cohérent avec .btn-sort-multi. */
+.btn-column-config {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 10px 16px; border-radius: 6px; cursor: pointer;
+  font-size: 14px; font-weight: 500; transition: all 0.2s;
+  background: var(--secondary-color); color: var(--text-color); border: 1px solid var(--border-color);
+  i { color: var(--text-muted); transition: color 0.15s; }
+  &:hover:not(:disabled) { background: var(--hover-bg); border-color: var(--accent-color); color: var(--accent-color); i { color: var(--accent-color); } }
+  .col-count {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 18px; height: 18px; padding: 0 6px; border-radius: 10px;
+    background: var(--accent-color); color: #fff; font-size: 11px; font-weight: 700;
+  }
+}
+
+/* ---------- Coquilles de modale (autonomes) ---------- */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+  animation: ccFadeIn 0.15s ease;
+}
+.modal-content.column-config-panel,
+.modal-content.confirm-panel {
+  background: var(--secondary-color); border-radius: 14px; width: 95%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4); display: flex; flex-direction: column;
+  max-height: 90vh; overflow: hidden;
+}
+/* Large : les descriptions de colonnes tiennent sur UNE seule ligne (cf. .col-desc). */
+.modal-content.column-config-panel { max-width: 960px; }
+.modal-content.confirm-panel { max-width: 460px; padding: 22px 24px;
+  h3 { margin: 0 0 12px; font-size: 16px; font-weight: 700; color: var(--text-color); display: flex; align-items: center; gap: 9px; i { color: var(--accent-color); } }
+  p { margin: 0 0 20px; font-size: 13.5px; line-height: 1.55; color: var(--text-muted); }
+  .confirm-actions { display: flex; justify-content: flex-end; gap: 10px;
+    .btn-cancel, .btn-confirm { padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); display: inline-flex; align-items: center; gap: 8px; }
+    .btn-cancel { background: var(--secondary-color); color: var(--text-color); }
+    .btn-confirm { background: var(--accent-color); color: #fff; border-color: var(--accent-color); &:disabled { opacity: 0.6; cursor: not-allowed; } }
+  }
+}
+
+.column-config-panel {
+  .modal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 22px; border-bottom: 1px solid var(--border-color);
+    h3 { margin: 0; font-size: 16px; font-weight: 700; color: var(--text-color); display: flex; align-items: center; gap: 9px; .header-icon { color: var(--accent-color); } }
+    .header-right { display: inline-flex; align-items: center; gap: 8px; }
+    .close-btn { background: transparent; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; width: 32px; height: 32px; border-radius: 8px;
+      &:hover { background: var(--hover-bg, rgba(0, 0, 0, 0.05)); color: var(--text-color); } }
+  }
+  /* Le corps ne défile PAS : hint, auto-save et compteurs restent toujours visibles.
+     Seule `.column-scroll` (la liste) défile → l'en-tête collant ne recouvre plus rien. */
+  .modal-body { padding: 20px 22px; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+
+  .column-scroll {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto;
+    /* Gouttière pour la barre de défilement sans décaler le contenu. */
+    padding-right: 8px; margin-right: -8px;
+
+  }
+  .modal-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 22px; border-top: 1px solid var(--border-color);
+    .footer-actions { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+    .btn-action { padding: 8px 12px; border-radius: 8px; font-size: 12.5px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); background: var(--secondary-color); color: var(--text-color); display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s;
+      i { color: var(--text-muted); } &:hover { border-color: var(--accent-color); color: var(--accent-color); i { color: var(--accent-color); } } }
+    .btn-confirm { padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--accent-color); background: var(--accent-color); color: #fff; display: inline-flex; align-items: center; gap: 8px; }
+  }
+
+  .panel-hint { flex: 0 0 auto; margin: 0 0 16px; font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+
+  /* Filtre toutes / visibles */
+  .filter-dropdown { position: relative;
+    .btn-filter { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 8px; cursor: pointer; font-size: 12.5px; font-weight: 600; border: 1px solid var(--border-color); background: var(--secondary-color); color: var(--text-color);
+      &:hover { border-color: var(--accent-color); color: var(--accent-color); } }
+    .filter-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 5; min-width: 240px; background: var(--secondary-color); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25); overflow: hidden;
+      .filter-item { display: flex; align-items: center; gap: 9px; padding: 10px 12px; font-size: 13px; color: var(--text-color); cursor: pointer;
+        &:hover { background: var(--hover-bg, rgba(0, 0, 0, 0.05)); } &.active { color: var(--accent-color); } span { flex: 1 1 auto; } .fa-check { color: var(--accent-color); } } }
+  }
+
+  .col-autosave {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 10px; flex: 0 0 auto; margin: 0 0 14px;
+    .spacer { flex: 1 1 auto; }
+    > span:first-child {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 6px 12px; border-radius: 20px; font-size: 12.5px; font-weight: 500;
+      border: 1px solid var(--border-color); background: var(--hover-bg, rgba(0, 0, 0, 0.03)); color: var(--text-muted);
+    }
+    .saved { color: #16a34a; background: rgba(22, 163, 74, 0.08); border-color: rgba(22, 163, 74, 0.25); }
+  }
+  .btn-reset-source {
+    display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    font-size: 13px; font-weight: 600; border: 1px solid var(--border-color); background: var(--secondary-color); color: var(--text-color);
+    transition: all 0.15s; i { color: var(--accent-color); }
+    &:hover:not(:disabled) { background: rgba(204, 88, 88, 0.06); border-color: rgba(204, 88, 88, 0.4); color: var(--accent-color); }
+    &:disabled { opacity: 0.6; cursor: default; }
+  }
+
+  /* Compteurs en pastilles : lisibles d'un coup d'œil, jamais tronqués (hors zone de défilement). */
+  .col-stats {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    flex: 0 0 auto; margin: 0 0 14px;
+    .stat {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 6px 12px; border-radius: 20px;
+      border: 1px solid var(--border-color); background: var(--hover-bg, rgba(0, 0, 0, 0.03));
+      font-size: 12.5px; font-weight: 600; color: var(--text-muted); white-space: nowrap;
+      i { font-size: 11px; color: var(--text-muted); }
+      b { font-weight: 700; color: var(--text-color); font-variant-numeric: tabular-nums; }
+    }
+    .stat--visible { color: #16a34a; background: rgba(22, 163, 74, 0.08); border-color: rgba(22, 163, 74, 0.25);
+      i, b { color: #16a34a; } }
+    .stat--hidden { i { color: var(--accent-color); } }
+  }
+
+  /* ---------- Grille : NOM et DESCRIPTION sont deux colonnes DISTINCTES ----------
+     Même `grid-template-columns` pour l'en-tête et les lignes → alignement parfait :
+     poignée | visibilité | ordre | type | Colonne | Description                     */
+  .column-grid-header,
+  .column-item {
+    display: grid;
+    grid-template-columns: 14px 18px 116px 76px minmax(120px, 1fr) minmax(0, 2fr);
+    align-items: center;
+    gap: 12px;
+  }
+
+  /* En-tête collant en haut de `.column-scroll` : les intitulés restent lisibles pendant le
+     défilement, sans recouvrir les compteurs (qui vivent hors de la zone de défilement). */
+  .column-grid-header {
+    position: sticky; top: 0; z-index: 2;
+    padding: 0 10px 8px;
+    background: var(--secondary-color);
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 8px;
+    .th-visible { text-align: center; i { color: var(--accent-color); font-size: 11px; } }
+    .th-order { text-align: center; }
+  }
+
+  .column-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .column-item {
+    padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--primary-color);
+    transition: border-color 0.15s, background 0.15s, opacity 0.15s;
+    &:hover { border-color: var(--accent-color); }
+    &.dragging { opacity: 0.5; }
+    &.drag-over { border-color: var(--accent-color); background: rgba(204, 88, 88, 0.05); }
+    /* Colonne masquée : ligne atténuée (repère visuel immédiat, sans la rendre illisible). */
+    &.is-hidden { .col-name, .col-desc, .col-type { opacity: 0.5; } }
+    .drag-handle { color: var(--text-muted); cursor: grab; font-size: 12px; }
+    input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent-color); justify-self: center; }
+    .col-reorder { display: inline-flex; gap: 4px; justify-self: center;
+      button { width: 26px; height: 26px; border-radius: 7px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+        border: 1px solid var(--border-color); background: var(--secondary-color); color: var(--text-muted); font-size: 10px; transition: all 0.15s;
+        &:hover:not(:disabled) { border-color: var(--accent-color); color: var(--accent-color); }
+        &:disabled { opacity: 0.35; cursor: not-allowed; } } }
+    .col-type { justify-self: start; font-size: 10px; font-weight: 700; letter-spacing: 0.3px; padding: 2px 7px; border-radius: 5px; background: var(--hover-bg, rgba(0, 0, 0, 0.05)); color: var(--text-muted); }
+    /* Nom : colonne dédiée, jamais mélangé à la description. */
+    .col-name { min-width: 0; font-size: 13.5px; color: var(--text-color); font-weight: 600;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* Description : colonne dédiée, sur UNE seule ligne (ellipsis + info-bulle si trop longue). */
+    .col-desc { min-width: 0; font-size: 11.5px; color: var(--text-muted); line-height: 1.35;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      &.empty { opacity: 0.45; }
+    }
+  }
+
+  /* Écrans étroits : la grille se replie en 2 rangées (description sous le nom, mais toujours
+     dans sa propre cellule) et l'en-tête de grille est masqué. */
+  @media (max-width: 860px) {
+    .column-grid-header { display: none; }
+    .column-item {
+      grid-template-columns: 14px 18px 116px 76px minmax(0, 1fr);
+      row-gap: 4px;
+      .col-desc { grid-column: 5 / -1; }
+    }
+  }
+}
+
+@keyframes ccFadeIn { from { opacity: 0; } to { opacity: 1; } }

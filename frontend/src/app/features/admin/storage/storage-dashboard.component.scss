@@ -7,14 +7,6 @@
   height: calc(100vh - var(--header-height));
   overflow-y: auto;
 
-  // Scrollbar discrète, cohérente avec le reste de l'app.
-  &::-webkit-scrollbar { width: 9px; }
-  &::-webkit-scrollbar-track { background: transparent; }
-  &::-webkit-scrollbar-thumb {
-    background: var(--border-color);
-    border-radius: 5px;
-    &:hover { background: var(--accent-color); }
-  }
 }
 
 /* En-tête */

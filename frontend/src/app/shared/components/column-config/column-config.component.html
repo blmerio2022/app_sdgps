@@ -1,0 +1,126 @@
+<!-- Bouton déclencheur « Colonnes » (badge visibles/total). -->
+<button type="button" class="btn-column-config" (click)="open()" title="Organiser les colonnes du tableau">
+  <i class="fas fa-table-columns"></i>
+  <span>Colonnes</span>
+  <span class="col-count">{{ visibleCount }}/{{ total }}</span>
+</button>
+
+<!-- ===== Panneau d'organisation des COLONNES ===== -->
+<div class="modal-overlay" *ngIf="showColumnConfig" (click)="close()">
+  <div class="modal-content column-config-panel" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3><i class="fas fa-table-columns header-icon"></i> {{ title }}</h3>
+      <div class="header-right">
+        <div class="filter-dropdown" *ngIf="showFilter" [class.open]="showFilterMenu">
+          <button type="button" class="btn-filter" (click)="toggleFilterMenu($event)" [title]="filterLabel">
+            <i class="fas fa-filter"></i> {{ filterLabel }} <i class="fas fa-chevron-down"></i>
+          </button>
+          <div class="filter-menu" [hidden]="!showFilterMenu">
+            <div class="filter-item" [class.active]="columnFilter === 'all'" (click)="$event.stopPropagation(); applyFilter('all')">
+              <i class="fas fa-eye"></i> <span>Toutes les colonnes</span> <i class="fas fa-check" *ngIf="columnFilter === 'all'"></i>
+            </div>
+            <div class="filter-item" [class.active]="columnFilter === 'visible'" (click)="$event.stopPropagation(); applyFilter('visible')">
+              <i class="fas fa-eye-slash"></i> <span>Colonnes visibles</span> <i class="fas fa-check" *ngIf="columnFilter === 'visible'"></i>
+            </div>
+          </div>
+        </div>
+        <button class="close-btn" (click)="close()"><i class="fas fa-times"></i></button>
+      </div>
+    </div>
+
+    <div class="modal-body">
+      <p class="panel-hint">
+        Choisissez les <strong>colonnes affichées</strong> et leur <strong>ordre</strong> (glisser-déposer
+        ou flèches). La configuration est <strong>propre à votre compte</strong>, héritée par défaut du
+        compte administrateur et réinitialisable.
+      </p>
+
+      <div class="col-autosave">
+        <span class="saving" *ngIf="saving"><i class="fas fa-spinner fa-spin"></i> Enregistrement…</span>
+        <span class="saved" *ngIf="!saving && savedFlash"><i class="fas fa-check-circle"></i> Modifications enregistrées</span>
+        <span class="idle" *ngIf="!saving && !savedFlash"><i class="fas fa-bolt"></i> Les modifications sont enregistrées automatiquement</span>
+        <span class="spacer"></span>
+        <button type="button" class="btn-reset-source" [disabled]="resetting" (click)="askReset()"
+                title="Remplacer votre configuration par celle par défaut (compte administrateur)">
+          <i class="fas" [class.fa-spinner]="resetting" [class.fa-spin]="resetting" [class.fa-arrows-rotate]="!resetting"></i>
+          Réinitialiser avec la configuration source
+        </button>
+      </div>
+
+      <!-- Compteurs : pastilles lisibles, toujours visibles (hors zone de défilement). -->
+      <div class="col-stats">
+        <span class="stat"><i class="fas fa-table-columns"></i> Total <b>{{ total }}</b></span>
+        <span class="stat stat--visible"><i class="fas fa-eye"></i> Visibles <b>{{ visibleCount }}</b></span>
+        <span class="stat stat--hidden"><i class="fas fa-eye-slash"></i> Masquées <b>{{ hiddenCount }}</b></span>
+      </div>
+
+      <!-- Seule la LISTE défile : l'en-tête de grille peut donc coller sans masquer les compteurs. -->
+      <div class="column-scroll">
+      <!-- En-tête de la grille : le NOM et la DESCRIPTION sont deux colonnes DISTINCTES. -->
+      <div class="column-grid-header" aria-hidden="true">
+        <span></span>
+        <span class="th-visible" title="Colonne affichée dans le tableau"><i class="fas fa-eye"></i></span>
+        <span class="th-order">Ordre</span>
+        <span class="th-type">Type</span>
+        <span class="th-name">Colonne</span>
+        <span class="th-desc">Description</span>
+      </div>
+
+      <ul class="column-list">
+        <li *ngFor="let col of filteredColumns; trackBy: trackByField"
+            class="column-item"
+            [class.dragging]="draggedIndex === realIndex(col)"
+            [class.drag-over]="dragOverIndex === realIndex(col)"
+            [class.is-hidden]="!col.visible"
+            draggable="true"
+            (dragstart)="onDragStart(realIndex(col))"
+            (dragover)="onDragOver($event, realIndex(col))"
+            (dragleave)="onDragLeave()"
+            (drop)="onDrop(realIndex(col))"
+            (dragend)="onDragEnd()">
+          <i class="fas fa-grip-vertical drag-handle" title="Glisser pour réordonner"></i>
+          <input type="checkbox" [checked]="col.visible" (change)="toggleVisibility(col.field)"
+                 [title]="col.visible ? 'Masquer la colonne' : 'Afficher la colonne'">
+          <div class="col-reorder">
+            <button type="button" [disabled]="realIndex(col) === 0" (click)="moveToTop(realIndex(col))" title="Placer en premier"><i class="fas fa-angles-up"></i></button>
+            <button type="button" [disabled]="realIndex(col) === 0" (click)="moveUp(realIndex(col))" title="Monter"><i class="fas fa-arrow-up"></i></button>
+            <button type="button" [disabled]="realIndex(col) === total - 1" (click)="moveDown(realIndex(col))" title="Descendre"><i class="fas fa-arrow-down"></i></button>
+            <button type="button" [disabled]="realIndex(col) === total - 1" (click)="moveToBottom(realIndex(col))" title="Placer en dernier"><i class="fas fa-angles-down"></i></button>
+          </div>
+          <span class="col-type">{{ typeLabel(col.type) }}</span>
+          <span class="col-name" [title]="col.label">{{ col.label }}</span>
+          <span class="col-desc" *ngIf="descOf(col); else noDesc" [title]="descOf(col)">{{ descOf(col) }}</span>
+          <ng-template #noDesc><span class="col-desc empty" title="Aucune description disponible">—</span></ng-template>
+        </li>
+      </ul>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <div class="footer-actions">
+        <button type="button" class="btn-action" (click)="selectAll()"><i class="fas fa-check-double"></i> Tout sélectionner</button>
+        <button type="button" class="btn-action" (click)="deselectAll()"><i class="fas fa-times"></i> Tout désélectionner</button>
+        <button type="button" class="btn-action" (click)="invertSelection()"><i class="fas fa-exchange-alt"></i> Inverser</button>
+      </div>
+      <button type="button" class="btn-confirm" (click)="close()"><i class="fas fa-check"></i> Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirmation : réinitialisation avec la configuration source -->
+<div class="modal-overlay" *ngIf="showResetConfirm" (click)="cancelReset()">
+  <div class="modal-content confirm-panel" (click)="$event.stopPropagation()">
+    <h3><i class="fas fa-arrows-rotate"></i> Réinitialiser les colonnes ?</h3>
+    <p>
+      Votre configuration de colonnes va être <strong>remplacée</strong> par la configuration source
+      (celle du compte administrateur). Vos choix personnalisés seront <strong>écrasés</strong>.
+    </p>
+    <div class="confirm-actions">
+      <button class="btn-cancel" (click)="cancelReset()" [disabled]="resetting">Annuler</button>
+      <button class="btn-confirm" (click)="confirmReset()" [disabled]="resetting">
+        <i class="fas" [class.fa-spinner]="resetting" [class.fa-spin]="resetting" [class.fa-arrows-rotate]="!resetting"></i>
+        {{ resetting ? 'Réinitialisation…' : 'Réinitialiser' }}
+      </button>
+    </div>
+  </div>
+</div>

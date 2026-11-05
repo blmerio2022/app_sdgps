@@ -159,15 +159,223 @@ assistants de codage IA comme aux contributeurs humains (cf. `AGENTS.md`).
 - Ne jamais désactiver, ignorer (`skip`/`xit`) ou supprimer un test pour faire passer la CI
   sans justification explicite dans le message de commit.
 
+## Règles du dépôt (local et distant)
+
+> Règles reprises du dépôt frère `ancfcc/datacap-web` (section « Règles du dépôt » de son
+> `README.md`) et adaptées à ce projet. Elles sont mises à jour à chaque nouvelle règle adoptée.
+
+### Dépôts
+
+| Dépôt | Emplacement |
+|---|---|
+| Local | `D:\BOULMANE\PycharmProjects\perso\ancfcc\app-sdgps` |
+| Distant (`origin`, privé) | https://github.com/blmerio2022/app_sdgps |
+
+Identité Git configurée **pour ce dépôt uniquement** :
+`blmerio2022 <120096166+blmerio2022@users.noreply.github.com>`.
+
+### Branches
+
+| Branche | Rôle |
+|---|---|
+| `main` | Production : code stable et livré. Aucun commit direct. |
+| `develop` | Intégration (branche par défaut sur GitHub). Reçoit les `feature/vX.Y` via PR. |
+| `feature/vX.Y` | Branche de travail de la version en cours (`feature/v1.0`, puis `feature/v1.1`, …). Une seule version active à la fois. |
+
+Les branches historiques (`fix/*`, `release/*`, `chore/*`, `docs/*`, `feature/<sujet>`) restent
+dans l'historique mais le **modèle à suivre désormais est `feature/vX.Y`**.
+
+### Cycle de vie d'une version
+
+1. Créer `feature/vX.Y` à partir de `develop` à jour et la pousser
+   (`git push -u origin feature/vX.Y`).
+2. Développer : **un commit par fonctionnalité ou tâche terminée**, poussé immédiatement vers
+   `origin` (le dépôt distant est toujours synchronisé avec le local).
+3. Quand toutes les tâches de la version sont terminées et testées (cf. « Politique de tests ») :
+   ouvrir une **PR `feature/vX.Y` → `develop`**, puis la fusionner.
+4. Créer `feature/vX.(Y+1)` depuis `develop` et continuer.
+5. Quand `develop` atteint un jalon stable : PR `develop` → `main`
+   (**uniquement sur demande explicite**).
+
+### Pull Requests
+
+- **Toute PR cible et est fusionnée dans `develop`, sauf indication contraire explicite.**
+- Fusion par **commit de merge** (`gh pr merge <n> --merge`) pour conserver l'historique de la
+  version — jamais de squash ni de rebase à la fusion.
+- Après la fusion, `develop` est fusionnée dans la branche `feature/vX.Y` en cours pour rester à
+  jour.
+- La procédure détaillée (vérification de `mergeable`, attente de la CI) est la règle stricte
+  « Fusion vers `develop` / `main` : JAMAIS sans PR » ci-dessous : elle s'applique intégralement.
+
+### Conventions de commit
+
+- Format [Conventional Commits](https://www.conventionalcommits.org/) **en français** :
+  `type(portée): description` — types : `feat`, `fix`, `perf`, `refactor`, `docs`, `test`,
+  `chore`.
+- Description à l'**impératif**, en minuscule, sans point final ; la portée est le domaine
+  fonctionnel (`pieces`, `users`, `organisations`, `projets`, `ci`, `depot`…).
+- Exemple : `feat(pieces): extraire les métadonnées EXIF des images jointes`.
+- **Un commit par fonctionnalité ou tâche terminée**, poussé immédiatement.
+
+### Secrets et fichiers locaux
+
+- **Jamais de mot de passe ni de jeton dans le dépôt.** Les secrets vont dans
+  `backend/.env.<environnement>` (non suivis) ; seuls les templates `*.example` sont versionnés.
+- Non suivis (voir `.gitignore`) : `backend/.env.*`, `db.sqlite3`, `media/`, `logs/`, `*.log`,
+  données de travail volumineuses (`*.gpkg`, `docs/exemples-ssdgps/`) et configurations d'éditeur
+  locales (`*.code-workspace`).
+
+### Tenue de la documentation
+
+`CLAUDE.md` (et `AGENTS.md` quand il est concerné) est mis à jour **dans le même commit** que
+toute nouvelle règle de dépôt, nouvelle fonctionnalité transverse ou nouvelle commande.
+
 ## Conventions & notes de workflow
 
 - **Règles d'auto-commit** (`.opencode/instructions.md`) : ce dépôt est configuré pour un
   workflow OpenCode qui réinitialise l'espace de travail lors des changements de mode ; il
   impose de committer après chaque fonctionnalité/correction. Format des messages :
-  `type(scope): description` (ex. `feat(users): add ROLE_SUPER_ADMIN filter`). Les commits
-  `wip: auto-save` de l'historique proviennent de cet outillage.
+  `type(portée): description` — voir « Conventions de commit » ci-dessus, qui fait foi. Les
+  commits `wip: auto-save` de l'historique proviennent de cet outillage et ne sont **plus** un
+  format acceptable.
+
+- **Fusion vers `develop` / `main` : JAMAIS sans PR (règle stricte).** Ne **jamais** fusionner une
+  branche dans `develop` ou `main` en local (pas de `git merge` depuis ces branches, même quand un
+  fast-forward est possible). Le passage par une **pull request** est obligatoire :
+  1. pousser la branche de travail (`git push origin <branche>`) ;
+  2. créer la PR : `gh pr create --base develop --head <branche>` (ou `--base main`) ;
+  3. **vérifier l'absence de conflit** : `gh pr view <n> --json mergeable,mergeStateStatus` →
+     exiger `mergeable: "MERGEABLE"`. Si `CONFLICTING`, résoudre **dans la branche de travail**
+     (rebase/merge depuis la cible), pousser, puis re-vérifier — ne jamais forcer la fusion ;
+  4. **attendre la CI** (`gh pr checks <n> --watch`) : `test-backend` **et** `test-frontend` doivent
+     être au vert. `mergeStateStatus: UNSTABLE` = checks en cours ou en échec → ne pas fusionner ;
+  5. fusionner seulement ensuite (`gh pr merge <n> --merge`), puis resynchroniser le local
+     (`git fetch --prune` + `git merge --ff-only origin/develop` sur la branche cible) et **revenir
+     sur la branche de travail**.
+  Cette règle prime sur toute demande de « fusionner dans develop » : proposer/créer la PR plutôt
+  que de fusionner directement en local.
 - Le `.env` (backend) contient les clés SendGrid, les identifiants d'amorçage du super-admin
   et les flags `ENVIRONMENT` / `SHOW_TEST_DATA`. Il est gitignoré mais présent en local.
 - Les composants Angular utilisent **SCSS** par défaut (schematics de `angular.json`).
+
+- **Barres de défilement : style UNIQUE, défini une seule fois (règle stricte).** Tous les
+  défilements de l'app — **verticaux comme horizontaux** — partagent le même style, déclaré
+  **globalement** dans `frontend/src/styles.scss` (section « BARRES DE DÉFILEMENT »). La référence
+  est le défilement de la modale d'organisation des colonnes.
+  - **Ne JAMAIS redéfinir `::-webkit-scrollbar`, `scrollbar-width` ou `scrollbar-color` dans un
+    composant.** La règle globale (`*::-webkit-scrollbar…`) s'applique automatiquement à tout
+    conteneur défilant, existant ou futur : un nouveau composant n'a **rien** à styler.
+  - Style de référence : rail **transparent**, pouce **fin et arrondi** en `--border-color`,
+    détaché des bords (`border: 2px solid transparent` + `background-clip: padding-box`), accentué
+    en `--accent-color` au survol ; `8px` en largeur (vertical) **et** en hauteur (horizontal) ;
+    `scrollbar-width: thin` + `scrollbar-color` pour Firefox ; coin (`-corner`) transparent.
+  - Côté composant, ne poser que ce qui relève de la **mise en page** : `overflow`, `max-height`,
+    `min-height: 0` (indispensable dans un conteneur flex pour que l'enfant défile), et
+    éventuellement une gouttière (`padding-right` + `margin-right` négatif) pour éviter que la
+    barre ne décale le contenu.
+  - Vérification : `grep -rn "webkit-scrollbar\|scrollbar-width\|scrollbar-color" frontend/src/app`
+    ne doit **rien** renvoyer (toutes les définitions vivent dans `styles.scss`).
 - Référence de design : `docs/ui-design-spec.md` ; notes de travail dans `docs/notes/`,
   plans dans `docs/plans/PLAN_DEV.md`.
+- **Tri multi-niveaux (parité obligatoire entre toutes les pages).** La fonctionnalité de tri
+  multi-niveaux des tableaux (bouton « Trier » + modale de configuration) doit avoir **le même
+  design, le même style et les mêmes options partout dans l'app**. Options standard de la modale :
+  niveaux ordonnables (placer en premier/monter/descendre/placer en dernier + retirer),
+  **« Effacer le tri »** (vide tous les niveaux), **« Réinitialiser avec la configuration source »**
+  (hérite du compte administrateur), ajout de niveau, enregistrement automatique. Le bouton
+  « Trier » a un état par défaut (aucun tri) lisible et un état actif accentué (`.btn-sort-multi`).
+  - **Composant partagé (à privilégier pour toute NOUVELLE liste).**
+    `shared/components/multi-level-sort/` — composant présentationnel `<app-multi-level-sort>`
+    (bouton + modale, design identique aux organisations) + helpers `multi-level-sort.util.ts`
+    (`compareByLevels`, `sortLevelOf`, `sortDirOf`). Persistance générique par utilisateur via
+    `core/services/table-sort-config.service.ts` (clé de tableau) → backend
+    `CustomUser.table_sort_configs` + endpoints `me/table-sort-config/<key>/` (+ `/reset/`),
+    allowlists dans `accounts/views.py::TABLE_SORT_FIELDS`. Le parent conserve `sortLevels`,
+    branche `[levels]`/`(levelsChange)`/`(resetToSource)`, applique `compareByLevels` et affiche
+    les marqueurs d'en-tête (`.sort-badge`). Intégré ainsi (clés `TABLE_SORT_FIELDS`) :
+    **utilisateurs** (`users`), **projets** (`projects`), **explorateur de projet** — un tableau
+    par niveau : `project_proprietes` / `project_affaires` / `project_ssdgps` / `project_sessions`
+    (l'explorateur garde une config de tri **par niveau** dans `sortLevelsByLevel`), et **liste
+    des pièces d'un rapport SSDGPS** (`pieces`). Quand le bouton et l'en-tête vivent dans des
+    blocs `*ngIf` frères, ouvrir la modale via `@ViewChild(MultiLevelSortComponent)` + `openSort()`
+    (une variable de template `#sorter` n'est pas visible d'une vue embarquée à l'autre).
+    ⚠️ Le tri des **pièces** ci-dessus porte sur la **liste** des pièces d'un rapport ; il est
+    distinct du tri des **données internes** d'une pièce (`piece_sort_config`, par type, via
+    *Profil → Paramètres de tri des pièces*) — ne pas confondre.
+  - **Toutes les listes utilisent désormais le composant partagé** (plus aucune copie inline du
+    bouton/modale). Les 3 surfaces « historiques » — liste des organisations
+    (`features/dashboard/organization-list`), listes des organismes niveau 1 & 2
+    (`features/admin/organismes/organisme-list`), liste des SSDGPS
+    (`features/projects/project-ssdgps-list`) — ont été **migrées** vers `<app-multi-level-sort>`
+    tout en conservant leurs services/endpoints backend **dédiés** (`org-sort-config`,
+    `organisme-sort-config`, `ssdgps-sort-config`) : seule l'UI est mutualisée. Le parent garde
+    `sortLevels`, `sortLevelOf`/`sortDirOf`, `compareByLevels`, `onSortLevelsChange`, `onResetSort`,
+    et ouvre la modale via `@ViewChild(MultiLevelSortComponent)` + `openSortConfig()`.
+
+- **Colonnes d'audit OBLIGATOIRES (règle transverse, tout nouveau tableau).** Tout tableau de
+  l'app doit exposer ces **7 colonnes**, avec ces **noms de champ** et ces **libellés exacts** —
+  ils sont **unifiés dans toute l'application**, ne jamais en inventer de variante
+  (« Date de création », « Dernière modification », « Email du créateur »… sont **proscrits**) :
+
+  | Champ API | Libellé | Type |
+  |---|---|---|
+  | `created_by_email` | **Créé par** | text |
+  | `created_at` | **Créé le** | date |
+  | `updated_by_email` | **Modifié par** | text |
+  | `updated_at` | **Modifié le** | date |
+  | `is_deleted` | **Supprimé** | boolean |
+  | `deleted_by_email` | **Supprimé par** | text |
+  | `deleted_at` | **Supprimé le** | date |
+
+  - **Source de vérité unique (front)** : `shared/components/column-config/audit-columns.ts`
+    (`auditColumns()`, `withAuditColumns()`, `AUDIT_COLUMN_LABELS/DESCRIPTIONS/ORDER`,
+    `isAuditColumn()`). Un nouveau tableau **concatène** simplement le catalogue partagé en fin de
+    ses colonnes métier : `columns = [ ...colonnes métier..., ...auditColumns() ]`, et réutilise
+    `AUDIT_COLUMN_ORDER/LABELS` pour ses `sortableFields` ainsi que `AUDIT_COLUMN_DESCRIPTIONS`
+    pour son `getFieldDescription`. **Ne jamais réécrire ces libellés à la main.**
+  - Masquées par défaut (`visible: false`) — activables via la modale « Colonnes ». Le rendu des
+    cellules suit le patron générique (cf. `project-list`) : dates via `formatDate()`, `is_deleted`
+    en badge Oui/Non, `*_by_email` avec repli `—`.
+  - **Backend** : déclarer les 7 champs dans `TABLE_COLUMN_FIELDS[<clé>]` (`accounts/views.py`) et
+    dans l'allowlist de tri du tableau, et les exposer dans le serializer.
+  - **Auteurs : toujours `AuthorDisplayField`** (`accounts/fields.py`), branché sur la **clé
+    étrangère** (`source='created_by'`, `'updated_by'`, `'modified_by'`, `'deleted_by'`) et non sur
+    `…​.email`. Il rend le **nom complet** de l'utilisateur (repli sur l'email si le compte n'a ni
+    prénom ni nom) et garantit que le champ vaut `null` au lieu d'être **omis** quand la FK est
+    nulle — un `EmailField(source='x.email')` sans `allow_null=True` déclenche `SkipField` et la
+    colonne disparaît alors du payload. ⚠️ Le **nom** des champs exposés reste `*_by_email` : il
+    est figé dans les allowlists et dans les configurations de colonnes déjà enregistrées par les
+    opérateurs ; seule la **valeur** est un nom complet.
+  - **Capture des auteurs** : renseigner `created_by`/`updated_by` dans `perform_create` /
+    `perform_update` et `deleted_by` (+ `deleted_at`) sur **tous** les chemins de suppression
+    logique, y compris les suppressions **en masse**.
+  - **Exceptions historiques** : l'organisation utilise le champ DB `modified_by` — l'API expose
+    l'alias `updated_by_email` (nom unifié) **et** `modified_by_email` (compatibilité). Pour les
+    utilisateurs, `date_joined` tient lieu de date de création et est aliasé en `created_at`.
+  - Tests garde-fous : `backend/accounts/tests_audit_columns.py` (toutes les clés déclarent les 7
+    colonnes + capture des auteurs) et `audit-columns.spec.ts` (libellés unifiés).
+
+- **Configuration des colonnes (parité stricte avec le tri multi-niveaux).** Chaque tableau
+  enregistre sa config de **colonnes** (affichées/masquées **+ ordre**) **par utilisateur**, héritée
+  par défaut du **compte super admin (source)**, avec **auto-save** et bouton **« Réinitialiser avec
+  la configuration source »**. Mécanisme miroir du tri :
+  - **Composant partagé unique** `shared/components/column-config/` — `<app-column-config>` (bouton
+    « Colonnes » + modale : cases visibilité, réordonnancement flèches **+ drag&drop**, filtre
+    toutes/visibles, tout sélectionner/désélectionner/inverser, indicateur auto-save, reset-source,
+    **pas de OK/Annuler**). Helpers `column-config.util.ts` (`applyColumnsConfig(catalog, stored)`,
+    `toColumnPrefs`, interfaces `ManagedColumn`/`StoredColumnPref`). Déclaré dans `shared.module.ts`.
+  - **Service générique** `core/services/table-columns-config.service.ts` (`get/save/resetToSource`,
+    cache par clé) → backend `CustomUser.table_columns_configs` (dict `{clé: [{field,visible}]}`) +
+    endpoints `me/table-columns-config/<key>/` (+ `/reset/`), allowlist `TABLE_COLUMN_FIELDS` dans
+    `accounts/views.py` (catalogue COMPLET des colonnes, triables **et** non triables). Source =
+    `superadmin_table_columns_config(key)` (`piece_defaults.py`). **Un seul champ générique** pour
+    les 11 tableaux (pas de champ dédié, contrairement au tri).
+  - **11 clés** : `organizations`, `organisme_niveau1`, `organisme_niveau2`, `users`, `projects`,
+    `project_proprietes` / `project_affaires` / `project_ssdgps` / `project_sessions` (explorateur,
+    config **par niveau** — clé = `sortKey` du niveau courant), `ssdgps` (liste SSDGPS), `pieces`.
+  - **Intégration parent** : garde le catalogue `columns` (source de vérité), charge via
+    `svc.get(key)` → `applyColumnsConfig`, branche `[columns]`/`(columnsChange)`/`(resetToSource)`,
+    auto-save debouncé, ouvre la modale via `@ViewChild(ColumnConfigComponent)` +
+    `openColumnConfig()` (bouton **et** menu contextuel `openColumnConfigFromContext`). La
+    persistance `localStorage` des colonnes a été **retirée** (backend = source de vérité ; le
+    `viewMode` reste en localStorage).

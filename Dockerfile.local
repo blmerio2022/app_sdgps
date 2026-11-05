@@ -1,0 +1,37 @@
+# Image LOCALE prod-like (Docker Desktop) — équivalent de l'image `ci-cd.yml`/Railway,
+# MAIS sans étage Node : le SPA Angular est buildé en NATIF sur l'hôte (`ng build`) puis
+# copié ici. Objectif : contourner le `npm ci` DANS Docker (ECONNRESET récurrent sur cette
+# machine) tout en produisant la même image mono-service (SPA + API même origine, gunicorn).
+#
+# Prérequis : `frontend/dist/frontend/` doit exister (script scripts/local-images.ps1 le fait).
+# Contexte de build = racine du dépôt ; ignore via Dockerfile.local.dockerignore (laisse
+# entrer frontend/dist/frontend, exclut node_modules).
+
+FROM python:3.11-slim
+WORKDIR /app
+
+# Bibliothèques natives WeasyPrint (rendu HTML→PDF) + polices — identiques au Dockerfile racine.
+RUN apt-get update && apt-get install --no-install-recommends -y \
+        libpango-1.0-0 libpangocairo-1.0-0 libpangoft2-1.0-0 \
+        libcairo2 libgdk-pixbuf-2.0-0 libffi8 libharfbuzz0b \
+        shared-mime-info fonts-urw-base35 fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY backend/ .
+
+# SPA buildé NATIVEMENT puis cuit ici : WhiteNoise le sert à la racine (WHITENOISE_ROOT =
+# frontend_dist). Remplace le `COPY --from=frontend` du Dockerfile racine.
+COPY frontend/dist/frontend/ /app/frontend_dist/
+
+# Statiques Django/DRF (admin) collectés + post-traités (manifest WhiteNoise). Aucun accès réseau.
+RUN python manage.py collectstatic --noinput
+
+RUN chmod +x /app/docker-entrypoint.sh
+
+# L'entrypoint attend la base, applique migrations (+ auto-seed) puis lance la CMD.
+ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
+# gunicorn en forme SHELL pour que ${PORT} soit interprété au runtime (comme le Dockerfile racine).
+CMD gunicorn backend.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 3 --timeout 120

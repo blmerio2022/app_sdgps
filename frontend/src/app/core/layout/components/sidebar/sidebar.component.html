@@ -44,8 +44,8 @@
 
       <!-- Menu avec sous-menu -->
       <li *ngIf="item.children && item.children.length > 0" class="menu-item has-children">
-        <a 
-          (click)="toggleSubmenu(item.id)"
+        <a
+          (click)="openSubmenu(item)"
           class="menu-link"
           [title]="item.description || item.title">
           

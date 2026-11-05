@@ -4,10 +4,6 @@
 
 
 
-
-
-
-
 ## Sommaire
 
 - [Notes — Application SDGPS](#notes-application-sdgps)
@@ -60,56 +56,52 @@
 
 # Taches a faire
 
-  - Preparation des sdgps multisession exemples
-    - preparation des donnees des sessions des sdgps multisessions exemples : PLC/GPS - DLC/GPS
-    - import donnees dans l'app + generation des sdgps des sessions + page de garde de tous les sdgps des sessions
-    - 
+  - Fonctionnalites manquantes dans l'app
+    - Ajout cachet + signature sur toutes les pages du rapport.
+    - Affectation pour chaque organisation d'un volume limite d'espace de stockage a ne pas depasser.
+      - Lorsque le quota d'espace de stockage atteint. l'app affiche page de suppression des ssdgps mono-session/ssdgps-multi-session a supprimer. 
+      - Affiche pour chaque element (ssdgps mono / sessions du ssdgps) la taille de l'espace de stockage restauree.
+      - possibiliter de compression donnees des pieces du ssdgps-mono et/ou ssdgps-multi.
+    - Preparation des sdgps multisession exemples
+      - preparation des donnees des sessions des sdgps multisessions exemples : PLC/GPS - DLC/GPS
+      - import donnees dans l'app + generation des sdgps des sessions + page de garde de tous les sdgps des sessions
+    - Generation automatique canevas pdc/ddc/plc/dlc.
+    - Geoportail pour afficher les donnees spatiales de chaque projet/propriete/affaire/ssdgps.
+
+
 
   - Divers:
     - Ajoute calcul nombre de lignes par page (dans le rapport PDF) pour les pieces contenant des tableaux de donnees.
     - Corrige lecture des noms des points contenant des espaces depuis html des fermetures des boucles.
     - Finaliser l'interface graphique UI/UX
-
+      - redesigner pages consultation/modification des pieces. (fait)
+      - redesigner les pages de creation de nouvelles pieces.
+        - taille max des fichiers images/csv/excel/html = 2Mo.
+        - ajouter option choix orientation page contenu de la piece
+        - supprimer l'etape choix de la session. vu que les pieces sont ajoutees dans une session.
+        - 
+      - ajouter la vue en cartes de la liste des projets.
+      - style affichage du menu de filtre dans page liste des pieces.
   
-
-  - Ajouter le modale de tri des lignes d'un tableau pour tous tableaux de l'app : projets/proprietes/affaires/ssdgps/sessions/pieces.
-  - Fonctionnalite espace stockage utilisee par les donnees de l'app dans l'espace admin.
-
-
-  - Plan des tests frontend + backend
-      - ecrire tous les tests de toutes les fonctionnalites de l'app : frontend + backend
-      - maj le fichier de configs des workflow GitHub Actions
-      - Ajoute instruction global pour les ai assistants de coding pour qu'ils redigent les tests pour chaque nouvelle fonctionnalite ajoutee dans le codebase.
-
-  - Plan Migration de la bdd vers postgresql
-    - migrer la bdd existante vers Postgresql
-    - migrer egalement les donnees existantes actuellement dans la bdd sqlite vers la bdd Postgresql
-    - Faire en sorte que a chaque reinitialisation de la bdd les donnees suivantes sont ajoutees automatiquement :\
-      - donnees des utilisateurs : 1 superadmin + 2 admins de l'app.
-      - liste predefinies des organisations
-      - liste predefinies des organismes premier niveau + deuxieme niveau.
 
 
   - Plan de deployement : developement + tests + production
-    - Generer plan de deployement dans "D:\BOULMANE\PycharmProjects\perso\ancfcc\app-sdgps\docs\plans\plans_claude_code"
-      - inclure la migration de la bdd depuis sqlite3 vers postgresql.
-      - 
-      - inclure phase de resolution les problemes de securite
-      - inclure l'automatisation du process d'integration et deployement des maj via les outiles DevOps.
-      - ajoute l'etape de monitoring de l'app avec outiles : Sentry + Prometheus + Grafana + UptimeRobot
-      
-    - executer plan de deploiement
+    - restructuration des fichiers .env des 4 environnements + docker-compose
+      - desactivation admin django dans environnements railway
+    - ajoute l'etape de monitoring de l'app avec outiles : Sentry + Prometheus + Grafana + UptimeRobot
+    
 
  
 
 
 
-Le tout afin de rendre l'interface beaucoup plus intuitive, simple, visuellement attrayante et conforme aux bonnes pratiques UI/UX. Le tout egalement dans un style et design élégant, pro et conforme au design system de l'app.
+Le tout afin de rendre l'interface beaucoup plus intuitive, pro, simple, visuellement attrayante et conforme aux bonnes pratiques UI/UX. Le tout egalement dans un style et design élégant, pro et conforme au design system de l'app. Utilise le plugin design pour un design et UI/UX  élégante, pro, intuitive, visuellement attrayante
 
 - Fonctionnalites futures:
-  - Ajouter une page de changelog + versionning de l'app 
+  - Ajouter une page de changelog + ajouter version dans l'app
   - Fonctionnalite gestion stockage des fichiers de l'app avec un fournisseur du service stockage.
-  - 
+  - inclure phase de resolution les problemes de securite
+    - Resolution des problemes dans onglet Security and quality de Github
 
 
 # Rôles de l'application
@@ -210,7 +202,7 @@ Creer une branche pour la redaction du CPS de l'app (propose un nom parlant pour
 
 ### Prompte pour commit des modifs et synchronisation avec depot distant configure dans le projet
 
-commit les changements dans le dépôt local et synchronise ces commites  avec le dépôt distant global de l'app.
+commit les changements dans le dépôt local et synchronise ces commites avec le dépôt distant global de l'app.
 
 Quand le watcher a deja commiter maj le message du dernier commit dans le depot local et distant.
 Squaser les derniers commits watcher en un seul commit avec un message pertinent.
@@ -242,7 +234,10 @@ git log --oneline --grep="wip: auto-save" --max-count=20
 
 ### Prompte redemarrage serveurs backend + frontend
 
-force le redemarrage/relance des deux serveurs frontend et backend (vrai serveur backend via docker) en arriere plan (ne pas afficher de fenetres terminal dans windows). relance backend sur port 8085 et frontend sur le port 4205. ne jamais stopper les autres process deja dans les autres ports par exemples : 8080/ 8081 ... ou bien 4200/4201 ...
+force le redemarrage/relance des deux serveurs frontend et backend (vrai serveur backend via docker) en arriere plan (ne pas afficher de fenetres terminal dans windows) en utilisant l'environnement de development depuis la confi des environnements. relance backend sur port 8085 et frontend sur le port 4205. ne jamais stopper les autres process deja dans les autres ports par exemples : 8080/ 8081 ... ou bien 4200/4201 ...
+
+relance le serveur frontend de l'environnemnt development sur port 4205.
+relance egalement le serveur backend de l'environnemnt development sur port 8085.
 
 ## Redaction du CPS de l'app
 

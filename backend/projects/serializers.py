@@ -4,6 +4,7 @@ from rest_framework import serializers
 from organismes.models import OrganismeNiveau1, OrganismeNiveau2
 from .models import Projet, Propriete, Affaire, Ssdgps, Session
 from .validators import validate_affaire_coherence
+from accounts.fields import AuthorDisplayField
 
 
 class ProjetSerializer(serializers.ModelSerializer):
@@ -15,9 +16,9 @@ class ProjetSerializer(serializers.ModelSerializer):
     nbr_total_ssdgps = serializers.IntegerField(read_only=True)
     nbr_total_sessions = serializers.IntegerField(read_only=True)
     nbr_total_pieces = serializers.IntegerField(read_only=True)
-    created_by_email = serializers.EmailField(source='created_by.email', read_only=True)
-    updated_by_email = serializers.EmailField(source='updated_by.email', read_only=True)
-    deleted_by_email = serializers.EmailField(source='deleted_by.email', read_only=True)
+    created_by_email = AuthorDisplayField(source='created_by')
+    updated_by_email = AuthorDisplayField(source='updated_by')
+    deleted_by_email = AuthorDisplayField(source='deleted_by')
 
     class Meta:
         model = Projet
@@ -44,6 +45,10 @@ class ProprieteSerializer(serializers.ModelSerializer):
     nbr_total_affaires = serializers.IntegerField(read_only=True)
     nbr_total_ssdgps = serializers.IntegerField(read_only=True)
     nbr_total_sessions = serializers.IntegerField(read_only=True)
+    nbr_total_pieces = serializers.IntegerField(read_only=True)
+    # Identifiant métier de la propriété : le titre foncier s'il est renseigné, sinon la
+    # réquisition (même règle d'affichage que `itemLabel`/`proprieteLabel` côté front).
+    id_propriete = serializers.SerializerMethodField()
     # Organismes : requis à l'écriture (le modèle les autorise null pour la migration).
     organisme_niveau1 = serializers.PrimaryKeyRelatedField(
         queryset=OrganismeNiveau1.objects.filter(is_deleted=False), required=True)
@@ -51,21 +56,25 @@ class ProprieteSerializer(serializers.ModelSerializer):
         queryset=OrganismeNiveau2.objects.filter(is_deleted=False), required=True)
     organisme_niveau1_nom = serializers.CharField(source='organisme_niveau1.nom', read_only=True)
     organisme_niveau2_nom = serializers.CharField(source='organisme_niveau2.nom', read_only=True)
-    created_by_email = serializers.EmailField(source='created_by.email', read_only=True)
-    updated_by_email = serializers.EmailField(source='updated_by.email', read_only=True)
-    deleted_by_email = serializers.EmailField(source='deleted_by.email', read_only=True)
+    created_by_email = AuthorDisplayField(source='created_by')
+    updated_by_email = AuthorDisplayField(source='updated_by')
+    deleted_by_email = AuthorDisplayField(source='deleted_by')
 
     class Meta:
         model = Propriete
         fields = [
-            'id', 'nom_propriete', 'id_requisition', 'id_titre', 'projet',
+            'id', 'nom_propriete', 'id_requisition', 'id_titre', 'id_propriete', 'projet',
             'organisme_niveau1', 'organisme_niveau2',
             'organisme_niveau1_nom', 'organisme_niveau2_nom',
-            'nbr_total_affaires', 'nbr_total_ssdgps', 'nbr_total_sessions',
+            'nbr_total_affaires', 'nbr_total_ssdgps', 'nbr_total_sessions', 'nbr_total_pieces',
             'created_at', 'updated_at', 'is_deleted', 'deleted_at',
             'created_by_email', 'updated_by_email', 'deleted_by_email',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'is_deleted', 'deleted_at']
+
+    def get_id_propriete(self, obj) -> str:
+        """Titre foncier prioritaire, repli sur la réquisition ('' si aucun des deux)."""
+        return obj.id_titre or obj.id_requisition or ''
 
     def validate(self, attrs):
         req = attrs.get('id_requisition', getattr(self.instance, 'id_requisition', ''))
@@ -89,15 +98,17 @@ class ProprieteSerializer(serializers.ModelSerializer):
 class AffaireSerializer(serializers.ModelSerializer):
     nbr_total_ssdgps = serializers.IntegerField(read_only=True)
     nbr_total_sessions = serializers.IntegerField(read_only=True)
-    created_by_email = serializers.EmailField(source='created_by.email', read_only=True)
-    updated_by_email = serializers.EmailField(source='updated_by.email', read_only=True)
-    deleted_by_email = serializers.EmailField(source='deleted_by.email', read_only=True)
+    nbr_total_pieces = serializers.IntegerField(read_only=True)
+    created_by_email = AuthorDisplayField(source='created_by')
+    updated_by_email = AuthorDisplayField(source='updated_by')
+    deleted_by_email = AuthorDisplayField(source='deleted_by')
 
     class Meta:
         model = Affaire
         fields = [
             'id', 'numero_sd_affaire', 'nature_procedure_affaire', 'nature_affaire',
             'date_bornage', 'propriete', 'nbr_total_ssdgps', 'nbr_total_sessions',
+            'nbr_total_pieces',
             'created_at', 'updated_at', 'is_deleted', 'deleted_at',
             'created_by_email', 'updated_by_email', 'deleted_by_email',
         ]
@@ -123,9 +134,9 @@ class SsdgpsSerializer(serializers.ModelSerializer):
     propriete_id_titre = serializers.CharField(source='affaire.propriete.id_titre', read_only=True)
     propriete_id_requisition = serializers.CharField(source='affaire.propriete.id_requisition', read_only=True)
     affaire_numero = serializers.CharField(source='affaire.numero_sd_affaire', read_only=True)
-    created_by_email = serializers.EmailField(source='created_by.email', read_only=True)
-    updated_by_email = serializers.EmailField(source='updated_by.email', read_only=True)
-    deleted_by_email = serializers.EmailField(source='deleted_by.email', read_only=True)
+    created_by_email = AuthorDisplayField(source='created_by')
+    updated_by_email = AuthorDisplayField(source='updated_by')
+    deleted_by_email = AuthorDisplayField(source='deleted_by')
 
     class Meta:
         model = Ssdgps
@@ -158,9 +169,9 @@ class SsdgpsSerializer(serializers.ModelSerializer):
 
 class SessionSerializer(serializers.ModelSerializer):
     nbr_total_pieces = serializers.IntegerField(read_only=True)
-    created_by_email = serializers.EmailField(source='created_by.email', read_only=True)
-    updated_by_email = serializers.EmailField(source='updated_by.email', read_only=True)
-    deleted_by_email = serializers.EmailField(source='deleted_by.email', read_only=True)
+    created_by_email = AuthorDisplayField(source='created_by')
+    updated_by_email = AuthorDisplayField(source='updated_by')
+    deleted_by_email = AuthorDisplayField(source='deleted_by')
 
     class Meta:
         model = Session

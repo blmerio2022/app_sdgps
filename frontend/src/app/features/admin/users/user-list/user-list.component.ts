@@ -1,4 +1,6 @@
-import { Component, OnInit, OnDestroy, HostListener, ChangeDetectorRef } from '@angular/core';
+import { formatDateTime } from '../../../../shared/utils/date-format.util';
+import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from '../../../../shared/components/table-pagination/table-pagination.component';
+import { Component, OnInit, OnDestroy, HostListener, ChangeDetectorRef, ViewChild } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Subject } from 'rxjs';
 import { debounceTime, takeUntil } from 'rxjs/operators';
@@ -10,6 +12,14 @@ import { AuthService } from '../../../../core/auth/auth.service';
 import { ProfileService } from '../../../profile/services/profile.service';
 import { User, CreateUserPayload, UpdateUserPayload, UserRole } from '../../../../core/models/user.model';
 import { Organization } from '../../../../core/models/organization.model';
+import { TableSortConfigService, OrgSortLevel } from '../../../../core/services/table-sort-config.service';
+import { SortableField, compareByLevels, sortLevelOf, sortDirOf } from '../../../../shared/components/multi-level-sort/multi-level-sort.util';
+import { MultiLevelSortComponent } from '../../../../shared/components/multi-level-sort/multi-level-sort.component';
+import { ColumnConfigComponent } from '../../../../shared/components/column-config/column-config.component';
+import { applyColumnsConfig, toColumnPrefs, ManagedColumn } from '../../../../shared/components/column-config/column-config.util';
+import { ColumnFilterMap, withColumnFilter, rowMatchesColumnFilters, activeFilterCount } from '../../../../shared/components/column-filter/column-filter.util';
+import { TableColumnsConfigService } from '../../../../core/services/table-columns-config.service';
+import { auditColumns, AUDIT_COLUMN_DESCRIPTIONS, AUDIT_COLUMN_LABELS, AUDIT_COLUMN_ORDER } from '../../../../shared/components/column-config/audit-columns';
 
 interface ColumnConfig {
   field: string;
@@ -54,8 +64,9 @@ export class UserListComponent implements OnInit, OnDestroy {
     { field: 'must_change_password', label: 'MDP à changer', visible: false, width: '130px', type: 'boolean' },
     { field: 'date_joined',   label: 'Date d\'inscription', visible: false, width: '150px', type: 'date' },
     { field: 'password_changed_at', label: 'Dernier changement MDP', visible: false, width: '150px', type: 'date' },
-    { field: 'is_deleted',    label: 'Supprimé',           visible: false, width: '100px', type: 'boolean' },
     { field: 'is_superuser',  label: 'Superuser',          visible: false, width: '100px', type: 'boolean' },
+    // Colonnes d'audit standard (libellés unifiés, cf. CLAUDE.md).
+    ...(auditColumns() as unknown as ColumnConfig[]),
   ];
 
   // Filtres
@@ -68,9 +79,41 @@ export class UserListComponent implements OnInit, OnDestroy {
   activeFieldFilterLabel = '';
   fieldFilterValue = '';
 
-  // Tri
+  // Tri mono-colonne (clic en-tête) — repli quand aucun tri multi-niveaux.
   sortColumn = 'date_joined';
   sortDirection: 'asc' | 'desc' = 'desc';
+
+  // --- Tri MULTI-NIVEAUX (config opérateur, héritée du super admin) — parité liste organisations ---
+  private readonly SORT_KEY = 'users';
+  readonly sortableFields: SortableField[] = [
+    { field: 'first_name', label: 'Nom complet' },
+    { field: 'email', label: 'Email' },
+    { field: 'role', label: 'Rôle' },
+    { field: 'organization_name', label: 'Organisation' },
+    { field: 'is_active', label: 'Statut' },
+    { field: 'last_connection_at', label: 'Dernière connexion' },
+    { field: 'must_change_password', label: 'MDP à changer' },
+    { field: 'date_joined', label: "Date d'inscription" },
+    { field: 'password_changed_at', label: 'Dernier changement MDP' },
+    { field: 'is_superuser', label: 'Superuser' },
+    // Colonnes d'audit standard : libellés unifiés (cf. CLAUDE.md).
+    ...AUDIT_COLUMN_ORDER.map(field => ({ field, label: AUDIT_COLUMN_LABELS[field] })),
+  ];
+  sortLevels: OrgSortLevel[] = [];
+  savingSort = false;
+  savedSortFlash = false;
+  resettingSort = false;
+  private sortSaveTimer: any;
+
+  // --- Configuration des COLONNES (config opérateur, héritée du super admin) — composant partagé ---
+  private readonly COLUMNS_KEY = 'users';
+  @ViewChild(ColumnConfigComponent) private columnCfg?: ColumnConfigComponent;
+  /** Description d'une colonne pour la modale partagée (référence stable). */
+  describeColumn = (field: string): string => this.getFieldDescription(field);
+  savingColumns = false;
+  savedColumnsFlash = false;
+  resettingColumns = false;
+  private columnsSaveTimer: any;
 
   // Sélection
   selectedIds = new Set<string>();
@@ -78,8 +121,8 @@ export class UserListComponent implements OnInit, OnDestroy {
 
   // Pagination
   currentPage = 1;
-  pageSize = 10;
-  pageSizeOptions = [5, 8, 10, 20, 50];
+  pageSize = DEFAULT_PAGE_SIZE;
+  pageSizeOptions = [...PAGE_SIZE_OPTIONS];
 
   // Modales CRUD & Confirmation
   showAddModal = false;
@@ -126,18 +169,14 @@ export class UserListComponent implements OnInit, OnDestroy {
   showPassword = false;
   copied = false;
 
-  // Column Config Modal
-  showColumnConfig = false;
-  private columnsBackup: ColumnConfig[] = [];
-  columnFilter: 'all' | 'visible' = 'all';
-  showColumnFilterMenu = false;
-  draggedColumnIndex: number | null = null;
-  dragOverIndex: number | null = null;
 
   // Dropdowns
   showExportMenu = false;
   showFilterMenu = false;
   showFieldFilterMenu = false;
+
+  // Tri multi-niveaux (composant partagé) — ouverture programmatique depuis le menu contextuel.
+  @ViewChild(MultiLevelSortComponent) private sortCmp?: MultiLevelSortComponent;
 
   // Menus contextuels
   showColumnContextMenu = false;
@@ -170,6 +209,8 @@ export class UserListComponent implements OnInit, OnDestroy {
     private profileService: ProfileService,
     private fb: FormBuilder,
     private cdr: ChangeDetectorRef,
+    private sortConfigService: TableSortConfigService,
+    private columnsConfigService: TableColumnsConfigService,
   ) {
     this.currentUserId = this.authService.getUserId();
     this.addForm = this.fb.group({
@@ -192,6 +233,8 @@ export class UserListComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.loadUsers();
+    this.loadSortConfig();
+    this.loadColumnsConfig();
     this.loadOrganizations();
     this.loadPreferences();
     this.applyOrgAdminDefaults();
@@ -256,9 +299,8 @@ export class UserListComponent implements OnInit, OnDestroy {
     if (saved) {
       try {
         const prefs = JSON.parse(saved);
-        if (prefs.columns) {
-          this.restoreColumnConfig(prefs.columns);
-        }
+        // Les colonnes (visibilité + ordre) sont désormais persistées par utilisateur côté serveur
+        // (TableColumnsConfigService), plus en localStorage. Cf. loadColumnsConfig().
         if (prefs.sortColumn) this.sortColumn = prefs.sortColumn;
         if (prefs.sortDirection) this.sortDirection = prefs.sortDirection;
         if (prefs.pageSize) this.pageSize = prefs.pageSize;
@@ -271,7 +313,6 @@ export class UserListComponent implements OnInit, OnDestroy {
 
   savePreferences(): void {
     const prefs = {
-      columns: this.columns.map(c => ({ field: c.field, visible: c.visible })),
       sortColumn: this.sortColumn,
       sortDirection: this.sortDirection,
       pageSize: this.pageSize,
@@ -280,41 +321,33 @@ export class UserListComponent implements OnInit, OnDestroy {
     localStorage.setItem('sdgps_user_table_prefs', JSON.stringify(prefs));
   }
 
-  private restoreColumnConfig(savedConfig: any[]): void {
-    const restored: ColumnConfig[] = [];
-    savedConfig.forEach(savedCol => {
-      const existing = this.columns.find(c => c.field === savedCol.field);
-      if (existing) {
-        existing.visible = savedCol.visible;
-        restored.push(existing);
-      }
-    });
-    // Ajouter les colonnes non sauvegardées à la fin
-    this.columns.forEach(col => {
-      if (!restored.find(r => r.field === col.field)) {
-        restored.push(col);
-      }
-    });
-    // Réordonner selon savedConfig
-    const ordered: ColumnConfig[] = [];
-    savedConfig.forEach(savedCol => {
-      const found = this.columns.find(c => c.field === savedCol.field);
-      if (found) ordered.push(found);
-    });
-    this.columns.forEach(col => {
-      if (!ordered.find(o => o.field === col.field)) ordered.push(col);
-    });
-    if (ordered.length === this.columns.length) {
-      this.columns = ordered;
-    }
-  }
-
   // ============================================
   // Filtrage, tri, pagination
   // ============================================
 
+  // --- FILTRES DE COLONNE (façon Excel, composant partagé `<app-column-filter>`) ---
+  /** Valeurs retenues par colonne ; une colonne absente n'est pas filtrée. */
+  columnFilters: ColumnFilterMap = {};
+  /** Texte affiché d'une cellule : le filtre porte sur la valeur VUE (référence stable). */
+  cellText = (row: any, field: string): string => this.getCellValue(row, field);
+
+  onColumnFilterChange(field: string, values: string[] | null): void {
+    this.columnFilters = withColumnFilter(this.columnFilters, field, values);
+    this.applyFiltersAndSort();
+  }
+
+  /** Masque une colonne (depuis le menu de filtre) — auto-save comme la modale des colonnes. */
+  hideColumnField(field: string): void {
+    this.onColumnsChange(this.columns.map(c => (c.field === field ? { ...c, visible: false } : { ...c })));
+  }
+
   applyFiltersAndSort(): void {
     let result = [...this.users];
+
+    // Filtres de colonne (ET entre colonnes, OU entre valeurs d'une même colonne).
+    if (activeFilterCount(this.columnFilters)) {
+      result = result.filter(u => rowMatchesColumnFilters(u, this.columnFilters, this.cellText));
+    }
 
     if (this.displayMode === 'selected') {
       result = result.filter(u => this.selectedIds.has(String(u.id)));
@@ -353,22 +386,27 @@ export class UserListComponent implements OnInit, OnDestroy {
       });
     }
 
-    result.sort((a, b) => {
-      let valA: any, valB: any;
-      switch (this.sortColumn) {
-        case 'email': valA = a.email; valB = b.email; break;
-        case 'first_name': valA = a.first_name; valB = b.first_name; break;
-        case 'role': valA = a.role_display; valB = b.role_display; break;
-        case 'organization_name': valA = a.organization_name || ''; valB = b.organization_name || ''; break;
-        case 'is_active': valA = a.is_active ? 1 : 0; valB = b.is_active ? 1 : 0; break;
-        case 'last_connection_at': valA = a.last_connection_at || ''; valB = b.last_connection_at || ''; break;
-        case 'date_joined': valA = a.date_joined; valB = b.date_joined; break;
-        default: valA = a.date_joined; valB = b.date_joined; break;
-      }
-      if (valA < valB) return this.sortDirection === 'asc' ? -1 : 1;
-      if (valA > valB) return this.sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
+    // Tri : le tri MULTI-NIVEAUX prime ; à défaut, repli sur le tri mono-colonne (clic en-tête).
+    if (this.sortLevels.length) {
+      result.sort((a, b) => compareByLevels(a, b, this.sortLevels));
+    } else {
+      result.sort((a, b) => {
+        let valA: any, valB: any;
+        switch (this.sortColumn) {
+          case 'email': valA = a.email; valB = b.email; break;
+          case 'first_name': valA = a.first_name; valB = b.first_name; break;
+          case 'role': valA = a.role_display; valB = b.role_display; break;
+          case 'organization_name': valA = a.organization_name || ''; valB = b.organization_name || ''; break;
+          case 'is_active': valA = a.is_active ? 1 : 0; valB = b.is_active ? 1 : 0; break;
+          case 'last_connection_at': valA = a.last_connection_at || ''; valB = b.last_connection_at || ''; break;
+          case 'date_joined': valA = a.date_joined; valB = b.date_joined; break;
+          default: valA = a.date_joined; valB = b.date_joined; break;
+        }
+        if (valA < valB) return this.sortDirection === 'asc' ? -1 : 1;
+        if (valA > valB) return this.sortDirection === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
 
     this.filteredUsers = result;
     this.currentPage = 1;
@@ -462,6 +500,59 @@ export class UserListComponent implements OnInit, OnDestroy {
   getSortIcon(column: string): string {
     if (this.sortColumn !== column) return 'fas fa-sort';
     return this.sortDirection === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down';
+  }
+
+  // ============================================
+  // Tri MULTI-NIVEAUX (config opérateur, héritée du super admin) — parité liste organisations
+  // ============================================
+  /** Rang (1..n) du champ dans le tri multi-niveaux, ou 0. */
+  sortLevelOf(field: string): number { return sortLevelOf(this.sortLevels, field); }
+  /** Sens de tri du champ ('asc'/'desc'), ou '' s'il n'est pas trié. */
+  sortDirOf(field: string): '' | 'asc' | 'desc' { return sortDirOf(this.sortLevels, field); }
+
+  /** Charge le tri multi-niveaux de l'opérateur (hérité du super admin). */
+  private loadSortConfig(): void {
+    this.sortConfigService.get(this.SORT_KEY).subscribe(levels => {
+      this.sortLevels = levels;
+      this.applyFiltersAndSort();
+    });
+  }
+
+  /** Réception d'une modification depuis la modale : applique + enregistrement auto (anti-rebond). */
+  onSortLevelsChange(levels: OrgSortLevel[]): void {
+    this.sortLevels = levels;
+    this.currentPage = 1;
+    this.applyFiltersAndSort();
+    clearTimeout(this.sortSaveTimer);
+    this.sortSaveTimer = setTimeout(() => this.saveSortConfig(), 500);
+  }
+  private saveSortConfig(): void {
+    this.savingSort = true;
+    this.sortConfigService.save(this.SORT_KEY, this.sortLevels).subscribe({
+      next: (saved) => {
+        this.sortLevels = saved; this.savingSort = false; this.savedSortFlash = true;
+        this.applyFiltersAndSort();
+        setTimeout(() => { this.savedSortFlash = false; }, 2500);
+      },
+      error: (err) => { this.savingSort = false; this.toastService.error('Erreur', err?.error?.detail || 'Enregistrement du tri impossible'); },
+    });
+  }
+
+  /** Réinitialise le tri avec la configuration SOURCE (compte administrateur). */
+  onResetSort(): void {
+    if (this.resettingSort) return;
+    this.resettingSort = true;
+    this.sortConfigService.resetToSource(this.SORT_KEY).subscribe({
+      next: (levels) => {
+        this.sortLevels = levels; this.resettingSort = false;
+        this.currentPage = 1; this.applyFiltersAndSort();
+        this.toastService.success('Succès', 'Tri réinitialisé avec la configuration source');
+      },
+      error: (e) => {
+        this.resettingSort = false;
+        this.toastService.error('Erreur', e?.error?.detail || 'Réinitialisation impossible');
+      },
+    });
   }
 
   // ============================================
@@ -689,15 +780,7 @@ export class UserListComponent implements OnInit, OnDestroy {
   }
 
   formatDate(value: any): string {
-    if (!value) return '—';
-    const date = new Date(value);
-    return date.toLocaleDateString('fr-FR', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return formatDateTime(value);
   }
 
   // ============================================
@@ -708,148 +791,42 @@ export class UserListComponent implements OnInit, OnDestroy {
     return this.columns.filter(c => c.visible);
   }
 
-  getFilteredColumns(): ColumnConfig[] {
-    if (this.columnFilter === 'visible') {
-      return this.columns.filter(c => c.visible);
-    }
-    return this.columns;
-  }
+  /** Ouvre la modale d'organisation des colonnes (composant partagé). */
+  openColumnConfig(): void { this.columnCfg?.open(); }
 
-  getColumnStats(): { total: number; visible: number; hidden: number } {
-    const total = this.columns.length;
-    const visible = this.columns.filter(c => c.visible).length;
-    return { total, visible, hidden: total - visible };
+  private loadColumnsConfig(): void {
+    this.columnsConfigService.get(this.COLUMNS_KEY).subscribe(prefs => {
+      this.columns = applyColumnsConfig(this.columns, prefs);
+    });
   }
-
-  toggleColumnVisibility(field: string): void {
-    const col = this.columns.find(c => c.field === field);
-    if (col) {
-      col.visible = !col.visible;
-    }
+  /** Réception d'une modif de colonnes (visibilité/ordre) : applique + enregistrement auto (anti-rebond). */
+  onColumnsChange(cols: ManagedColumn[]): void {
+    this.columns = cols as ColumnConfig[];
+    clearTimeout(this.columnsSaveTimer);
+    this.columnsSaveTimer = setTimeout(() => this.saveColumnsConfig(), 500);
   }
-
-  toggleColumnConfig(): void {
-    if (!this.showColumnConfig) {
-      this.saveColumnsBackup();
-    } else {
-      this.restoreColumnsBackup();
-    }
-    this.showColumnConfig = !this.showColumnConfig;
+  private saveColumnsConfig(): void {
+    this.savingColumns = true;
+    this.columnsConfigService.save(this.COLUMNS_KEY, toColumnPrefs(this.columns)).subscribe({
+      next: () => {
+        this.savingColumns = false; this.savedColumnsFlash = true;
+        setTimeout(() => { this.savedColumnsFlash = false; }, 2500);
+      },
+      error: (err) => { this.savingColumns = false; this.toastService.error('Erreur', err?.error?.detail || 'Enregistrement des colonnes impossible'); },
+    });
   }
-
-  openColumnConfig(): void {
-    this.saveColumnsBackup();
-    this.showColumnConfig = true;
-  }
-
-  confirmColumnConfig(): void {
-    this.showColumnConfig = false;
-    this.columnsBackup = [];
-    this.savePreferences();
-  }
-
-  cancelColumnConfig(): void {
-    this.restoreColumnsBackup();
-    this.showColumnConfig = false;
-  }
-
-  private saveColumnsBackup(): void {
-    this.columnsBackup = this.columns.map(c => ({ ...c }));
-  }
-
-  private restoreColumnsBackup(): void {
-    if (this.columnsBackup.length > 0) {
-      this.columns = this.columnsBackup.map(c => ({ ...c }));
-      this.columnsBackup = [];
-    }
-  }
-
-  selectAllColumns(): void {
-    this.columns.forEach(c => c.visible = true);
-  }
-
-  deselectAllColumns(): void {
-    this.columns.forEach(c => c.visible = false);
-  }
-
-  invertColumnSelection(): void {
-    this.columns.forEach(c => c.visible = !c.visible);
-  }
-
-  toggleColumnFilterMenu(event: Event): void {
-    event.stopPropagation();
-    this.showColumnFilterMenu = !this.showColumnFilterMenu;
-  }
-
-  applyColumnFilter(filter: 'all' | 'visible'): void {
-    this.columnFilter = filter;
-    this.showColumnFilterMenu = false;
-  }
-
-  getColumnFilterLabel(): string {
-    return this.columnFilter === 'all' ? 'Toutes les colonnes' : 'Colonnes visibles';
-  }
-
-  // Drag & Drop
-  onDragStart(index: number): void {
-    this.draggedColumnIndex = index;
-  }
-
-  onDragOver(event: DragEvent, index: number): void {
-    event.preventDefault();
-    this.dragOverIndex = index;
-  }
-
-  onDragLeave(): void {
-    this.dragOverIndex = null;
-  }
-
-  onDrop(index: number): void {
-    if (this.draggedColumnIndex === null || this.draggedColumnIndex === index) {
-      this.draggedColumnIndex = null;
-      this.dragOverIndex = null;
-      return;
-    }
-    const dragged = this.columns[this.draggedColumnIndex];
-    this.columns.splice(this.draggedColumnIndex, 1);
-    this.columns.splice(index, 0, dragged);
-    this.draggedColumnIndex = null;
-    this.dragOverIndex = null;
-  }
-
-  onDragEnd(): void {
-    this.draggedColumnIndex = null;
-    this.dragOverIndex = null;
-  }
-
-  moveColumnUp(index: number): void {
-    if (index > 0) {
-      const temp = this.columns[index];
-      this.columns[index] = this.columns[index - 1];
-      this.columns[index - 1] = temp;
-    }
-  }
-
-  moveColumnDown(index: number): void {
-    if (index < this.columns.length - 1) {
-      const temp = this.columns[index];
-      this.columns[index] = this.columns[index + 1];
-      this.columns[index + 1] = temp;
-    }
-  }
-
-  moveColumnToTop(index: number): void {
-    if (index > 0) {
-      const col = this.columns.splice(index, 1)[0];
-      this.columns.unshift(col);
-    }
-  }
-
-  moveColumnToBottom(index: number): void {
-    if (index < this.columns.length - 1) {
-      const col = this.columns.splice(index, 1)[0];
-      this.columns.push(col);
-    }
+  /** Réinitialise les colonnes avec la configuration SOURCE (compte administrateur). */
+  onResetColumns(): void {
+    if (this.resettingColumns) return;
+    this.resettingColumns = true;
+    this.columnsConfigService.resetToSource(this.COLUMNS_KEY).subscribe({
+      next: (prefs) => {
+        this.columns = applyColumnsConfig(this.columns, prefs);
+        this.resettingColumns = false;
+        this.toastService.success('Succès', 'Colonnes réinitialisées avec la configuration source');
+      },
+      error: (e) => { this.resettingColumns = false; this.toastService.error('Erreur', e?.error?.detail || 'Réinitialisation impossible'); },
+    });
   }
 
   onColumnHeaderRightClick(event: MouseEvent, col: ColumnConfig): void {
@@ -860,22 +837,23 @@ export class UserListComponent implements OnInit, OnDestroy {
     this.showColumnContextMenu = true;
   }
 
-  hideColumn(col: ColumnConfig): void {
-    col.visible = false;
-    this.showColumnContextMenu = false;
-  }
-
   hideColumnFromContext(): void {
-    if (this.contextMenuColumn) {
-      this.contextMenuColumn.visible = false;
-    }
+    const field = this.contextMenuColumn?.field;
     this.showColumnContextMenu = false;
     this.contextMenuColumn = null;
+    if (!field) return;
+    this.onColumnsChange(this.columns.map(c => (c.field === field ? { ...c, visible: false } : { ...c })));
   }
 
   openColumnConfigFromContext(): void {
     this.showColumnContextMenu = false;
     this.openColumnConfig();
+  }
+
+  /** Ouvrir la modale de tri multi-niveaux depuis le menu contextuel (clic droit en-tête). */
+  openSortFromContext(): void {
+    this.showColumnContextMenu = false;
+    this.sortCmp?.open();
   }
 
   getTypeLabel(type?: string): string {
@@ -1746,14 +1724,12 @@ export class UserListComponent implements OnInit, OnDestroy {
       this.showExportMenu = false;
       this.showFilterMenu = false;
       this.showFieldFilterMenu = false;
-      this.showColumnFilterMenu = false;
       this.closeAllContextMenus();
     }
   }
 
   @HostListener('document:keydown.escape')
   onEscape(): void {
-    if (this.showColumnConfig) { this.cancelColumnConfig(); return; }
     if (this.showAddModal) { this.closeAddModal(); return; }
     if (this.showEditModal) { this.closeEditModal(); return; }
     if (this.showDetailModal) { this.closeDetailModal(); return; }

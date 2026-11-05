@@ -32,8 +32,11 @@ tout (`backend/settings.py`) :
 > environnements (dev/staging/preprod/production) n'utilisent que les données d'initialisation
 > (`initial_data.json`).
 
-Chaque environnement a un fichier `.env.<env>` (non versionné) ; les modèles versionnés sont
-`.env.development.example`, `.env.staging.example`, `.env.preprod.example`, `.env.production.example`.
+Chaque environnement a un fichier `.env.<env>` (non versionné, ex. `.env.development`,
+`.env.production`). Aucun modèle `.example` n'est versionné : localement on renseigne
+directement `.env.<env>` ; sur les serveurs (**staging**, **preprod**, **production**), la
+config est posée en variables de service (Railway). Les clés attendues sont lues par
+`settings.py` (`config(...)`) et par `docker-compose.yml`.
 
 ## Bases de données séparées
 

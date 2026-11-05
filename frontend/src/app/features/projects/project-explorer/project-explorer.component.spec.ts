@@ -6,8 +6,10 @@ describe('ProjectExplorerComponent (logique)', () => {
   let cmp: ProjectExplorerComponent;
 
   beforeEach(() => {
+    const sortStub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
+    const columnsStub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
     cmp = new ProjectExplorerComponent(
-      {} as any, {} as any, {} as any, {} as any, {} as any, new FormBuilder(), {} as any,
+      {} as any, {} as any, {} as any, {} as any, {} as any, new FormBuilder(), {} as any, sortStub, columnsStub,
     );
   });
 
@@ -49,6 +51,33 @@ describe('ProjectExplorerComponent (logique)', () => {
       expect(cmp.proprieteBreadcrumbLabel({ id_requisition: 'R-9' })).toBe('R-9');
       expect(cmp.proprieteBreadcrumbLabel({ nom_propriete: 'Villa' })).toBe('Villa');
       expect(cmp.proprieteBreadcrumbLabel({})).toBe('');
+    });
+  });
+
+  describe('proprieteIdentifier (colonne « ID propriété »)', () => {
+    it('utilise `id_propriete` du backend en priorité', () => {
+      expect(cmp.proprieteIdentifier({ id_propriete: 'TF-7', id_requisition: 'R-9' })).toBe('TF-7');
+    });
+    it('repli : titre foncier, sinon réquisition, sinon vide', () => {
+      expect(cmp.proprieteIdentifier({ id_titre: 'TF-1', id_requisition: 'R-9' })).toBe('TF-1');
+      expect(cmp.proprieteIdentifier({ id_requisition: 'R-9' })).toBe('R-9');
+      expect(cmp.proprieteIdentifier({ nom_propriete: 'Villa' })).toBe('');
+      expect(cmp.proprieteIdentifier(null)).toBe('');
+    });
+    it('getCellValue rend l’identifiant, avec « — » si aucun', () => {
+      expect(cmp.getCellValue({ id_titre: 'TF-1' }, 'id_propriete')).toBe('TF-1');
+      expect(cmp.getCellValue({}, 'id_propriete')).toBe('—');
+    });
+  });
+
+  describe('colonnes de comptage', () => {
+    it('isCountField reconnaît les colonnes `nbr_total_*`', () => {
+      expect(cmp.isCountField('nbr_total_pieces')).toBeTrue();
+      expect(cmp.isCountField('nom_propriete')).toBeFalse();
+    });
+    it('getCellValue renvoie 0 (et non « — ») pour un compteur absent', () => {
+      expect(cmp.getCellValue({ nbr_total_pieces: 4 }, 'nbr_total_pieces')).toBe('4');
+      expect(cmp.getCellValue({}, 'nbr_total_pieces')).toBe('0');
     });
   });
 
@@ -180,24 +209,12 @@ describe('ProjectExplorerComponent (logique)', () => {
         { field: 'b', label: 'B', visible: false },
       ];
     });
-    it('getVisibleColumns / getColumnStats', () => {
+    it('getVisibleColumns ne renvoie que les colonnes visibles', () => {
       expect(cmp.getVisibleColumns().length).toBe(1);
-      const s = cmp.getColumnStats();
-      expect(s).toEqual({ total: 2, visible: 1, hidden: 1 });
+      expect(cmp.getVisibleColumns()[0].field).toBe('a');
     });
-    it('toggleColumnVisibility', () => {
-      cmp.toggleColumnVisibility('b');
-      expect(cmp.columns[1].visible).toBeTrue();
-    });
-    it('moveColumnToTop', () => {
-      cmp.moveColumnToTop(1);
-      expect(cmp.columns[0].field).toBe('b');
-    });
-    it('getColumnFilterLabel', () => {
-      expect(cmp.getColumnFilterLabel()).toBe('Toutes les colonnes');
-      cmp.applyColumnFilter('visible');
-      expect(cmp.getColumnFilterLabel()).toBe('Colonnes visibles');
-    });
+    // L'édition (visibilité/ordre/filtre) est dans <app-column-config> (testé séparément) ;
+    // branchements du parent couverts dans « config colonnes par niveau ».
   });
 });
 
@@ -211,8 +228,10 @@ describe('ProjectExplorerComponent (suppression définitive par niveau)', () => 
       'permanentDeleteSsdgps', 'bulkPermanentDeleteSsdgps',
     ]);
     toast = jasmine.createSpyObj('ToastService', ['success', 'error', 'warning']);
+    const sortStub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
+    const columnsStub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
     cmp = new ProjectExplorerComponent(
-      service, {} as any, {} as any, {} as any, toast, new FormBuilder(), {} as any,
+      service, {} as any, {} as any, {} as any, toast, new FormBuilder(), {} as any, sortStub, columnsStub,
     );
     spyOn(cmp, 'loadLevel');
     cmp.level = 'ssdgps';
@@ -234,5 +253,159 @@ describe('ProjectExplorerComponent (suppression définitive par niveau)', () => 
     cmp.confirmPermanentDelete();
     expect(service.bulkPermanentDeleteSsdgps).toHaveBeenCalled();
     expect(toast.warning).toHaveBeenCalled();
+  });
+});
+
+describe('ProjectExplorerComponent (tri multi-niveaux par niveau)', () => {
+  let cmp: ProjectExplorerComponent;
+  let toast: any;
+  let sortSvc: any;
+
+  beforeEach(() => {
+    toast = jasmine.createSpyObj('ToastService', ['success', 'error']);
+    sortSvc = {
+      get: jasmine.createSpy('get').and.returnValue(of([])),
+      save: jasmine.createSpy('save').and.returnValue(of([])),
+      resetToSource: jasmine.createSpy('resetToSource').and.returnValue(of([])),
+    };
+    const columnsStub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
+    cmp = new ProjectExplorerComponent(
+      {} as any, {} as any, {} as any, {} as any, toast, new FormBuilder(), {} as any, sortSvc, columnsStub,
+    );
+  });
+  afterEach(() => localStorage.clear());
+
+  it('sortKey / sortableFields dépendent du niveau courant', () => {
+    cmp.level = 'propriete';
+    expect(cmp.sortKey).toBe('project_proprietes');
+    expect(cmp.sortableFields.some(f => f.field === 'nom_propriete')).toBeTrue();
+    cmp.level = 'ssdgps';
+    expect(cmp.sortKey).toBe('project_ssdgps');
+    expect(cmp.sortableFields.some(f => f.field === 'numero_ssdgps')).toBeTrue();
+  });
+
+  it('« ID propriété » et « Pièces » font partie des colonnes triables du niveau', () => {
+    cmp.level = 'propriete';
+    expect(cmp.sortableFields.some(f => f.field === 'id_propriete')).toBeTrue();
+    expect(cmp.sortableFields.some(f => f.field === 'nbr_total_pieces')).toBeTrue();
+    cmp.level = 'affaire';
+    expect(cmp.sortableFields.some(f => f.field === 'nbr_total_pieces')).toBeTrue();
+  });
+
+  it('filteredItems applique le tri multi-niveaux du niveau courant', () => {
+    cmp.level = 'propriete';
+    cmp.activeItems = [
+      { id: '1', nom_propriete: 'Alpha', id_titre: 'Z' },
+      { id: '2', nom_propriete: 'Alpha', id_titre: 'A' },
+      { id: '3', nom_propriete: 'Beta', id_titre: 'M' },
+    ] as any;
+    (cmp as any).manualOrder = null;
+    cmp.sortLevelsByLevel.propriete = [{ field: 'nom_propriete', dir: 'asc' }, { field: 'id_titre', dir: 'asc' }];
+    expect(cmp.filteredItems.map(i => i.id)).toEqual(['2', '1', '3']);
+  });
+
+  it('onSortLevelsChange met à jour le niveau courant uniquement', () => {
+    cmp.level = 'affaire';
+    cmp.onSortLevelsChange([{ field: 'numero_sd_affaire', dir: 'desc' }]);
+    expect(cmp.sortLevelsByLevel.affaire).toEqual([{ field: 'numero_sd_affaire', dir: 'desc' }]);
+    expect(cmp.sortLevelsByLevel.propriete).toEqual([]);
+  });
+
+  it('onResetSort appelle le service avec la clé du niveau courant', () => {
+    cmp.level = 'ssdgps';
+    sortSvc.resetToSource.and.returnValue(of([{ field: 'numero_ssdgps', dir: 'asc' }]));
+    cmp.onResetSort();
+    expect(sortSvc.resetToSource).toHaveBeenCalledWith('project_ssdgps');
+    expect(cmp.sortLevelsByLevel.ssdgps).toEqual([{ field: 'numero_ssdgps', dir: 'asc' }]);
+  });
+
+  it('openSortFromContext ferme le menu contextuel et ouvre la modale de tri', () => {
+    const open = jasmine.createSpy('open');
+    (cmp as any).sortCmp = { open };
+    cmp.showColumnContextMenu = true;
+    cmp.openSortFromContext();
+    expect(cmp.showColumnContextMenu).toBeFalse();
+    expect(open).toHaveBeenCalled();
+  });
+});
+
+describe('ProjectExplorerComponent (config colonnes par niveau)', () => {
+  let cmp: ProjectExplorerComponent;
+  let toast: any;
+  let columnsSvc: any;
+
+  beforeEach(() => {
+    toast = jasmine.createSpyObj('ToastService', ['success', 'error']);
+    columnsSvc = {
+      get: jasmine.createSpy('get').and.returnValue(of([])),
+      save: jasmine.createSpy('save').and.returnValue(of([])),
+      resetToSource: jasmine.createSpy('resetToSource').and.returnValue(of([])),
+    };
+    const sortStub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
+    cmp = new ProjectExplorerComponent(
+      {} as any, {} as any, {} as any, {} as any, toast, new FormBuilder(), {} as any, sortStub, columnsSvc,
+    );
+  });
+  afterEach(() => localStorage.clear());
+
+  it('onColumnsChange enregistre sous la clé du niveau courant', (done) => {
+    cmp.level = 'ssdgps'; // sortKey = project_ssdgps
+    const cols = [{ field: 'numero_ssdgps', label: 'Numéro', visible: false }] as any;
+    cmp.onColumnsChange(cols);
+    expect(cmp.columns).toBe(cols);
+    setTimeout(() => {
+      expect(columnsSvc.save).toHaveBeenCalledWith('project_ssdgps', [{ field: 'numero_ssdgps', visible: false }]);
+      done();
+    }, 600);
+  });
+
+  it('onResetColumns appelle le service avec la clé du niveau courant', () => {
+    cmp.level = 'affaire'; // sortKey = project_affaires
+    cmp.columns = [{ field: 'numero_sd_affaire', label: 'N° SD', visible: true } as any];
+    columnsSvc.resetToSource.and.returnValue(of([{ field: 'numero_sd_affaire', visible: false }]));
+    cmp.onResetColumns();
+    expect(columnsSvc.resetToSource).toHaveBeenCalledWith('project_affaires');
+    expect(cmp.columns[0].visible).toBeFalse();
+    expect(toast.success).toHaveBeenCalled();
+  });
+
+  it('openColumnConfigFromContext ferme le menu contextuel et ouvre la modale de colonnes', () => {
+    const open = jasmine.createSpy('open');
+    (cmp as any).columnCfg = { open };
+    cmp.showColumnContextMenu = true;
+    cmp.openColumnConfigFromContext();
+    expect(cmp.showColumnContextMenu).toBeFalse();
+    expect(open).toHaveBeenCalled();
+  });
+});
+
+/**
+ * Format des dates de l'explorateur : `date_bornage` (affaires) et `date_session` (sessions)
+ * s'affichent SANS heure ; les colonnes d'audit gardent `jj/mm/aaaa hh:mm:ss`.
+ */
+describe('ProjectExplorerComponent (format des dates)', () => {
+  let cmp: any;
+  const d = new Date(2026, 6, 21, 14, 5, 9);
+
+  beforeEach(() => {
+    cmp = new (ProjectExplorerComponent as any)(
+      {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
+    );
+  });
+
+  it('date_bornage et date_session : jj/mm/aaaa sans heure', () => {
+    expect(cmp.getCellValue({ date_bornage: d }, 'date_bornage')).toBe('21/07/2026');
+    expect(cmp.getCellValue({ date_session: d }, 'date_session')).toBe('21/07/2026');
+  });
+
+  it('les colonnes d’audit conservent l’heure avec les secondes', () => {
+    expect(cmp.getCellValue({ created_at: d }, 'created_at')).toBe('21/07/2026 14:05:09');
+    expect(cmp.getCellValue({ updated_at: d }, 'updated_at')).toBe('21/07/2026 14:05:09');
+    expect(cmp.getCellValue({ deleted_at: d }, 'deleted_at')).toBe('21/07/2026 14:05:09');
+  });
+
+  it('formatDate sans champ garde le format complet (repli)', () => {
+    expect(cmp.formatDate(d)).toBe('21/07/2026 14:05:09');
+    expect(cmp.formatDate(d, 'date_bornage')).toBe('21/07/2026');
   });
 });

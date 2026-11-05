@@ -50,3 +50,19 @@ if getattr(settings, 'FRONTEND_DIST_DIR', None) and settings.FRONTEND_DIST_DIR.e
         return static_serve(request, 'index.html', document_root=settings.FRONTEND_DIST_DIR)
 
     urlpatterns += [re_path(r'^(?!api/|admin/|media/|static/).*$', _spa_index)]
+else:
+    # Backend LOCAL servi seul (le frontend tourne sur un serveur séparé, ex. ng serve).
+    # La racine `/` n'a alors aucune page → on expose un mini health-check plutôt qu'un 404
+    # déroutant. N'existe PAS quand le SPA est embarqué (prod Railway) : la racine y sert l'app.
+    from django.http import JsonResponse
+
+    def api_health(request):
+        return JsonResponse({
+            'service': 'SDGPS API',
+            'status': 'ok',
+            'message': 'API SDGPS OK',
+            'environment': settings.ENVIRONMENT,
+            'api': '/api/',
+        })
+
+    urlpatterns += [path('', api_health, name='api-health')]

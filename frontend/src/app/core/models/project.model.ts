@@ -33,6 +33,8 @@ export interface Propriete {
   nom_propriete: string;
   id_requisition?: string;
   id_titre?: string;
+  /** Identifiant métier (lecture seule) : titre foncier s'il existe, sinon réquisition. */
+  id_propriete?: string;
   projet: string;
   organisme_niveau1?: string;        // UUID organisme de premier niveau (requis à l'écriture)
   organisme_niveau2?: string;        // UUID organisme de deuxième niveau (requis à l'écriture)
@@ -41,6 +43,7 @@ export interface Propriete {
   nbr_total_affaires?: number;
   nbr_total_ssdgps?: number;
   nbr_total_sessions?: number;
+  nbr_total_pieces?: number;
   created_at?: string;
   updated_at?: string;
   is_deleted?: boolean;
@@ -67,6 +70,7 @@ export interface Affaire {
   propriete: string;
   nbr_total_ssdgps?: number;
   nbr_total_sessions?: number;
+  nbr_total_pieces?: number;
   created_at?: string;
   updated_at?: string;
   is_deleted?: boolean;

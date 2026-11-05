@@ -8,27 +8,17 @@
     </div>
 
     <div class="modal-body">
-      <!-- Barre d'enregistrement (tout en haut) : bascule d'enregistrement automatique +
-           indicateur d'état. Affichée pour TOUTE pièce en édition : l'autosave couvre les
-           champs du formulaire (statut, orientation, versions, commentaire) — présents sur
-           tous les types — et, pour les pièces tabulaires, les données du tableau. Activé par défaut. -->
-      <div class="autosave-bar" *ngIf="mode==='edit'">
-        <label class="autosave-switch" title="Enregistrer automatiquement chaque modification des données et des champs (préférence mémorisée sur ce navigateur)">
-          <input type="checkbox" [checked]="autoSaveData" (change)="toggleAutoSaveData()">
-          <span class="switch-track"><span class="switch-thumb"></span></span>
-          <span class="switch-label"><i class="fas fa-bolt"></i> Enregistrement automatique</span>
-        </label>
-        <span class="spacer"></span>
-        <div class="autosave-status" *ngIf="autoSaveData">
-          <span class="saving" *ngIf="autoSaving"><i class="fas fa-spinner fa-spin"></i> Enregistrement…</span>
-          <span class="saved" *ngIf="!autoSaving && autoSavedFlash"><i class="fas fa-check-circle"></i> Modifications enregistrées</span>
-          <span class="idle" *ngIf="!autoSaving && !autoSavedFlash"><i class="fas fa-bolt"></i> Les modifications sont enregistrées automatiquement</span>
-        </div>
-        <span class="autosave-off-hint" *ngIf="!autoSaveData"><i class="fas fa-circle-info"></i> Enregistrement manuel</span>
-      </div>
+      <!-- Enregistrement automatique : toujours actif, sans bascule. En page dédiée
+           (`embedded`), la mention est remontée dans l'en-tête de page via
+           `autoSaveStateChange` — elle n'est rendue ici que pour la modale. -->
+      <p class="autosave-note" *ngIf="mode==='edit' && !embedded" aria-live="polite">
+        <span class="saving" *ngIf="autoSaving"><i class="fas fa-spinner fa-spin"></i> Enregistrement…</span>
+        <span class="saved" *ngIf="!autoSaving && autoSavedFlash"><i class="fas fa-circle-check"></i> Modifications enregistrées</span>
+        <span class="idle" *ngIf="!autoSaving && !autoSavedFlash"><i class="fas fa-bolt"></i> Les modifications sont enregistrées automatiquement</span>
+      </p>
 
-      <p class="piece-meta">
-        <span class="meta-item"><i class="fas fa-hashtag"></i> Position {{ piece.ordre + 1 }} du rapport</span>
+      <!-- En modale seulement : la page dédiée porte ces informations dans son en-tête. -->
+      <p class="piece-meta" *ngIf="!embedded">
         <span class="meta-item" *ngIf="piece.numero"><i class="fas fa-list-ol"></i> N° {{ piece.numero }}</span>
         <span class="mode-badge" [class.edit]="mode==='edit'"><i class="fas" [ngClass]="mode==='view' ? 'fa-eye' : 'fa-edit'"></i> {{ mode==='view' ? 'Lecture seule' : 'Modification' }}</span>
       </p>
@@ -53,66 +43,132 @@
       <!-- Statut & commentaire -->
       <section class="detail-section" [class.collapsed]="isCollapsed('statut')">
         <button type="button" class="section-header" (click)="toggleSection('statut')">
-          <span class="section-title"><i class="fas fa-sliders"></i> Statut &amp; rapport PDF</span>
+          <span class="section-title"><i class="fas fa-sliders"></i> Statut &amp; rapport PDF
+            <!-- Pastille de synthèse : le statut reste lisible même section repliée. -->
+            <span class="status-pill" [ngClass]="statutBadgeClass(currentStatut)">
+              <i class="fas" [ngClass]="statutIcon(currentStatut)"></i> {{ statutLabel(currentStatut) }}
+            </span>
+          </span>
           <i class="fas fa-chevron-down section-chevron"></i>
         </button>
 
-        <div class="view-only" *ngIf="mode==='view'">
-          <span class="badge" [ngClass]="statutBadgeClass(piece.statut)">{{ statutLabel(piece.statut) }}</span>
-          <p class="readonly-text"><i class="fas fa-hashtag"></i> Position dans le rapport : <strong>{{ piece.ordre + 1 }}</strong></p>
-          <p class="readonly-text"><i class="fas fa-file-alt"></i> Orientation (rapport PDF) :
-            <strong>{{ orientationLabel(piece.orientation) }}</strong>
-            <span class="muted" *ngIf="(piece.orientation || 'auto') === 'auto' && piece.orientation_effective">
-              → {{ orientationLabel(piece.orientation_effective) }}</span>
-          </p>
-          <p class="readonly-text" *ngIf="supportsEcarts"><i class="fas fa-layer-group"></i> Version(s) au rapport :
-            <strong>{{ versionsRapportLabel(piece.versions_rapport) }}</strong>
-          </p>
-          <p class="readonly-text" *ngIf="piece.commentaire; else noComment">{{ piece.commentaire }}</p>
-          <ng-template #noComment><p class="readonly-text muted">Aucun commentaire.</p></ng-template>
+        <div class="status-view" *ngIf="mode==='view'">
+          <!-- Encart de synthèse : le statut est l'information dominante de la section. -->
+          <div class="status-hero" [ngClass]="statutBadgeClass(piece.statut)">
+            <span class="status-hero-icon"><i class="fas" [ngClass]="statutIcon(piece.statut)"></i></span>
+            <span class="status-hero-body">
+              <span class="status-hero-label">Statut de la pièce</span>
+              <strong class="status-hero-value">{{ statutLabel(piece.statut) }}</strong>
+            </span>
+          </div>
+
+          <!-- Options du rapport en grille de cellules libellé / valeur (lecture rapide). -->
+          <div class="info-grid">
+            <div class="info-cell">
+              <span class="info-label"><i class="fas fa-hashtag"></i> Position dans le rapport</span>
+              <span class="info-value">{{ piece.ordre + 1 }}</span>
+            </div>
+            <div class="info-cell">
+              <span class="info-label"><i class="fas fa-file-lines"></i> Orientation</span>
+              <span class="info-value">{{ orientationLabel(piece.orientation) }}
+                <span class="info-resolved" *ngIf="(piece.orientation || 'auto') === 'auto' && piece.orientation_effective">
+                  <i class="fas fa-arrow-right-long"></i> {{ orientationLabel(piece.orientation_effective) }}
+                </span>
+              </span>
+            </div>
+            <div class="info-cell" *ngIf="supportsEcarts">
+              <span class="info-label"><i class="fas fa-layer-group"></i> Version(s) au rapport</span>
+              <span class="info-value">{{ versionsRapportLabel(piece.versions_rapport) }}</span>
+            </div>
+          </div>
+
+          <!-- Deux natures de texte, visuellement distinctes : ce qui part au rapport
+               (accent) et ce qui reste interne à l'app (neutre + cadenas). -->
+          <div class="notes-view">
+            <figure class="note-block published">
+              <figcaption class="note-head">
+                <i class="fas fa-file-pdf"></i> Observations
+                <span class="note-tag">page de garde</span>
+              </figcaption>
+              <blockquote *ngIf="piece.commentaire; else noObservation">{{ piece.commentaire }}</blockquote>
+              <ng-template #noObservation><p class="note-empty">Aucune observation.</p></ng-template>
+            </figure>
+            <figure class="note-block private">
+              <figcaption class="note-head">
+                <i class="fas fa-lock"></i> Notes internes
+                <span class="note-tag">hors rapport</span>
+              </figcaption>
+              <blockquote *ngIf="piece.notes_internes; else noNote">{{ piece.notes_internes }}</blockquote>
+              <ng-template #noNote><p class="note-empty">Aucune note interne.</p></ng-template>
+            </figure>
+          </div>
         </div>
 
         <ng-container *ngIf="mode==='edit'" [formGroup]="metaForm">
           <div class="meta-fields">
-            <!-- Groupe : état de la pièce -->
-            <div class="field">
-              <label>Statut</label>
-              <select formControlName="statut">
-                <option *ngFor="let opt of statutOptions" [value]="opt.value">{{ opt.label }}</option>
-              </select>
-            </div>
-            <div class="field grow">
-              <label>Commentaire</label>
-              <textarea formControlName="commentaire" rows="2" placeholder="Note ou remarque libre…"></textarea>
+            <!-- Bloc 1 : état de la pièce (statut + commentaire) -->
+            <div class="edit-block">
+              <span class="edit-block-head"><i class="fas fa-flag"></i> État de la pièce</span>
+              <div class="field">
+                <label id="statut-label-{{ piece.id }}">Statut</label>
+                <!-- Sélecteur segmenté : 3 valeurs exclusives, couleur sémantique visible d'un
+                     coup d'œil et changement en un clic (vs. un menu déroulant à 2 interactions). -->
+                <div class="statut-segmented" role="radiogroup" [attr.aria-labelledby]="'statut-label-' + piece.id">
+                  <label class="statut-seg" *ngFor="let opt of statutOptions"
+                         [ngClass]="'seg-' + opt.value" [class.active]="metaForm.value.statut === opt.value">
+                    <input type="radio" formControlName="statut" [value]="opt.value">
+                    <i class="fas" [ngClass]="statutIcon(opt.value)"></i>
+                    <span>{{ opt.label }}</span>
+                  </label>
+                </div>
+              </div>
+              <div class="field">
+                <label>Observations</label>
+                <textarea formControlName="commentaire" rows="2" placeholder="Observation reprise au rapport…"></textarea>
+                <small class="field-hint published">
+                  <i class="fas fa-file-pdf"></i> Reprises dans la colonne « Observations » de la page de garde du SSDGPS.
+                </small>
+              </div>
+              <div class="field">
+                <label>Notes internes</label>
+                <textarea formControlName="notes_internes" rows="2" placeholder="Note de travail, rappel, point à vérifier…"></textarea>
+                <small class="field-hint private">
+                  <i class="fas fa-lock"></i> Usage interne à l'application — jamais reprises dans le rapport PDF.
+                </small>
+              </div>
             </div>
 
-            <!-- Groupe : options du rapport PDF (position, orientation, versions) -->
-            <div class="field-group-label"><i class="fas fa-file-pdf"></i> Rapport PDF</div>
-            <div class="field">
-              <label>Position dans le rapport</label>
-              <div class="ordre-field">
-                <input type="number" min="1" class="ordre-input" [(ngModel)]="ordreInput" [ngModelOptions]="{ standalone: true }" [disabled]="movingOrdre">
-                <button type="button" class="btn-move" [disabled]="movingOrdre || ordreInput===piece.ordre+1" (click)="moveToPosition()">
-                  <i class="fas" [ngClass]="movingOrdre ? 'fa-spinner fa-spin' : 'fa-arrows-alt-v'"></i> Déplacer
-                </button>
+            <!-- Bloc 2 : options du rapport PDF (position, orientation, versions) -->
+            <div class="edit-block">
+              <span class="edit-block-head"><i class="fas fa-file-pdf"></i> Rapport PDF</span>
+              <div class="field-grid">
+                <div class="field">
+                  <label>Position dans le rapport</label>
+                  <div class="ordre-field">
+                    <input type="number" min="1" class="ordre-input" [(ngModel)]="ordreInput" [ngModelOptions]="{ standalone: true }" [disabled]="movingOrdre">
+                    <button type="button" class="btn-move" [disabled]="movingOrdre || ordreInput===piece.ordre+1" (click)="moveToPosition()">
+                      <i class="fas" [ngClass]="movingOrdre ? 'fa-spinner fa-spin' : 'fa-arrows-alt-v'"></i> Déplacer
+                    </button>
+                  </div>
+                  <small class="field-hint muted">Position {{ piece.ordre + 1 }} actuellement.</small>
+                </div>
+                <div class="field">
+                  <label>Orientation</label>
+                  <select formControlName="orientation">
+                    <option *ngFor="let opt of orientationOptions" [value]="opt.value">{{ opt.label }}</option>
+                  </select>
+                  <small class="field-hint resolved" *ngIf="metaForm.value.orientation === 'auto' && piece.orientation_effective">
+                    <i class="fas fa-wand-magic-sparkles"></i> Auto → {{ orientationLabel(piece.orientation_effective) }}
+                  </small>
+                </div>
+                <div class="field" *ngIf="supportsEcarts">
+                  <label>Version(s) incluse(s)</label>
+                  <select formControlName="versions_rapport">
+                    <option *ngFor="let opt of versionsRapportOptions" [value]="opt.value">{{ opt.label }}</option>
+                  </select>
+                  <small class="field-hint muted">« Les deux » : chaque version sur sa/ses page(s), avec la mention en en-tête.</small>
+                </div>
               </div>
-              <small class="field-hint muted">Position {{ piece.ordre + 1 }} actuellement.</small>
-            </div>
-            <div class="field">
-              <label>Orientation</label>
-              <select formControlName="orientation">
-                <option *ngFor="let opt of orientationOptions" [value]="opt.value">{{ opt.label }}</option>
-              </select>
-              <small class="field-hint muted" *ngIf="metaForm.value.orientation === 'auto' && piece.orientation_effective">
-                Auto → {{ orientationLabel(piece.orientation_effective) }}
-              </small>
-            </div>
-            <div class="field" *ngIf="supportsEcarts">
-              <label>Version(s) incluse(s)</label>
-              <select formControlName="versions_rapport">
-                <option *ngFor="let opt of versionsRapportOptions" [value]="opt.value">{{ opt.label }}</option>
-              </select>
-              <small class="field-hint muted">« Les deux » : chaque version sur sa/ses page(s), avec la mention en en-tête.</small>
             </div>
           </div>
           <div class="pp-block-banner" *ngIf="isPhotoPoints && metaForm.value.statut === 'valide' && pointsWithoutPhoto.length">
@@ -120,11 +176,6 @@
             <span><strong>Validation impossible : {{ pointsWithoutPhoto.length }} point(s) sans photo</strong>
               ({{ pointsWithoutPhoto.slice(0, 10).join(', ') }}{{ pointsWithoutPhoto.length > 10 ? '…' : '' }}).
               Chaque point doit avoir au moins une photo.</span>
-          </div>
-          <div class="section-actions" *ngIf="!autoSaveData">
-            <button class="btn-confirm" [disabled]="savingMeta" (click)="saveMeta()">
-              <i class="fas" [ngClass]="savingMeta ? 'fa-spinner fa-spin' : 'fa-check'"></i> Enregistrer
-            </button>
           </div>
         </ng-container>
       </section>
@@ -238,11 +289,6 @@
               </div>
             </app-piece-data-table>
 
-            <div class="data-grid-toolbar" *ngIf="!autoSaveData">
-              <button class="btn-confirm" [disabled]="savingManual" (click)="saveManual()">
-                <i class="fas" [ngClass]="savingManual ? 'fa-spinner fa-spin' : 'fa-check'"></i> Enregistrer les données
-              </button>
-            </div>
 
             <!-- Ré-import CSV/Excel : formulaire de mapping, affiché sous le tableau -->
             <div class="reimport-panel" *ngIf="reimportOpen">

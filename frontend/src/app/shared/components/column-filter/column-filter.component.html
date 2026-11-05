@@ -1,0 +1,142 @@
+<!-- Bouton entonnoir, à côté du nom de la colonne. État accentué quand un filtre est actif. -->
+<button type="button" class="btn-col-filter" [class.is-filtered]="isFiltered"
+        (click)="toggle($event)"
+        [attr.aria-expanded]="open"
+        [title]="isFiltered ? 'Colonne filtrée — ' + label : 'Filtrer et options de la colonne — ' + label">
+  <i class="fas" [class.fa-filter]="!isFiltered" [class.fa-filter-circle-xmark]="isFiltered"></i>
+</button>
+
+<!-- Menu déroulant : options de colonne + recherche + zone des valeurs (inspiré d'Excel). -->
+<div class="col-filter-menu" *ngIf="open" #menu
+     [style.top.px]="menuTop" [style.left.px]="menuLeft"
+     (click)="$event.stopPropagation()">
+
+  <div class="cf-header">
+    <i class="fas fa-filter"></i>
+    <div class="cf-head-text">
+      <span class="cf-title" [title]="label">{{ label }}</span>
+      <span class="cf-kind">{{ kindLabel }}</span>
+    </div>
+  </div>
+
+  <!-- Options reprises du menu contextuel de colonne -->
+  <div class="cf-actions">
+    <button type="button" class="cf-action" (click)="onSort($event)">
+      <i class="fas fa-sort-amount-down"></i><span>Tri multi-niveaux…</span>
+    </button>
+    <!-- Effacer le filtre en cours (visible uniquement si la colonne est filtrée), comme Excel. -->
+    <button type="button" class="cf-action cf-action-clear" *ngIf="isFiltered" (click)="clear($event)">
+      <i class="fas fa-filter-circle-xmark"></i>
+      <span>Effacer le filtre de « {{ label }} »</span>
+    </button>
+    <button type="button" class="cf-action" (click)="onHide($event)">
+      <i class="fas fa-eye-slash"></i><span>Masquer la colonne</span>
+    </button>
+    <button type="button" class="cf-action" (click)="onColumns($event)">
+      <i class="fas fa-columns"></i><span>Organiser les colonnes</span>
+    </button>
+  </div>
+
+  <div class="cf-divider"></div>
+
+  <!-- Recherche sur les valeurs de la colonne -->
+  <div class="cf-search">
+    <i class="fas fa-search"></i>
+    <input #searchInput type="text" [(ngModel)]="search" placeholder="Rechercher…"
+           (click)="$event.stopPropagation()">
+    <button type="button" class="cf-search-clear" *ngIf="search" (click)="search = ''"
+            title="Effacer la recherche">
+      <i class="fas fa-times"></i>
+    </button>
+  </div>
+
+  <!-- Zone d'affichage des valeurs (sous la recherche), cases à cocher façon Excel -->
+  <div class="cf-values">
+    <label class="cf-value cf-select-all" *ngIf="visibleFacets.length">
+      <input type="checkbox" [checked]="allVisibleChecked"
+             [indeterminate]="someVisibleChecked" (change)="toggleAllVisible()">
+      <span class="cf-label">(Tout sélectionner)</span>
+      <span class="cf-count">{{ visibleFacets.length }}</span>
+    </label>
+
+    <!-- DATES : arborescence Année ▸ Mois ▸ Jour (comme Excel). La recherche bascule sur la
+         liste à plat, plus lisible pour retrouver une valeur précise. -->
+    <ng-container *ngIf="isDateMode && !search">
+      <ng-container *ngFor="let year of dateTree">
+        <div class="cf-value cf-node cf-level-year">
+          <button type="button" class="cf-twisty" (click)="toggleExpand(year, $event)"
+                  [title]="isExpanded(year) ? 'Réduire' : 'Développer'">
+            <i class="fas" [class.fa-chevron-right]="!isExpanded(year)" [class.fa-chevron-down]="isExpanded(year)"></i>
+          </button>
+          <input type="checkbox" [checked]="nodeChecked(year)" [indeterminate]="nodePartial(year)"
+                 (change)="toggleNode(year)">
+          <span class="cf-label">{{ year.label }}</span>
+          <span class="cf-count">{{ year.count }}</span>
+        </div>
+
+        <ng-container *ngIf="isExpanded(year)">
+          <ng-container *ngFor="let month of year.children">
+            <div class="cf-value cf-node cf-level-month">
+              <button type="button" class="cf-twisty" (click)="toggleExpand(month, $event)"
+                      [title]="isExpanded(month) ? 'Réduire' : 'Développer'">
+                <i class="fas" [class.fa-chevron-right]="!isExpanded(month)" [class.fa-chevron-down]="isExpanded(month)"></i>
+              </button>
+              <input type="checkbox" [checked]="nodeChecked(month)" [indeterminate]="nodePartial(month)"
+                     (change)="toggleNode(month)">
+              <span class="cf-label">{{ month.label }}</span>
+              <span class="cf-count">{{ month.count }}</span>
+            </div>
+
+            <ng-container *ngIf="isExpanded(month)">
+              <label class="cf-value cf-level-day" *ngFor="let day of month.children">
+                <span class="cf-twisty cf-twisty-empty"></span>
+                <input type="checkbox" [checked]="nodeChecked(day)" (change)="toggleNode(day)">
+                <span class="cf-label">{{ day.label }}</span>
+                <span class="cf-count">{{ day.count }}</span>
+              </label>
+            </ng-container>
+          </ng-container>
+        </ng-container>
+      </ng-container>
+
+      <!-- Valeurs non datées (vides, « — »…) : filtrables comme dans Excel. -->
+      <label class="cf-value" *ngFor="let f of dateOthers; trackBy: trackByValue">
+        <input type="checkbox" [checked]="isChecked(f.value)" (change)="toggleValue(f.value)">
+        <span class="cf-label" [class.is-empty]="f.value === ''" [title]="f.label">{{ f.label }}</span>
+        <span class="cf-count">{{ f.count }}</span>
+      </label>
+    </ng-container>
+
+    <!-- TEXTE / NOMBRE / BOOLÉEN (et dates pendant une recherche) : liste à plat. -->
+    <ng-container *ngIf="!isDateMode || search">
+      <label class="cf-value" [class.cf-numeric]="isNumeric"
+             *ngFor="let f of visibleFacets; trackBy: trackByValue">
+        <input type="checkbox" [checked]="isChecked(f.value)" (change)="toggleValue(f.value)">
+        <span class="cf-label" [class.is-empty]="f.value === ''" [title]="f.label">{{ f.label }}</span>
+        <span class="cf-count">{{ f.count }}</span>
+      </label>
+    </ng-container>
+
+    <p class="cf-no-result" *ngIf="!visibleFacets.length">
+      <i class="fas fa-circle-info"></i> Aucune valeur ne correspond à « {{ search }} »
+    </p>
+  </div>
+
+  <div class="cf-footer">
+    <span class="cf-selected" [class.is-search]="search"
+          [title]="search ? 'La validation portera sur les résultats de la recherche'
+                          : 'Valeurs retenues sur le total'">
+      {{ selectedCount }} / {{ facets.length }}
+      <i class="fas fa-magnifying-glass" *ngIf="search"></i>
+    </span>
+    <span class="cf-spacer"></span>
+    <button type="button" class="cf-btn" (click)="clear($event)" [disabled]="!isFiltered">
+      <i class="fas fa-filter-circle-xmark"></i> Effacer
+    </button>
+    <button type="button" class="cf-btn cf-btn-primary" (click)="apply($event)" [disabled]="!canApply"
+            [title]="!canApply ? 'Sélectionnez au moins une valeur'
+                     : (search ? 'Filtrer sur les résultats de la recherche' : 'Appliquer le filtre')">
+      <i class="fas fa-check"></i> Appliquer
+    </button>
+  </div>
+</div>

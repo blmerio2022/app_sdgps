@@ -1,0 +1,92 @@
+<!-- Bouton déclencheur « Trier » (état par défaut lisible / actif accentué). -->
+<button type="button" class="btn btn-sort-multi" [class.active]="levels.length"
+        (click)="open()" title="Configurer le tri multi-niveaux">
+  <i class="fas fa-sort-amount-down"></i>
+  <span>Trier</span>
+  <span class="sort-count" *ngIf="levels.length">{{ levels.length }}</span>
+</button>
+
+<!-- ===== Panneau de configuration du tri MULTI-NIVEAUX ===== -->
+<div class="modal-overlay" *ngIf="showSortConfig" (click)="close()">
+  <div class="modal-content sort-config-panel" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3><i class="fas fa-sort-amount-down header-icon"></i> {{ title }}</h3>
+      <button class="close-btn" (click)="close()"><i class="fas fa-times"></i></button>
+    </div>
+
+    <div class="modal-body">
+      <p class="panel-hint">
+        Définissez un ou <strong>plusieurs niveaux de tri</strong> (le niveau 1 est prioritaire,
+        le niveau 2 départage les égalités, etc.), chacun croissant ou décroissant. Le tri par
+        défaut est <strong>hérité du compte administrateur</strong> et peut être réinitialisé.
+      </p>
+
+      <div class="sort-autosave">
+        <span class="saving" *ngIf="saving"><i class="fas fa-spinner fa-spin"></i> Enregistrement…</span>
+        <span class="saved" *ngIf="!saving && savedFlash"><i class="fas fa-check-circle"></i> Modifications enregistrées</span>
+        <span class="idle" *ngIf="!saving && !savedFlash"><i class="fas fa-bolt"></i> Les modifications sont enregistrées automatiquement</span>
+        <span class="spacer"></span>
+        <button type="button" class="btn-clear-levels" [disabled]="!levels.length" (click)="clearAllLevels()"
+                title="Supprimer tous les niveaux de tri de ce tableau">
+          <i class="fas fa-eraser"></i> Effacer le tri
+        </button>
+        <button type="button" class="btn-reset-source" [disabled]="resetting" (click)="askResetSort()"
+                title="Remplacer votre tri par la configuration par défaut (compte administrateur)">
+          <i class="fas" [class.fa-spinner]="resetting" [class.fa-spin]="resetting" [class.fa-arrows-rotate]="!resetting"></i>
+          Réinitialiser avec la configuration source
+        </button>
+      </div>
+
+      <div class="sort-levels-empty" *ngIf="!levels.length">
+        <i class="fas fa-info-circle"></i> {{ emptyHint }}
+      </div>
+
+      <div class="sort-levels">
+        <div class="sort-level" *ngFor="let lv of levels; let i = index">
+          <span class="level-badge">{{ i + 1 }}</span>
+          <select class="level-field" [ngModel]="lv.field" (ngModelChange)="changeLevelField(i, $event)">
+            <option *ngFor="let f of fieldsForLevel(lv)" [value]="f.field">{{ f.label }}</option>
+          </select>
+          <select class="level-dir" [ngModel]="lv.dir" (ngModelChange)="changeLevelDir(i, $event)">
+            <option value="asc">Croissant ↑</option>
+            <option value="desc">Décroissant ↓</option>
+          </select>
+          <div class="level-actions">
+            <button type="button" title="Placer en premier" [disabled]="i === 0" (click)="moveLevelToTop(i)"><i class="fas fa-angles-up"></i></button>
+            <button type="button" title="Monter" [disabled]="i === 0" (click)="moveLevelUp(i)"><i class="fas fa-arrow-up"></i></button>
+            <button type="button" title="Descendre" [disabled]="i === levels.length - 1" (click)="moveLevelDown(i)"><i class="fas fa-arrow-down"></i></button>
+            <button type="button" title="Placer en dernier" [disabled]="i === levels.length - 1" (click)="moveLevelToBottom(i)"><i class="fas fa-angles-down"></i></button>
+            <button type="button" class="danger" title="Retirer" (click)="removeLevel(i)"><i class="fas fa-times"></i></button>
+          </div>
+        </div>
+      </div>
+
+      <button type="button" class="btn-add-level" [disabled]="!canAddLevel" (click)="addLevel()">
+        <i class="fas fa-plus"></i> Ajouter un niveau de tri
+      </button>
+    </div>
+
+    <div class="modal-footer">
+      <span class="sort-summary"><i class="fas fa-list-ol"></i> {{ sortSummary }}</span>
+      <button class="btn-confirm" (click)="close()"><i class="fas fa-check"></i> Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirmation : réinitialisation avec la configuration source -->
+<div class="modal-overlay" *ngIf="showResetConfirm" (click)="cancelResetSort()">
+  <div class="modal-content confirm-panel" (click)="$event.stopPropagation()">
+    <h3><i class="fas fa-arrows-rotate"></i> Réinitialiser le tri ?</h3>
+    <p>
+      Votre tri multi-niveaux va être <strong>remplacé</strong> par la configuration source
+      (celle du compte administrateur). Vos niveaux personnalisés seront <strong>écrasés</strong>.
+    </p>
+    <div class="confirm-actions">
+      <button class="btn-cancel" (click)="cancelResetSort()" [disabled]="resetting">Annuler</button>
+      <button class="btn-confirm" (click)="confirmResetSort()" [disabled]="resetting">
+        <i class="fas" [class.fa-spinner]="resetting" [class.fa-spin]="resetting" [class.fa-arrows-rotate]="!resetting"></i>
+        {{ resetting ? 'Réinitialisation…' : 'Réinitialiser' }}
+      </button>
+    </div>
+  </div>
+</div>

@@ -8,8 +8,14 @@ export interface User {
   nom_societe?: string;
   is_active: boolean;
   is_superuser: boolean;
+  // Colonnes d'audit standard (cf. CLAUDE.md). `created_at` est l'alias API de `date_joined`.
   is_deleted: boolean;
   deleted_at?: string;
+  created_at?: string;
+  updated_at?: string;
+  created_by_email?: string | null;
+  updated_by_email?: string | null;
+  deleted_by_email?: string | null;
   role: UserRole;
   role_display: string;
   organization_name?: string;

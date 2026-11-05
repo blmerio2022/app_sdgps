@@ -3,6 +3,7 @@ Sérialiseurs pour la gestion des organisations
 """
 from rest_framework import serializers
 from accounts.models import Organization, Membership
+from accounts.fields import AuthorDisplayField
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
@@ -11,8 +12,12 @@ class OrganizationSerializer(serializers.ModelSerializer):
     type_display = serializers.CharField(source='get_type_display', read_only=True)
     full_path = serializers.CharField(source='get_full_path', read_only=True)
     member_count = serializers.SerializerMethodField()
-    created_by_email = serializers.EmailField(source='created_by.email', read_only=True)
-    modified_by_email = serializers.EmailField(source='modified_by.email', read_only=True)
+    # Nom complet de l'auteur (repli : email) — cf. `AuthorDisplayField`.
+    created_by_email = AuthorDisplayField(source='created_by')
+    modified_by_email = AuthorDisplayField(source='modified_by')
+    # Alias unifié dans toute l'app (le champ DB historique reste `modified_by`).
+    updated_by_email = AuthorDisplayField(source='modified_by')
+    deleted_by_email = AuthorDisplayField(source='deleted_by')
 
     class Meta:
         model = Organization
@@ -32,10 +37,15 @@ class OrganizationSerializer(serializers.ModelSerializer):
             'full_path',
             'is_active',
             'member_count',
+            # Colonnes d'audit standard (cf. CLAUDE.md).
             'created_at',
             'updated_at',
+            'is_deleted',
+            'deleted_at',
             'created_by_email',
             'modified_by_email',
+            'updated_by_email',
+            'deleted_by_email',
             'is_test_data',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'member_count', 'full_path']
@@ -66,8 +76,12 @@ class OrganizationListSerializer(serializers.ModelSerializer):
     
     type_display = serializers.CharField(source='get_type_display', read_only=True)
     member_count = serializers.IntegerField(source='get_member_count', read_only=True)
-    created_by_email = serializers.EmailField(source='created_by.email', read_only=True)
-    modified_by_email = serializers.EmailField(source='modified_by.email', read_only=True)
+    # Nom complet de l'auteur (repli : email) — cf. `AuthorDisplayField`.
+    created_by_email = AuthorDisplayField(source='created_by')
+    modified_by_email = AuthorDisplayField(source='modified_by')
+    # Alias unifié dans toute l'app (le champ DB historique reste `modified_by`).
+    updated_by_email = AuthorDisplayField(source='modified_by')
+    deleted_by_email = AuthorDisplayField(source='deleted_by')
 
     class Meta:
         model = Organization
@@ -83,13 +97,16 @@ class OrganizationListSerializer(serializers.ModelSerializer):
             'email',
             'website',
             'is_active',
-            'is_deleted',
-            'deleted_at',
             'member_count',
+            # Colonnes d'audit standard (cf. CLAUDE.md).
             'created_at',
             'updated_at',
+            'is_deleted',
+            'deleted_at',
             'created_by_email',
             'modified_by_email',
+            'updated_by_email',
+            'deleted_by_email',
         ]
 
 

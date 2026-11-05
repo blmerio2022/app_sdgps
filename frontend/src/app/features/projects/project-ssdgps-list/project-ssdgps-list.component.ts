@@ -1,4 +1,6 @@
-import { Component, OnInit, OnDestroy, HostListener } from '@angular/core';
+import { formatDateTime } from '../../../shared/utils/date-format.util';
+import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from '../../../shared/components/table-pagination/table-pagination.component';
+import { Component, OnInit, OnDestroy, HostListener, ViewChild } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { forkJoin } from 'rxjs';
@@ -6,6 +8,11 @@ import { ProjectsService } from '../../../core/services/projects.service';
 import { BreadcrumbService } from '../../../core/layout/services/breadcrumb.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { SsdgpsSortConfigService, SsdgpsSortLevel } from '../../../core/services/ssdgps-sort-config.service';
+import { MultiLevelSortComponent } from '../../../shared/components/multi-level-sort/multi-level-sort.component';
+import { ColumnConfigComponent } from '../../../shared/components/column-config/column-config.component';
+import { applyColumnsConfig, toColumnPrefs, ManagedColumn } from '../../../shared/components/column-config/column-config.util';
+import { ColumnFilterMap, withColumnFilter, rowMatchesColumnFilters, activeFilterCount } from '../../../shared/components/column-filter/column-filter.util';
+import { TableColumnsConfigService } from '../../../core/services/table-columns-config.service';
 import {
   Projet, Ssdgps, proprieteLabel, NATURE_SSDGPS_OPTIONS, TYPE_SSDGPS_OPTIONS,
 } from '../../../core/models/project.model';
@@ -17,7 +24,6 @@ interface ColumnConfig {
   type?: 'text' | 'date' | 'number' | 'boolean';
 }
 
-const COLUMNS_KEY = 'sdgps_projet_ssdgps_columns';
 
 const DEFAULT_COLUMNS: ColumnConfig[] = [
   { field: 'numero_ssdgps', label: 'SSDGPS', visible: true, type: 'number' },
@@ -105,17 +111,15 @@ export class ProjectSsdgpsListComponent implements OnInit, OnDestroy {
   sortLevels: SsdgpsSortLevel[] = [];
   /** Champs triables proposés dans le panneau de configuration. */
   readonly sortableFields = SORTABLE_FIELDS;
-  /** Panneau de configuration du tri (modale dédiée). */
-  showSortConfig = false;
+  @ViewChild(MultiLevelSortComponent) private sortCmp?: MultiLevelSortComponent;
   savingSort = false;
   savedSortFlash = false;
   resettingSort = false;
-  showResetConfirm = false;
   private sortSaveTimer: any;
 
-  pageSize = 25;
+  pageSize = DEFAULT_PAGE_SIZE;
   currentPage = 1;
-  pageSizeOptions = [10, 25, 50, 100];
+  pageSizeOptions = [...PAGE_SIZE_OPTIONS];
 
   natureOptions = NATURE_SSDGPS_OPTIONS;
   typeOptions = TYPE_SSDGPS_OPTIONS;
@@ -135,14 +139,16 @@ export class ProjectSsdgpsListComponent implements OnInit, OnDestroy {
   showFilterMenu = false;
   showFieldFilterMenu = false;
 
-  // Colonnes
+  // Colonnes (config opérateur, héritée du super admin) — composant partagé
   columns: ColumnConfig[] = DEFAULT_COLUMNS.map(c => ({ ...c }));
-  private columnsBackup: ColumnConfig[] = [];
-  showColumnConfig = false;
-  columnFilter: 'all' | 'visible' = 'all';
-  showColumnFilterMenu = false;
-  draggedColumnIndex: number | null = null;
-  dragOverIndex: number | null = null;
+  private readonly COLUMNS_KEY = 'ssdgps';
+  @ViewChild(ColumnConfigComponent) private columnCfg?: ColumnConfigComponent;
+  /** Description d'une colonne pour la modale partagée (référence stable). */
+  describeColumn = (field: string): string => this.getFieldDescription(field);
+  savingColumns = false;
+  savedColumnsFlash = false;
+  resettingColumns = false;
+  private columnsSaveTimer: any;
 
   // Menu contextuel de colonne
   showColumnContextMenu = false;
@@ -174,11 +180,12 @@ export class ProjectSsdgpsListComponent implements OnInit, OnDestroy {
     private sortConfigService: SsdgpsSortConfigService,
     private breadcrumb: BreadcrumbService,
     private fb: FormBuilder,
+    private columnsConfigService: TableColumnsConfigService,
   ) {}
 
   ngOnInit(): void {
     this.projectId = this.route.snapshot.paramMap.get('id')!;
-    this.loadColumnPreferences();
+    this.loadColumnsConfig();
     this.load();
     this.loadSortConfig();
     this.service.getProjet(this.projectId).subscribe({
@@ -211,7 +218,6 @@ export class ProjectSsdgpsListComponent implements OnInit, OnDestroy {
   onDocumentClick(): void {
     this.showFilterMenu = false;
     this.showFieldFilterMenu = false;
-    this.showColumnFilterMenu = false;
     this.showColumnContextMenu = false;
   }
 
@@ -255,6 +261,21 @@ export class ProjectSsdgpsListComponent implements OnInit, OnDestroy {
     return hay.includes(q);
   }
 
+  // --- FILTRES DE COLONNE (façon Excel, composant partagé `<app-column-filter>`) ---
+  /** Valeurs retenues par colonne ; une colonne absente n'est pas filtrée. */
+  columnFilters: ColumnFilterMap = {};
+  /** Texte affiché d'une cellule : le filtre porte sur la valeur VUE (référence stable). */
+  cellText = (row: any, field: string): string => this.getCellValue(row, field);
+
+  onColumnFilterChange(field: string, values: string[] | null): void {
+    this.columnFilters = withColumnFilter(this.columnFilters, field, values);
+  }
+
+  /** Masque une colonne (depuis le menu de filtre) — auto-save comme la modale des colonnes. */
+  hideColumnField(field: string): void {
+    this.onColumnsChange(this.columns.map(c => (c.field === field ? { ...c, visible: false } : { ...c })));
+  }
+
   get filteredItems(): Ssdgps[] {
     const q = this.searchText.trim().toLowerCase();
     let rows = this.items.filter((s) => {
@@ -266,6 +287,8 @@ export class ProjectSsdgpsListComponent implements OnInit, OnDestroy {
         const v = this.getCellValue(s, this.activeFieldFilter).toLowerCase();
         if (!v.includes(this.fieldFilterValue.toLowerCase())) return false;
       }
+      // Filtres de colonne (façon Excel).
+      if (!rowMatchesColumnFilters(s, this.columnFilters, this.cellText)) return false;
       return true;
     });
     if (this.manualOrder) {
@@ -307,64 +330,15 @@ export class ProjectSsdgpsListComponent implements OnInit, OnDestroy {
   sortDirOf(field: string): '' | 'asc' | 'desc' {
     return this.sortLevels.find(l => l.field === field)?.dir || '';
   }
-  /** Libellé d'un champ triable (pour les badges / résumé). */
-  fieldLabel(field: string): string {
-    return this.sortableFields.find(f => f.field === field)?.label || field;
-  }
-  /** Résumé court du tri multi-niveaux (en-tête du panneau). */
-  get sortSummary(): string {
-    if (!this.sortLevels.length) return 'Aucun tri';
-    return this.sortLevels
-      .map(l => `${this.fieldLabel(l.field)} ${l.dir === 'desc' ? '↓' : '↑'}`)
-      .join('  ·  ');
-  }
-
   // ============================================
-  // Panneau de configuration du tri multi-niveaux
+  // Tri multi-niveaux (modale fournie par le composant partagé <app-multi-level-sort>)
   // ============================================
-  openSortConfig(): void { this.showSortConfig = true; }
-  closeSortConfig(): void { this.showSortConfig = false; }
+  /** Ouvre la modale de tri (composant partagé). */
+  openSortConfig(): void { this.sortCmp?.open(); }
 
-  /** Champs disponibles pour un niveau donné : tous sauf ceux déjà choisis ailleurs. */
-  fieldsForLevel(current: SsdgpsSortLevel): { field: string; label: string }[] {
-    const used = new Set(this.sortLevels.filter(l => l !== current).map(l => l.field));
-    return this.sortableFields.filter(f => !used.has(f.field));
-  }
-  /** Premier champ triable non encore utilisé (pour l'ajout d'un niveau). */
-  private firstUnusedField(): string | null {
-    const used = new Set(this.sortLevels.map(l => l.field));
-    return this.sortableFields.find(f => !used.has(f.field))?.field || null;
-  }
-  get canAddLevel(): boolean { return this.sortLevels.length < this.sortableFields.length; }
-
-  addLevel(): void {
-    const field = this.firstUnusedField();
-    if (!field) return;
-    this.sortLevels = [...this.sortLevels, { field, dir: 'asc' }];
-    this.queueSaveSort();
-  }
-  removeLevel(i: number): void {
-    this.sortLevels = this.sortLevels.filter((_, k) => k !== i);
-    this.queueSaveSort();
-  }
-  moveLevelUp(i: number): void {
-    if (i <= 0) return;
-    const l = [...this.sortLevels]; [l[i - 1], l[i]] = [l[i], l[i - 1]]; this.sortLevels = l; this.queueSaveSort();
-  }
-  moveLevelDown(i: number): void {
-    if (i >= this.sortLevels.length - 1) return;
-    const l = [...this.sortLevels]; [l[i + 1], l[i]] = [l[i], l[i + 1]]; this.sortLevels = l; this.queueSaveSort();
-  }
-  changeLevelField(i: number, field: string): void {
-    // Empêche les doublons : si le champ est déjà utilisé ailleurs, on ignore.
-    if (this.sortLevels.some((l, k) => k !== i && l.field === field)) return;
-    this.sortLevels[i] = { ...this.sortLevels[i], field };
-    this.sortLevels = [...this.sortLevels];
-    this.queueSaveSort();
-  }
-  changeLevelDir(i: number, dir: 'asc' | 'desc'): void {
-    this.sortLevels[i] = { ...this.sortLevels[i], dir };
-    this.sortLevels = [...this.sortLevels];
+  /** Réception d'une modification depuis la modale partagée : applique + enregistrement auto. */
+  onSortLevelsChange(levels: SsdgpsSortLevel[]): void {
+    this.sortLevels = levels;
     this.queueSaveSort();
   }
 
@@ -381,24 +355,22 @@ export class ProjectSsdgpsListComponent implements OnInit, OnDestroy {
         this.sortLevels = saved; this.savingSort = false; this.savedSortFlash = true;
         setTimeout(() => { this.savedSortFlash = false; }, 2500);
       },
-      error: () => { this.savingSort = false; this.toast.error('Erreur', 'Enregistrement du tri impossible'); },
+      error: (err) => { this.savingSort = false; this.toast.error('Erreur', err?.error?.detail || 'Enregistrement du tri impossible'); },
     });
   }
 
   // --- Réinitialisation avec la configuration SOURCE (compte administrateur) ---
-  askResetSort(): void { if (!this.resettingSort) this.showResetConfirm = true; }
-  cancelResetSort(): void { this.showResetConfirm = false; }
-  confirmResetSort(): void {
+  onResetSort(): void {
     if (this.resettingSort) return;
     this.resettingSort = true;
     this.sortConfigService.resetToSource().subscribe({
       next: (levels) => {
-        this.sortLevels = levels; this.resettingSort = false; this.showResetConfirm = false;
+        this.sortLevels = levels; this.resettingSort = false;
         this.currentPage = 1;
         this.toast.success('Succès', 'Tri réinitialisé avec la configuration source');
       },
       error: (e) => {
-        this.resettingSort = false; this.showResetConfirm = false;
+        this.resettingSort = false;
         this.toast.error('Erreur', e?.error?.detail || 'Réinitialisation impossible');
       },
     });
@@ -458,65 +430,45 @@ export class ProjectSsdgpsListComponent implements OnInit, OnDestroy {
   }
   clearFieldFilter(): void { this.activeFieldFilter = null; this.activeFieldFilterLabel = ''; this.fieldFilterValue = ''; }
 
-  // --- Colonnes ---
-  private loadColumnPreferences(): void {
-    try {
-      const raw = localStorage.getItem(COLUMNS_KEY);
-      if (!raw) return;
-      const saved: { field: string; visible: boolean }[] = JSON.parse(raw);
-      saved.forEach(sc => { const col = this.columns.find(c => c.field === sc.field); if (col) col.visible = sc.visible; });
-      const ordered: ColumnConfig[] = [];
-      saved.forEach(sc => { const col = this.columns.find(c => c.field === sc.field); if (col) ordered.push(col); });
-      this.columns.forEach(c => { if (!ordered.includes(c)) ordered.push(c); });
-      if (ordered.length === this.columns.length) this.columns = ordered;
-    } catch { /* ignore */ }
-  }
-  private saveColumnPreferences(): void {
-    localStorage.setItem(COLUMNS_KEY, JSON.stringify(this.columns.map(c => ({ field: c.field, visible: c.visible }))));
-  }
+  // --- Colonnes (composant partagé, source super admin + réinitialisation) ---
   getVisibleColumns(): ColumnConfig[] { return this.columns.filter(c => c.visible); }
-  getFilteredColumns(): ColumnConfig[] { return this.columnFilter === 'visible' ? this.columns.filter(c => c.visible) : this.columns; }
-  getColumnStats(): { total: number; visible: number; hidden: number } {
-    const total = this.columns.length; const visible = this.columns.filter(c => c.visible).length;
-    return { total, visible, hidden: total - visible };
-  }
-  toggleColumnVisibility(field: string): void { const c = this.columns.find(x => x.field === field); if (c) c.visible = !c.visible; }
-  toggleColumnConfig(): void {
-    if (!this.showColumnConfig) this.columnsBackup = this.columns.map(c => ({ ...c }));
-    else this.restoreColumnsBackup();
-    this.showColumnConfig = !this.showColumnConfig;
-  }
-  openColumnConfig(): void { this.columnsBackup = this.columns.map(c => ({ ...c })); this.showColumnConfig = true; }
-  confirmColumnConfig(): void { this.showColumnConfig = false; this.columnsBackup = []; this.saveColumnPreferences(); }
-  cancelColumnConfig(): void { this.restoreColumnsBackup(); this.showColumnConfig = false; }
-  private restoreColumnsBackup(): void {
-    if (this.columnsBackup.length) { this.columns = this.columnsBackup.map(c => ({ ...c })); this.columnsBackup = []; }
-  }
-  selectAllColumns(): void { this.columns.forEach(c => c.visible = true); }
-  deselectAllColumns(): void { this.columns.forEach(c => c.visible = false); }
-  invertColumnSelection(): void { this.columns.forEach(c => c.visible = !c.visible); }
-  toggleColumnFilterMenu(event: Event): void { event.stopPropagation(); this.showColumnFilterMenu = !this.showColumnFilterMenu; }
-  applyColumnFilter(filter: 'all' | 'visible'): void { this.columnFilter = filter; this.showColumnFilterMenu = false; }
-  getColumnFilterLabel(): string { return this.columnFilter === 'all' ? 'Toutes les colonnes' : 'Colonnes visibles'; }
   getTypeLabel(type?: string): string { return { text: 'TEXTE', date: 'DATE', number: 'NOMBRE', boolean: 'BOOLÉEN' }[type || 'text'] || 'TEXTE'; }
   getFieldDescription(field: string): string { return FIELD_DESCRIPTIONS[field] || ''; }
 
-  // Réordonnancement des colonnes
-  onDragStart(i: number): void { this.draggedColumnIndex = i; }
-  onDragOver(e: DragEvent, i: number): void { e.preventDefault(); this.dragOverIndex = i; }
-  onDragLeave(): void { this.dragOverIndex = null; }
-  onDrop(i: number): void {
-    if (this.draggedColumnIndex === null || this.draggedColumnIndex === i) { this.draggedColumnIndex = null; this.dragOverIndex = null; return; }
-    const dragged = this.columns[this.draggedColumnIndex];
-    this.columns.splice(this.draggedColumnIndex, 1);
-    this.columns.splice(i, 0, dragged);
-    this.draggedColumnIndex = null; this.dragOverIndex = null;
+  /** Ouvre la modale d'organisation des colonnes (composant partagé). */
+  openColumnConfig(): void { this.columnCfg?.open(); }
+  private loadColumnsConfig(): void {
+    this.columnsConfigService.get(this.COLUMNS_KEY).subscribe(prefs => {
+      this.columns = applyColumnsConfig(this.columns, prefs);
+    });
   }
-  onDragEnd(): void { this.draggedColumnIndex = null; this.dragOverIndex = null; }
-  moveColumnUp(i: number): void { if (i > 0) [this.columns[i], this.columns[i - 1]] = [this.columns[i - 1], this.columns[i]]; }
-  moveColumnDown(i: number): void { if (i < this.columns.length - 1) [this.columns[i], this.columns[i + 1]] = [this.columns[i + 1], this.columns[i]]; }
-  moveColumnToTop(i: number): void { if (i > 0) { const c = this.columns.splice(i, 1)[0]; this.columns.unshift(c); } }
-  moveColumnToBottom(i: number): void { if (i < this.columns.length - 1) { const c = this.columns.splice(i, 1)[0]; this.columns.push(c); } }
+  onColumnsChange(cols: ManagedColumn[]): void {
+    this.columns = cols as ColumnConfig[];
+    clearTimeout(this.columnsSaveTimer);
+    this.columnsSaveTimer = setTimeout(() => this.saveColumnsConfig(), 500);
+  }
+  private saveColumnsConfig(): void {
+    this.savingColumns = true;
+    this.columnsConfigService.save(this.COLUMNS_KEY, toColumnPrefs(this.columns)).subscribe({
+      next: () => {
+        this.savingColumns = false; this.savedColumnsFlash = true;
+        setTimeout(() => { this.savedColumnsFlash = false; }, 2500);
+      },
+      error: (err) => { this.savingColumns = false; this.toast.error('Erreur', err?.error?.detail || 'Enregistrement des colonnes impossible'); },
+    });
+  }
+  onResetColumns(): void {
+    if (this.resettingColumns) return;
+    this.resettingColumns = true;
+    this.columnsConfigService.resetToSource(this.COLUMNS_KEY).subscribe({
+      next: (prefs) => {
+        this.columns = applyColumnsConfig(this.columns, prefs);
+        this.resettingColumns = false;
+        this.toast.success('Succès', 'Colonnes réinitialisées avec la configuration source');
+      },
+      error: (e) => { this.resettingColumns = false; this.toast.error('Erreur', e?.error?.detail || 'Réinitialisation impossible'); },
+    });
+  }
 
   // Menu contextuel de colonne (clic droit sur l'en-tête)
   onColumnHeaderRightClick(event: MouseEvent, col: ColumnConfig): void {
@@ -525,13 +477,19 @@ export class ProjectSsdgpsListComponent implements OnInit, OnDestroy {
     this.contextMenuColumn = col;
     this.showColumnContextMenu = true;
   }
-  hideColumnFromContext(): void { if (this.contextMenuColumn) this.contextMenuColumn.visible = false; this.showColumnContextMenu = false; this.contextMenuColumn = null; }
+  hideColumnFromContext(): void {
+    const field = this.contextMenuColumn?.field;
+    this.showColumnContextMenu = false; this.contextMenuColumn = null;
+    if (!field) return;
+    this.onColumnsChange(this.columns.map(c => (c.field === field ? { ...c, visible: false } : { ...c })));
+  }
   openColumnConfigFromContext(): void { this.showColumnContextMenu = false; this.openColumnConfig(); }
+  /** Ouvrir la modale de tri multi-niveaux depuis le menu contextuel (clic droit en-tête). */
+  openSortConfigFromContext(): void { this.showColumnContextMenu = false; this.openSortConfig(); }
 
   // --- Valeur de cellule (affichage + CSV + filtre par champ) ---
   formatDate(value: any): string {
-    if (!value) return '—';
-    return new Date(value).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return formatDateTime(value);
   }
   getCellValue(s: Ssdgps, field: string): string {
     switch (field) {

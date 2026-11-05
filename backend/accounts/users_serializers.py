@@ -4,11 +4,24 @@ from .models import Membership, Organization
 from .rbac import count_other_active_org_admins, MIN_ACTIVE_ORG_ADMINS
 import secrets
 import string
+from accounts.fields import AuthorDisplayField
 
 User = get_user_model()
 
 
-class UserListSerializer(serializers.ModelSerializer):
+class AuditEmailsMixin(serializers.Serializer):
+    """Colonnes d'audit standard exposées par l'API pour les utilisateurs (cf. CLAUDE.md).
+
+    `date_joined` tient lieu de date de création : il est aliasé en `created_at` pour rester
+    homogène avec les autres tableaux de l'app.
+    """
+    created_at = serializers.DateTimeField(source='date_joined', read_only=True)
+    created_by_email = AuthorDisplayField(source='created_by')
+    updated_by_email = AuthorDisplayField(source='updated_by')
+    deleted_by_email = AuthorDisplayField(source='deleted_by')
+
+
+class UserListSerializer(AuditEmailsMixin, serializers.ModelSerializer):
     role = serializers.SerializerMethodField()
     role_display = serializers.SerializerMethodField()
     organization_name = serializers.SerializerMethodField()
@@ -19,10 +32,13 @@ class UserListSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'email', 'first_name', 'last_name', 'nom_societe',
-            'is_active', 'is_superuser', 'is_deleted', 'platform_role',
+            'is_active', 'is_superuser', 'platform_role',
             'role', 'role_display', 'organization_name', 'organization_id',
             'last_connection_at', 'password_changed_at',
             'must_change_password', 'date_joined',
+            # Colonnes d'audit standard (cf. CLAUDE.md).
+            'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+            'created_by_email', 'updated_by_email', 'deleted_by_email',
         ]
 
     def get_role(self, obj):
@@ -40,7 +56,7 @@ class UserListSerializer(serializers.ModelSerializer):
         return str(org.id) if org else None
 
 
-class UserDetailSerializer(serializers.ModelSerializer):
+class UserDetailSerializer(AuditEmailsMixin, serializers.ModelSerializer):
     role = serializers.SerializerMethodField()
     role_display = serializers.SerializerMethodField()
     organization_name = serializers.SerializerMethodField()
@@ -51,14 +67,18 @@ class UserDetailSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'email', 'first_name', 'last_name', 'nom_societe',
-            'is_active', 'is_superuser', 'is_deleted', 'deleted_at', 'platform_role',
+            'is_active', 'is_superuser', 'platform_role',
             'role', 'role_display', 'organization_name', 'organization_id',
             'memberships',
             'last_connection_at', 'password_changed_at',
             'must_change_password', 'date_joined',
+            # Colonnes d'audit standard (cf. CLAUDE.md).
+            'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+            'created_by_email', 'updated_by_email', 'deleted_by_email',
         ]
         read_only_fields = ['id', 'email', 'date_joined', 'last_connection_at',
-                           'password_changed_at', 'deleted_at', 'is_superuser']
+                           'password_changed_at', 'deleted_at', 'is_superuser',
+                           'created_at', 'updated_at']
 
     def get_role(self, obj):
         return obj.get_primary_role()

@@ -7,7 +7,8 @@ describe('ProjectSsdgpsListComponent (tri & libellés)', () => {
 
   beforeEach(() => {
     cmp = new ProjectSsdgpsListComponent(
-      {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, new FormBuilder());
+      {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, new FormBuilder(),
+      { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any);
   });
 
   it('activeCount = nombre d’éléments actifs', () => {
@@ -23,15 +24,21 @@ describe('ProjectSsdgpsListComponent (tri & libellés)', () => {
     expect(cmp.sortDirOf('inconnu')).toBe('');
   });
 
-  it('fieldLabel renvoie le champ brut si non listé', () => {
-    expect(cmp.fieldLabel('champ_x')).toBe('champ_x');
+  // La modale (ajout/retrait/déplacement/effacement/résumé) est désormais dans le composant
+  // partagé <app-multi-level-sort> (testé séparément). Ici : branchements du parent.
+  it('onSortLevelsChange applique les niveaux reçus de la modale partagée', () => {
+    spyOn<any>(cmp, 'queueSaveSort'); // évite le timer d'enregistrement auto
+    cmp.onSortLevelsChange([{ field: 'nature_ssdgps', dir: 'desc' }] as any);
+    expect((cmp as any).sortLevels).toEqual([{ field: 'nature_ssdgps', dir: 'desc' }]);
   });
 
-  it('sortSummary résume le tri', () => {
-    (cmp as any).sortLevels = [];
-    expect(cmp.sortSummary).toBe('Aucun tri');
-    (cmp as any).sortLevels = [{ field: 'nature_ssdgps', dir: 'desc' }];
-    expect(cmp.sortSummary).toContain('↓');
+  it('openSortConfigFromContext ferme le menu contextuel et ouvre la modale de tri', () => {
+    const open = jasmine.createSpy('open');
+    (cmp as any).sortCmp = { open };
+    cmp.showColumnContextMenu = true;
+    cmp.openSortConfigFromContext();
+    expect(cmp.showColumnContextMenu).toBeFalse();
+    expect(open).toHaveBeenCalled();
   });
 });
 
@@ -44,7 +51,8 @@ describe('ProjectSsdgpsListComponent (consulter / modifier / supprimer)', () => 
     service = jasmine.createSpyObj('ProjectsService', ['updateSsdgps', 'deleteSsdgps']);
     toast = jasmine.createSpyObj('ToastService', ['success', 'error']);
     cmp = new ProjectSsdgpsListComponent(
-      service, toast, {} as any, {} as any, {} as any, {} as any, new FormBuilder());
+      service, toast, {} as any, {} as any, {} as any, {} as any, new FormBuilder(),
+      { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any);
     spyOn(cmp, 'load');
   });
 
@@ -126,7 +134,8 @@ describe('ProjectSsdgpsListComponent (suppression définitive)', () => {
     service = jasmine.createSpyObj('ProjectsService', ['permanentDeleteSsdgps', 'bulkPermanentDeleteSsdgps']);
     toast = jasmine.createSpyObj('ToastService', ['success', 'error', 'warning']);
     cmp = new ProjectSsdgpsListComponent(
-      service, toast, {} as any, {} as any, {} as any, {} as any, new FormBuilder());
+      service, toast, {} as any, {} as any, {} as any, {} as any, new FormBuilder(),
+      { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any);
     spyOn(cmp, 'load');
     cmp.showDeleted = true;
   });
@@ -165,5 +174,49 @@ describe('ProjectSsdgpsListComponent (suppression définitive)', () => {
     cmp.confirmPermanentDelete();
     expect(service.bulkPermanentDeleteSsdgps).toHaveBeenCalled();
     expect(toast.warning).toHaveBeenCalled();
+  });
+});
+
+describe('ProjectSsdgpsListComponent (config colonnes)', () => {
+  let cmp: ProjectSsdgpsListComponent;
+  let toast: any;
+  let columnsSvc: any;
+
+  beforeEach(() => {
+    toast = jasmine.createSpyObj('ToastService', ['success', 'error']);
+    columnsSvc = {
+      get: jasmine.createSpy('get').and.returnValue(of([])),
+      save: jasmine.createSpy('save').and.returnValue(of([])),
+      resetToSource: jasmine.createSpy('resetToSource').and.returnValue(of([])),
+    };
+    cmp = new ProjectSsdgpsListComponent(
+      {} as any, toast, {} as any, {} as any, {} as any, {} as any, new FormBuilder(), columnsSvc);
+  });
+
+  it('onColumnsChange applique les colonnes et programme l’enregistrement (clé « ssdgps »)', (done) => {
+    const cols = [{ field: 'numero_ssdgps', label: 'SSDGPS', visible: false }] as any;
+    cmp.onColumnsChange(cols);
+    expect(cmp.columns).toBe(cols);
+    setTimeout(() => {
+      expect(columnsSvc.save).toHaveBeenCalledWith('ssdgps', [{ field: 'numero_ssdgps', visible: false }]);
+      done();
+    }, 600);
+  });
+
+  it('onResetColumns appelle le service pour la clé « ssdgps »', () => {
+    columnsSvc.resetToSource.and.returnValue(of([{ field: 'nature_ssdgps', visible: true }]));
+    cmp.onResetColumns();
+    expect(columnsSvc.resetToSource).toHaveBeenCalledWith('ssdgps');
+    expect(cmp.columns[0].field).toBe('nature_ssdgps');
+    expect(toast.success).toHaveBeenCalled();
+  });
+
+  it('openColumnConfigFromContext ferme le menu contextuel et ouvre la modale de colonnes', () => {
+    const open = jasmine.createSpy('open');
+    (cmp as any).columnCfg = { open };
+    cmp.showColumnContextMenu = true;
+    cmp.openColumnConfigFromContext();
+    expect(cmp.showColumnContextMenu).toBeFalse();
+    expect(open).toHaveBeenCalled();
   });
 });

@@ -1,6 +1,6 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
-from .views import RegisterView, LoginView, ForgotPasswordView, VerifyCodeView, ResetPasswordView, ChangePasswordView, UserProfileView, PieceSortConfigView, PieceSortConfigResetView, PieceFieldsConfigView, PieceFieldsConfigResetView, SsdgpsSortConfigView, SsdgpsSortConfigResetView
+from .views import RegisterView, LoginView, ForgotPasswordView, VerifyCodeView, ResetPasswordView, ChangePasswordView, UserProfileView, PieceSortConfigView, PieceSortConfigResetView, PieceFieldsConfigView, PieceFieldsConfigResetView, SsdgpsSortConfigView, SsdgpsSortConfigResetView, OrgSortConfigView, OrgSortConfigResetView, OrganismeSortConfigView, OrganismeSortConfigResetView, TableSortConfigView, TableSortConfigResetView, TableColumnsConfigView, TableColumnsConfigResetView
 
 urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
@@ -17,4 +17,12 @@ urlpatterns = [
     path('me/piece-fields-config/reset/', PieceFieldsConfigResetView.as_view(), name='piece-fields-config-reset'),
     path('me/ssdgps-sort-config/', SsdgpsSortConfigView.as_view(), name='ssdgps-sort-config'),
     path('me/ssdgps-sort-config/reset/', SsdgpsSortConfigResetView.as_view(), name='ssdgps-sort-config-reset'),
+    path('me/org-sort-config/', OrgSortConfigView.as_view(), name='org-sort-config'),
+    path('me/org-sort-config/reset/', OrgSortConfigResetView.as_view(), name='org-sort-config-reset'),
+    path('me/organisme-sort-config/<int:niveau>/', OrganismeSortConfigView.as_view(), name='organisme-sort-config'),
+    path('me/organisme-sort-config/<int:niveau>/reset/', OrganismeSortConfigResetView.as_view(), name='organisme-sort-config-reset'),
+    path('me/table-sort-config/<str:key>/', TableSortConfigView.as_view(), name='table-sort-config'),
+    path('me/table-sort-config/<str:key>/reset/', TableSortConfigResetView.as_view(), name='table-sort-config-reset'),
+    path('me/table-columns-config/<str:key>/', TableColumnsConfigView.as_view(), name='table-columns-config'),
+    path('me/table-columns-config/<str:key>/reset/', TableColumnsConfigResetView.as_view(), name='table-columns-config-reset'),
 ]

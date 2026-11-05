@@ -1,0 +1,19 @@
+# Image de DÉVELOPPEMENT du frontend Angular (ng serve).
+# node_modules est installé UNE fois au build (couche cachée) → aucun `npm ci` au runtime,
+# donc plus de lenteur ni de fragilité réseau quand plusieurs environnements démarrent.
+# Le code source est monté en bind au runtime ; node_modules de l'image est préservé via
+# un volume anonyme (cf. docker-compose.yml) pour ne pas être masqué par le bind Windows.
+FROM node:18-slim
+WORKDIR /fe
+
+# Résilience réseau du build (évite les ECONNRESET transitoires).
+RUN npm config set fetch-retries 5 \
+ && npm config set fetch-retry-maxtimeout 120000 \
+ && npm config set fetch-timeout 300000
+
+# Couche de dépendances : ne dépend que des manifestes (cache tant qu'ils ne changent pas).
+COPY package.json package-lock.json ./
+RUN npm ci --legacy-peer-deps
+
+# Le reste du code arrive par bind-mount au runtime ; on expose le port du dev server.
+EXPOSE 4205

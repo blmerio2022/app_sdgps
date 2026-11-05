@@ -57,12 +57,29 @@
 
       <div class="toolbar-sep"></div>
 
-      <button class="icon-tool" (click)="toggleColumnConfig()" title="Organiser les colonnes">
-        <i class="fas fa-columns"></i>
-      </button>
-      <button class="icon-tool" [class.active]="sortLevels.length" (click)="openSortConfig()" title="Configurer le tri multi-niveaux">
-        <i class="fas fa-sort-amount-down"></i>
-      </button>
+      <!-- Configuration des colonnes (composant partagé, parité tri multi-niveaux) -->
+      <app-column-config
+        [columns]="columns"
+          [describe]="describeColumn"
+        title="Organiser les colonnes des SSDGPS"
+        [saving]="savingColumns"
+        [savedFlash]="savedColumnsFlash"
+        [resetting]="resettingColumns"
+        (columnsChange)="onColumnsChange($event)"
+        (resetToSource)="onResetColumns()">
+      </app-column-config>
+      <!-- Tri multi-niveaux (composant partagé) -->
+      <app-multi-level-sort
+        [sortableFields]="sortableFields"
+        [levels]="sortLevels"
+        title="Tri multi-niveaux des SSDGPS"
+        emptyHint="Aucun niveau de tri — les SSDGPS s'affichent dans l'ordre d'import."
+        [saving]="savingSort"
+        [savedFlash]="savedSortFlash"
+        [resetting]="resettingSort"
+        (levelsChange)="onSortLevelsChange($event)"
+        (resetToSource)="onResetSort()">
+      </app-multi-level-sort>
       <button class="icon-tool" (click)="exportCsv()" title="Exporter en CSV">
         <i class="fas fa-file-csv"></i>
       </button>
@@ -110,10 +127,18 @@
                 [class.is-sorted]="sortLevelOf(col.field)"
                 (click)="openSortConfig()"
                 (contextmenu)="onColumnHeaderRightClick($event, col)"
-                [title]="'Configurer le tri multi-niveaux — ' + getFieldDescription(col.field)">
+                appTableHeaderTooltip [tipLabel]="col.label" [tipDescription]="getFieldDescription(col.field)" [tipType]="col.type" [tipSortLevel]="sortLevelOf(col.field)" [tipSortDir]="sortDirOf(col.field)">
               <span>{{ col.label }}</span>
-              <span class="sort-badge" *ngIf="sortLevelOf(col.field)"
-                    [title]="'Niveau de tri ' + sortLevelOf(col.field) + ' — ' + (sortDirOf(col.field) === 'desc' ? 'décroissant' : 'croissant')">
+                <app-column-filter
+                  [field]="col.field" [label]="col.label" [type]="col.type"
+                  [rows]="items" [format]="cellText"
+                  [selected]="columnFilters[col.field] || null"
+                  (selectedChange)="onColumnFilterChange(col.field, $event)"
+                  (openSort)="openSortConfig()"
+                  (hideColumn)="hideColumnField(col.field)"
+                  (openColumnConfig)="openColumnConfig()">
+                </app-column-filter>
+              <span class="sort-badge" *ngIf="sortLevelOf(col.field)">
                 <span class="sort-rank">{{ sortLevelOf(col.field) }}</span>
                 <i class="fas" [class.fa-arrow-up-short-wide]="sortDirOf(col.field) === 'asc'"
                    [class.fa-arrow-down-wide-short]="sortDirOf(col.field) === 'desc'"></i>
@@ -216,23 +241,18 @@
         </div>
       </div>
       <div class="table-footer-right">
-        <div class="pagination-size">
-          <span class="pagination-size-label">Par page :</span>
-          <div class="pagination-size-select-wrapper">
-            <select class="pagination-size-select" [value]="pageSize" (change)="setPageSize(+$any($event.target).value)">
-              <option *ngFor="let opt of pageSizeOptions" [value]="opt">{{ opt }}</option>
-            </select>
-            <i class="fas fa-chevron-down pagination-size-arrow"></i>
-          </div>
-        </div>
-        <div class="pagination-nav">
-          <button class="pagination-nav-btn" [disabled]="currentPage <= 1" (click)="goToFirstPage()" title="Première page"><i class="fas fa-angle-double-left"></i></button>
-          <button class="pagination-nav-btn" [disabled]="currentPage <= 1" (click)="prevPage()" title="Page précédente"><i class="fas fa-chevron-left"></i></button>
-          <button *ngFor="let p of pageNumbers" class="pagination-page-btn" [class.active]="p === currentPage" (click)="goToPage(p)">{{ p }}</button>
-          <span class="pagination-nav-label">Page {{ currentPage }} / {{ totalPages }}</span>
-          <button class="pagination-nav-btn" [disabled]="currentPage >= totalPages" (click)="nextPage()" title="Page suivante"><i class="fas fa-chevron-right"></i></button>
-          <button class="pagination-nav-btn" [disabled]="currentPage >= totalPages" (click)="goToLastPage()" title="Dernière page"><i class="fas fa-angle-double-right"></i></button>
-        </div>
+        <app-table-pagination
+          [page]="currentPage"
+          [pageSize]="pageSize"
+          [total]="filteredItems.length"
+          [pageSizeOptions]="pageSizeOptions"
+      entityPlural="SSDGPS"
+          (pageSizeChange)="setPageSize($event)"
+          (first)="goToFirstPage()"
+          (prev)="prevPage()"
+          (next)="nextPage()"
+          (last)="goToLastPage()">
+        </app-table-pagination>
       </div>
     </div>
   </div>
@@ -241,6 +261,10 @@
 <!-- Menu contextuel de colonne -->
 <div class="context-menu" *ngIf="showColumnContextMenu"
      [style.left.px]="contextMenuPosition.x" [style.top.px]="contextMenuPosition.y" (click)="$event.stopPropagation()">
+  <div class="context-menu-item" (click)="openSortConfigFromContext()">
+    <i class="fas fa-sort-amount-down"></i> Tri multi-niveaux…
+  </div>
+  <div class="context-menu-divider"></div>
   <div class="context-menu-item" (click)="hideColumnFromContext()">
     <i class="fas fa-eye-slash"></i> Masquer cette colonne
   </div>
@@ -250,163 +274,8 @@
   </div>
 </div>
 
-<!-- Modale : organiser les colonnes -->
-<div class="modal-overlay" *ngIf="showColumnConfig" (click)="toggleColumnConfig()">
-  <div class="modal-content modal-column-config" (click)="$event.stopPropagation()">
-    <div class="modal-header">
-      <div class="modal-header-left">
-        <i class="fas fa-columns header-icon"></i>
-        <div>
-          <h3>Organiser les colonnes</h3>
-          <span class="modal-stats">
-            <i class="fas fa-table"></i> Total : {{ getColumnStats().total }}
-            <span class="stat-sep">|</span>
-            <i class="fas fa-eye"></i> Visibles : {{ getColumnStats().visible }}
-            <span class="stat-sep">|</span>
-            <i class="fas fa-eye-slash"></i> Masquées : {{ getColumnStats().hidden }}
-          </span>
-        </div>
-      </div>
-      <div class="modal-header-right">
-        <div class="dropdown-container" [class.open]="showColumnFilterMenu">
-          <button type="button" class="btn btn-filter-toggle" (click)="toggleColumnFilterMenu($event)" [title]="getColumnFilterLabel()">
-            <i class="fas fa-filter"></i> {{ getColumnFilterLabel() }} <i class="fas fa-chevron-down"></i>
-          </button>
-          <div class="dropdown-menu" [hidden]="!showColumnFilterMenu">
-            <div class="dropdown-item" (click)="$event.stopPropagation(); applyColumnFilter('all')" [class.active]="columnFilter === 'all'">
-              <i class="fas fa-eye"></i> <span>Afficher toutes les colonnes</span> <i class="fas fa-check" *ngIf="columnFilter === 'all'"></i>
-            </div>
-            <div class="dropdown-item" (click)="$event.stopPropagation(); applyColumnFilter('visible')" [class.active]="columnFilter === 'visible'">
-              <i class="fas fa-eye-slash"></i> <span>Uniquement les colonnes visibles</span> <i class="fas fa-check" *ngIf="columnFilter === 'visible'"></i>
-            </div>
-          </div>
-        </div>
-        <button class="close-btn" (click)="toggleColumnConfig()"><i class="fas fa-times"></i></button>
-      </div>
-    </div>
-
-    <div class="modal-body">
-      <ul class="column-list">
-        <li *ngFor="let col of getFilteredColumns(); let i = index"
-            class="column-item"
-            [class.dragging]="draggedColumnIndex === columns.indexOf(col)"
-            [class.drag-over]="dragOverIndex === columns.indexOf(col)"
-            draggable="true"
-            (dragstart)="onDragStart(columns.indexOf(col))"
-            (dragover)="onDragOver($event, columns.indexOf(col))"
-            (dragleave)="onDragLeave()"
-            (drop)="onDrop(columns.indexOf(col))"
-            (dragend)="onDragEnd()">
-          <div class="column-row">
-            <input type="checkbox" [checked]="col.visible" (change)="toggleColumnVisibility(col.field)">
-            <div class="column-reorder-buttons">
-              <button type="button" class="btn-reorder" [disabled]="columns.indexOf(col) === 0" (click)="moveColumnToTop(columns.indexOf(col))" title="Déplacer en première position"><i class="fas fa-angle-double-up"></i></button>
-              <button type="button" class="btn-reorder" [disabled]="columns.indexOf(col) === 0" (click)="moveColumnUp(columns.indexOf(col))" title="Monter"><i class="fas fa-angle-up"></i></button>
-              <button type="button" class="btn-reorder" [disabled]="columns.indexOf(col) === columns.length - 1" (click)="moveColumnDown(columns.indexOf(col))" title="Descendre"><i class="fas fa-angle-down"></i></button>
-              <button type="button" class="btn-reorder" [disabled]="columns.indexOf(col) === columns.length - 1" (click)="moveColumnToBottom(columns.indexOf(col))" title="Déplacer en dernière position"><i class="fas fa-angle-double-down"></i></button>
-            </div>
-            <label>
-              <span class="column-type">{{ getTypeLabel(col.type) }}</span>
-              <span class="column-name">{{ col.label }}</span>
-              <i class="fas fa-info-circle column-info-icon" [title]="getFieldDescription(col.field)"></i>
-            </label>
-          </div>
-        </li>
-      </ul>
-    </div>
-
-    <div class="modal-footer">
-      <div class="footer-actions">
-        <button class="btn-action" (click)="selectAllColumns()"><i class="fas fa-eye"></i> Tout afficher</button>
-        <button class="btn-action" (click)="deselectAllColumns()"><i class="fas fa-eye-slash"></i> Tout masquer</button>
-        <button class="btn-action" (click)="invertColumnSelection()"><i class="fas fa-exchange-alt"></i> Inverser</button>
-      </div>
-      <div class="footer-buttons">
-        <button class="btn-cancel" (click)="cancelColumnConfig()"><i class="fas fa-times"></i> Annuler</button>
-        <button class="btn-confirm" (click)="confirmColumnConfig()"><i class="fas fa-check"></i> Appliquer</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ===== Panneau de configuration du tri MULTI-NIVEAUX de la liste des SSDGPS ===== -->
-<div class="modal-overlay" *ngIf="showSortConfig" (click)="closeSortConfig()">
-  <div class="modal-content sort-config-panel" (click)="$event.stopPropagation()">
-    <div class="modal-header">
-      <h3><i class="fas fa-sort-amount-down header-icon"></i> Tri multi-niveaux des SSDGPS</h3>
-      <button class="close-btn" (click)="closeSortConfig()"><i class="fas fa-times"></i></button>
-    </div>
-
-    <div class="modal-body">
-      <p class="panel-hint">
-        Définissez un ou <strong>plusieurs niveaux de tri</strong> (le niveau 1 est prioritaire,
-        le niveau 2 départage les égalités, etc.), chacun croissant ou décroissant. Le tri par
-        défaut est <strong>hérité du compte administrateur</strong> et peut être réinitialisé.
-      </p>
-
-      <div class="sort-autosave">
-        <span class="saving" *ngIf="savingSort"><i class="fas fa-spinner fa-spin"></i> Enregistrement…</span>
-        <span class="saved" *ngIf="!savingSort && savedSortFlash"><i class="fas fa-check-circle"></i> Modifications enregistrées</span>
-        <span class="idle" *ngIf="!savingSort && !savedSortFlash"><i class="fas fa-bolt"></i> Les modifications sont enregistrées automatiquement</span>
-        <span class="spacer"></span>
-        <button type="button" class="btn-reset-source" [disabled]="resettingSort" (click)="askResetSort()"
-                title="Remplacer votre tri par la configuration par défaut (compte administrateur)">
-          <i class="fas" [class.fa-spinner]="resettingSort" [class.fa-spin]="resettingSort" [class.fa-arrows-rotate]="!resettingSort"></i>
-          Réinitialiser avec la configuration source
-        </button>
-      </div>
-
-      <div class="sort-levels-empty" *ngIf="!sortLevels.length">
-        <i class="fas fa-info-circle"></i> Aucun niveau de tri — les SSDGPS s'affichent dans l'ordre d'import.
-      </div>
-
-      <div class="sort-levels">
-        <div class="sort-level" *ngFor="let lv of sortLevels; let i = index">
-          <span class="level-badge">{{ i + 1 }}</span>
-          <select class="level-field" [ngModel]="lv.field" (ngModelChange)="changeLevelField(i, $event)">
-            <option *ngFor="let f of fieldsForLevel(lv)" [value]="f.field">{{ f.label }}</option>
-          </select>
-          <select class="level-dir" [ngModel]="lv.dir" (ngModelChange)="changeLevelDir(i, $event)">
-            <option value="asc">Croissant ↑</option>
-            <option value="desc">Décroissant ↓</option>
-          </select>
-          <div class="level-actions">
-            <button type="button" title="Monter" [disabled]="i === 0" (click)="moveLevelUp(i)"><i class="fas fa-arrow-up"></i></button>
-            <button type="button" title="Descendre" [disabled]="i === sortLevels.length - 1" (click)="moveLevelDown(i)"><i class="fas fa-arrow-down"></i></button>
-            <button type="button" class="danger" title="Retirer" (click)="removeLevel(i)"><i class="fas fa-times"></i></button>
-          </div>
-        </div>
-      </div>
-
-      <button type="button" class="btn-add-level" [disabled]="!canAddLevel" (click)="addLevel()">
-        <i class="fas fa-plus"></i> Ajouter un niveau de tri
-      </button>
-    </div>
-
-    <div class="modal-footer">
-      <span class="sort-summary"><i class="fas fa-list-ol"></i> {{ sortSummary }}</span>
-      <button class="btn-confirm" (click)="closeSortConfig()"><i class="fas fa-check"></i> Fermer</button>
-    </div>
-  </div>
-</div>
-
-<!-- Confirmation : réinitialisation avec la configuration source -->
-<div class="modal-overlay" *ngIf="showResetConfirm" (click)="cancelResetSort()">
-  <div class="modal-content confirm-panel" (click)="$event.stopPropagation()">
-    <h3><i class="fas fa-arrows-rotate"></i> Réinitialiser le tri ?</h3>
-    <p>
-      Votre tri multi-niveaux va être <strong>remplacé</strong> par la configuration source
-      (celle du compte administrateur). Vos niveaux personnalisés seront <strong>écrasés</strong>.
-    </p>
-    <div class="confirm-actions">
-      <button class="btn-cancel" (click)="cancelResetSort()" [disabled]="resettingSort">Annuler</button>
-      <button class="btn-confirm" (click)="confirmResetSort()" [disabled]="resettingSort">
-        <i class="fas" [class.fa-spinner]="resettingSort" [class.fa-spin]="resettingSort" [class.fa-arrows-rotate]="!resettingSort"></i>
-        {{ resettingSort ? 'Réinitialisation…' : 'Réinitialiser' }}
-      </button>
-    </div>
-  </div>
-</div>
+<!-- La modale « Organiser les colonnes » est fournie par <app-column-config> dans la barre d'outils. -->
+<!-- Le tri multi-niveaux (bouton + modales) est fourni par <app-multi-level-sort> dans la barre d'outils. -->
 
 <!-- ===== Modale : Consulter un SSDGPS (lecture seule) ===== -->
 <div class="modal-overlay" *ngIf="showDetailModal && detailTarget" (click)="closeDetail()">

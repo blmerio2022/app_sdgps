@@ -1,4 +1,6 @@
-import { Component, HostListener, OnInit } from '@angular/core';
+import { formatDateTime, formatFieldDate } from '../../../shared/utils/date-format.util';
+import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from '../../../shared/components/table-pagination/table-pagination.component';
+import { Component, HostListener, OnInit, ViewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { forkJoin, of } from 'rxjs';
 import { catchError, map } from 'rxjs/operators';
@@ -9,6 +11,13 @@ import { BreadcrumbService } from '../../../core/layout/services/breadcrumb.serv
 import { BreadcrumbItem } from '../../../core/layout/interfaces/menu.interface';
 import { Piece, PieceTypeDef } from '../../../core/models/piece.model';
 import { Ssdgps, Session, Projet } from '../../../core/models/project.model';
+import { TableSortConfigService, OrgSortLevel } from '../../../core/services/table-sort-config.service';
+import { SortableField, sortLevelOf, sortDirOf } from '../../../shared/components/multi-level-sort/multi-level-sort.util';
+import { MultiLevelSortComponent } from '../../../shared/components/multi-level-sort/multi-level-sort.component';
+import { ColumnConfigComponent } from '../../../shared/components/column-config/column-config.component';
+import { applyColumnsConfig, toColumnPrefs, ManagedColumn } from '../../../shared/components/column-config/column-config.util';
+import { ColumnFilterMap, withColumnFilter, rowMatchesColumnFilters, activeFilterCount } from '../../../shared/components/column-filter/column-filter.util';
+import { TableColumnsConfigService } from '../../../core/services/table-columns-config.service';
 
 interface ColumnConfig {
   field: string;
@@ -26,7 +35,8 @@ const PIECE_COLUMNS: ColumnConfig[] = [
   { field: 'portee_label', label: 'Portée', visible: true, type: 'text' },
   { field: 'source_saisie', label: 'Source', visible: true, type: 'text' },
   { field: 'statut', label: 'Statut', visible: true, type: 'text' },
-  { field: 'commentaire', label: 'Commentaire', visible: false, type: 'text' },
+  { field: 'commentaire', label: 'Observations', visible: false, type: 'text' },
+  { field: 'notes_internes', label: 'Notes internes', visible: false, type: 'text' },
   { field: 'created_at', label: 'Créé le', visible: false, type: 'date' },
   { field: 'updated_at', label: 'Modifié le', visible: false, type: 'date' },
   { field: 'is_deleted', label: 'Supprimé', visible: false, type: 'boolean' },
@@ -85,19 +95,35 @@ export class PieceManagementPageComponent implements OnInit {
   sortDirection: 'asc' | 'desc' = 'asc';
   private manualOrder: string[] | null = null;
 
-  // Colonnes (vue Tableau)
+  @ViewChild(MultiLevelSortComponent) private sortCmp?: MultiLevelSortComponent;
+  /** Ouvre la modale de tri (depuis un clic d'en-tête). */
+  openSort(): void { this.sortCmp?.open(); }
+
+  // --- Tri MULTI-NIVEAUX de la LISTE des pièces (config opérateur, héritée du super admin) ---
+  // NB : distinct du tri des DONNÉES internes d'une pièce (Profil → Paramètres de tri des pièces).
+  private readonly SORT_KEY = 'pieces';
+  readonly sortableFields: SortableField[] = PIECE_COLUMNS.map(c => ({ field: c.field, label: c.label }));
+  sortLevels: OrgSortLevel[] = [];
+  savingSort = false;
+  savedSortFlash = false;
+  resettingSort = false;
+  private sortSaveTimer: any;
+
+  // Colonnes (vue Tableau) — config opérateur, héritée du super admin, via composant partagé
   columns: ColumnConfig[] = PIECE_COLUMNS.map(c => ({ ...c }));
-  private columnsBackup: ColumnConfig[] = [];
-  showColumnConfig = false;
-  columnFilter: 'all' | 'visible' = 'all';
-  showColumnFilterMenu = false;
-  draggedColumnIndex: number | null = null;
-  dragOverIndex: number | null = null;
+  private readonly COLUMNS_KEY = 'pieces';
+  @ViewChild(ColumnConfigComponent) private columnCfg?: ColumnConfigComponent;
+  /** Description d'une colonne pour la modale partagée (référence stable). */
+  describeColumn = (field: string): string => this.getFieldDescription(field);
+  savingColumns = false;
+  savedColumnsFlash = false;
+  resettingColumns = false;
+  private columnsSaveTimer: any;
 
   // Pagination (vue Tableau)
   currentPage = 1;
-  pageSize = 10;
-  pageSizeOptions = [5, 10, 25, 50];
+  pageSize = DEFAULT_PAGE_SIZE;
+  pageSizeOptions = [...PAGE_SIZE_OPTIONS];
 
   // Suppression / restauration
   showDeleteModal = false;
@@ -146,6 +172,8 @@ export class PieceManagementPageComponent implements OnInit {
     private router: Router,
     private route: ActivatedRoute,
     private breadcrumb: BreadcrumbService,
+    private sortConfigService: TableSortConfigService,
+    private columnsConfigService: TableColumnsConfigService,
   ) {}
 
   private projet: Projet | null = null;
@@ -154,6 +182,8 @@ export class PieceManagementPageComponent implements OnInit {
     this.viewMode = (localStorage.getItem(VIEW_MODE_KEY) as 'cards' | 'table') || 'table';
     this.boundHandleClickOutside = this.handleGlobalClick.bind(this);
     document.addEventListener('click', this.boundHandleClickOutside);
+    this.loadSortConfig();
+    this.loadColumnsConfig();
 
     const ssdgpsId = this.route.snapshot.paramMap.get('ssdgpsId')!;
     this.projectId = this.route.snapshot.paramMap.get('id')!;
@@ -321,9 +351,9 @@ export class PieceManagementPageComponent implements OnInit {
   statutBadgeClass(v: string): string {
     return { brouillon: 'badge-warning', valide: 'badge-success', rejete: 'badge-secondary' }[v] || 'badge-secondary';
   }
-  formatDate(value: any): string {
-    if (!value) return '—';
-    return new Date(value).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  /** Format unifié (cf. `date-format.util`) — passer le champ pour les dates sans heure. */
+  formatDate(value: any, field?: string): string {
+    return formatFieldDate(value, field);
   }
 
   changeScope(piece: Piece, sessionId: string): void {
@@ -336,6 +366,21 @@ export class PieceManagementPageComponent implements OnInit {
   // ============================================
   // Filtrage, tri, pagination (affichage)
   // ============================================
+  // --- FILTRES DE COLONNE (façon Excel, composant partagé `<app-column-filter>`) ---
+  /** Valeurs retenues par colonne ; une colonne absente n'est pas filtrée. */
+  columnFilters: ColumnFilterMap = {};
+  /** Texte affiché d'une cellule : le filtre porte sur la valeur VUE (référence stable). */
+  cellText = (row: any, field: string): string => this.getCellValue(row, field);
+
+  onColumnFilterChange(field: string, values: string[] | null): void {
+    this.columnFilters = withColumnFilter(this.columnFilters, field, values);
+  }
+
+  /** Masque une colonne (depuis le menu de filtre) — auto-save comme la modale des colonnes. */
+  hideColumnField(field: string): void {
+    this.onColumnsChange(this.columns.map(c => (c.field === field ? { ...c, visible: false } : { ...c })));
+  }
+
   get filteredItems(): Piece[] {
     let result = this.items;
     if (this.displayMode === 'selected') result = result.filter(p => this.selectedIds.has(p.id));
@@ -351,6 +396,11 @@ export class PieceManagementPageComponent implements OnInit {
         return val != null && String(val).toLowerCase().includes(fv);
       });
     }
+
+    // Filtres de colonne (façon Excel).
+    if (activeFilterCount(this.columnFilters)) {
+      result = result.filter(p => rowMatchesColumnFilters(p, this.columnFilters, this.cellText));
+    }
     if (this.manualOrder) {
       const idx = new Map(this.manualOrder.map((id, i) => [id, i]));
       result = [...result].sort((a, b) => {
@@ -358,6 +408,9 @@ export class PieceManagementPageComponent implements OnInit {
         const ib = idx.has(b.id) ? idx.get(b.id)! : Number.MAX_SAFE_INTEGER;
         return ia - ib;
       });
+    } else if (this.sortLevels.length) {
+      // Le tri MULTI-NIVEAUX prime ; comparateur local (réutilise getFieldRaw pour portee_label).
+      result = [...result].sort((a, b) => this.compareByLevelsPiece(a, b));
     } else {
       result = [...result].sort((a, b) => {
         const va = this.getFieldRaw(a, this.sortColumn);
@@ -398,6 +451,58 @@ export class PieceManagementPageComponent implements OnInit {
   getSortIcon(field: string): string {
     if (this.sortColumn !== field) return 'fas fa-sort';
     return this.sortDirection === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down';
+  }
+
+  // --- Tri MULTI-NIVEAUX (config opérateur, héritée du super admin) — parité liste organisations ---
+  sortLevelOf(field: string): number { return sortLevelOf(this.sortLevels, field); }
+  sortDirOf(field: string): '' | 'asc' | 'desc' { return sortDirOf(this.sortLevels, field); }
+  /** Comparateur multi-niveaux réutilisant `getFieldRaw` (gère `portee_label`). */
+  private compareByLevelsPiece(a: Piece, b: Piece): number {
+    for (const lvl of this.sortLevels) {
+      const va = this.getFieldRaw(a, lvl.field);
+      const vb = this.getFieldRaw(b, lvl.field);
+      const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+      if (cmp !== 0) return lvl.dir === 'desc' ? -cmp : cmp;
+    }
+    return 0;
+  }
+
+  private loadSortConfig(): void {
+    this.sortConfigService.get(this.SORT_KEY).subscribe(levels => { this.sortLevels = levels; });
+  }
+  /** Réception d'une modification depuis la modale : applique + enregistrement auto (anti-rebond). */
+  onSortLevelsChange(levels: OrgSortLevel[]): void {
+    this.sortLevels = levels;
+    this.manualOrder = null;
+    this.currentPage = 1;
+    clearTimeout(this.sortSaveTimer);
+    this.sortSaveTimer = setTimeout(() => this.saveSortConfig(), 500);
+  }
+  private saveSortConfig(): void {
+    this.savingSort = true;
+    this.sortConfigService.save(this.SORT_KEY, this.sortLevels).subscribe({
+      next: (saved) => {
+        this.sortLevels = saved; this.savingSort = false; this.savedSortFlash = true;
+        setTimeout(() => { this.savedSortFlash = false; }, 2500);
+      },
+      error: (err) => { this.savingSort = false; this.toast.error('Erreur', err?.error?.detail || 'Enregistrement du tri impossible'); },
+    });
+  }
+  /** Réinitialise le tri avec la configuration SOURCE (compte administrateur). */
+  onResetSort(): void {
+    if (this.resettingSort) return;
+    this.resettingSort = true;
+    this.sortConfigService.resetToSource(this.SORT_KEY).subscribe({
+      next: (levels) => {
+        this.sortLevels = levels; this.resettingSort = false;
+        this.manualOrder = null; this.currentPage = 1;
+        this.toast.success('Succès', 'Tri réinitialisé avec la configuration source');
+      },
+      error: (e) => {
+        this.resettingSort = false;
+        this.toast.error('Erreur', e?.error?.detail || 'Réinitialisation impossible');
+      },
+    });
   }
 
   private getFieldRaw(p: Piece, field: string): any {
@@ -556,50 +661,40 @@ export class PieceManagementPageComponent implements OnInit {
     // En mono-session, la colonne « Portée » (session/commune) n'a pas de sens : on la masque.
     return this.columns.filter(c => c.visible && (this.isMultiSession || c.field !== 'portee_label'));
   }
-  getFilteredColumns(): ColumnConfig[] { return this.columnFilter === 'visible' ? this.columns.filter(c => c.visible) : this.columns; }
-  getColumnStats(): { total: number; visible: number; hidden: number } {
-    const total = this.columns.length;
-    const visible = this.columns.filter(c => c.visible).length;
-    return { total, visible, hidden: total - visible };
+  /** Ouvre la modale d'organisation des colonnes (composant partagé). */
+  openColumnConfig(): void { this.columnCfg?.open(); }
+  private loadColumnsConfig(): void {
+    this.columnsConfigService.get(this.COLUMNS_KEY).subscribe(prefs => {
+      this.columns = applyColumnsConfig(this.columns, prefs);
+    });
   }
-  toggleColumnVisibility(field: string): void {
-    const col = this.columns.find(c => c.field === field);
-    if (col) col.visible = !col.visible;
+  onColumnsChange(cols: ManagedColumn[]): void {
+    this.columns = cols as ColumnConfig[];
+    clearTimeout(this.columnsSaveTimer);
+    this.columnsSaveTimer = setTimeout(() => this.saveColumnsConfig(), 500);
   }
-  toggleColumnConfig(): void {
-    if (!this.showColumnConfig) this.saveColumnsBackup();
-    else this.restoreColumnsBackup();
-    this.showColumnConfig = !this.showColumnConfig;
+  private saveColumnsConfig(): void {
+    this.savingColumns = true;
+    this.columnsConfigService.save(this.COLUMNS_KEY, toColumnPrefs(this.columns)).subscribe({
+      next: () => {
+        this.savingColumns = false; this.savedColumnsFlash = true;
+        setTimeout(() => { this.savedColumnsFlash = false; }, 2500);
+      },
+      error: (err) => { this.savingColumns = false; this.toast.error('Erreur', err?.error?.detail || 'Enregistrement des colonnes impossible'); },
+    });
   }
-  openColumnConfig(): void { this.saveColumnsBackup(); this.showColumnConfig = true; }
-  confirmColumnConfig(): void { this.showColumnConfig = false; this.columnsBackup = []; }
-  cancelColumnConfig(): void { this.restoreColumnsBackup(); this.showColumnConfig = false; }
-  private saveColumnsBackup(): void { this.columnsBackup = this.columns.map(c => ({ ...c })); }
-  private restoreColumnsBackup(): void {
-    if (this.columnsBackup.length > 0) { this.columns = this.columnsBackup.map(c => ({ ...c })); this.columnsBackup = []; }
+  onResetColumns(): void {
+    if (this.resettingColumns) return;
+    this.resettingColumns = true;
+    this.columnsConfigService.resetToSource(this.COLUMNS_KEY).subscribe({
+      next: (prefs) => {
+        this.columns = applyColumnsConfig(this.columns, prefs);
+        this.resettingColumns = false;
+        this.toast.success('Succès', 'Colonnes réinitialisées avec la configuration source');
+      },
+      error: (e) => { this.resettingColumns = false; this.toast.error('Erreur', e?.error?.detail || 'Réinitialisation impossible'); },
+    });
   }
-  selectAllColumns(): void { this.columns.forEach(c => c.visible = true); }
-  deselectAllColumns(): void { this.columns.forEach(c => c.visible = false); }
-  invertColumnSelection(): void { this.columns.forEach(c => c.visible = !c.visible); }
-  toggleColumnFilterMenu(event: Event): void { event.stopPropagation(); this.showColumnFilterMenu = !this.showColumnFilterMenu; }
-  applyColumnFilter(filter: 'all' | 'visible'): void { this.columnFilter = filter; this.showColumnFilterMenu = false; }
-  getColumnFilterLabel(): string { return this.columnFilter === 'all' ? 'Toutes les colonnes' : 'Colonnes visibles'; }
-
-  onDragStart(index: number): void { this.draggedColumnIndex = index; }
-  onDragOver(event: DragEvent, index: number): void { event.preventDefault(); this.dragOverIndex = index; }
-  onDragLeave(): void { this.dragOverIndex = null; }
-  onDrop(index: number): void {
-    if (this.draggedColumnIndex === null || this.draggedColumnIndex === index) { this.draggedColumnIndex = null; this.dragOverIndex = null; return; }
-    const dragged = this.columns[this.draggedColumnIndex];
-    this.columns.splice(this.draggedColumnIndex, 1);
-    this.columns.splice(index, 0, dragged);
-    this.draggedColumnIndex = null; this.dragOverIndex = null;
-  }
-  onDragEnd(): void { this.draggedColumnIndex = null; this.dragOverIndex = null; }
-  moveColumnUp(index: number): void { if (index > 0) { [this.columns[index], this.columns[index - 1]] = [this.columns[index - 1], this.columns[index]]; } }
-  moveColumnDown(index: number): void { if (index < this.columns.length - 1) { [this.columns[index], this.columns[index + 1]] = [this.columns[index + 1], this.columns[index]]; } }
-  moveColumnToTop(index: number): void { if (index > 0) { const c = this.columns.splice(index, 1)[0]; this.columns.unshift(c); } }
-  moveColumnToBottom(index: number): void { if (index < this.columns.length - 1) { const c = this.columns.splice(index, 1)[0]; this.columns.push(c); } }
 
   getTypeLabel(type?: string): string {
     return { text: 'TEXTE', date: 'DATE', number: 'NOMBRE', boolean: 'BOOLÉEN' }[type || 'text'] || 'TEXTE';
@@ -612,7 +707,8 @@ export class PieceManagementPageComponent implements OnInit {
       portee_label: 'Niveau de la pièce : SSDGPS (commune à toutes les sessions) ou Session (spécifique), modifiable librement',
       source_saisie: 'Origine des données de la pièce',
       statut: 'Statut de validation de la pièce',
-      commentaire: 'Note ou remarque libre associée à la pièce',
+      commentaire: 'Observations reprises dans la colonne « Observations » de la page de garde du SSDGPS',
+      notes_internes: "Notes de travail internes à l'application — jamais reprises dans le rapport PDF",
       created_at: "Date de création de l'enregistrement",
       updated_at: "Date de dernière modification de l'enregistrement",
       is_deleted: "Indique si l'enregistrement a été supprimé (logique)",
@@ -946,10 +1042,14 @@ export class PieceManagementPageComponent implements OnInit {
     this.showColumnContextMenu = true;
   }
   hideColumnFromContext(): void {
-    if (this.contextMenuColumn) this.contextMenuColumn.visible = false;
+    const field = this.contextMenuColumn?.field;
     this.showColumnContextMenu = false; this.contextMenuColumn = null;
+    if (!field) return;
+    this.onColumnsChange(this.columns.map(c => (c.field === field ? { ...c, visible: false } : { ...c })));
   }
   openColumnConfigFromContext(): void { this.showColumnContextMenu = false; this.openColumnConfig(); }
+  /** Ouvrir la modale de tri multi-niveaux depuis le menu contextuel (clic droit en-tête). */
+  openSortFromContext(): void { this.showColumnContextMenu = false; this.openSort(); }
   closeAllContextMenus(): void { this.showColumnContextMenu = false; this.contextMenuColumn = null; this.closeContextMenu(); }
 
   private handleGlobalClick(event: Event): void {
@@ -957,7 +1057,6 @@ export class PieceManagementPageComponent implements OnInit {
     if (!target.closest('.filter-menu-wrapper') && !target.closest('.context-menu') && !target.closest('.dropdown-container')) {
       this.showFilterMenu = false;
       this.showFieldFilterMenu = false;
-      this.showColumnFilterMenu = false;
       this.showExportMenu = false;
       this.closeAllContextMenus();
     }
@@ -965,7 +1064,6 @@ export class PieceManagementPageComponent implements OnInit {
 
   @HostListener('document:keydown.escape')
   onEscape(): void {
-    if (this.showColumnConfig) { this.cancelColumnConfig(); return; }
     if (this.showRowContextMenu || this.showColumnContextMenu) { this.closeAllContextMenus(); return; }
     if (this.showDeleteModal) { this.closeDeleteModal(); return; }
     if (this.showRestoreModal) { this.closeRestoreModal(); return; }

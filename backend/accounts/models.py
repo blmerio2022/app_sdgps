@@ -4,7 +4,7 @@ from django.contrib.auth.models import AbstractUser
 from django.utils import timezone
 from datetime import timedelta
 from .managers import OrganizationManager
-from .piece_defaults import default_piece_sort_config, default_piece_fields_config, default_ssdgps_sort_config
+from .piece_defaults import default_piece_sort_config, default_piece_fields_config, default_ssdgps_sort_config, default_org_sort_config, default_organisme_niveau1_sort_config, default_organisme_niveau2_sort_config
 
 
 class Organization(models.Model):
@@ -115,13 +115,13 @@ class Organization(models.Model):
     )
     is_deleted = models.BooleanField(
         default=False,
-        verbose_name="Supprimée (logique)",
+        verbose_name="Supprimé",
         help_text="Indique si l'organisation a été supprimée logiquement (soft delete). Ne plus l'afficher dans l'application."
     )
     deleted_at = models.DateTimeField(
         null=True,
         blank=True,
-        verbose_name="Date de suppression",
+        verbose_name="Supprimé le",
         help_text="Date et heure de la suppression logique de l'organisation"
     )
     is_test_data = models.BooleanField(
@@ -131,12 +131,12 @@ class Organization(models.Model):
     )
     created_at = models.DateTimeField(
         auto_now_add=True,
-        verbose_name="Date de création",
+        verbose_name="Créé le",
         help_text="Date et heure de création de l'organisation dans le système"
     )
     updated_at = models.DateTimeField(
         auto_now=True,
-        verbose_name="Dernière modification",
+        verbose_name="Modifié le",
         help_text="Date et heure de la dernière modification des informations"
     )
     created_by = models.ForeignKey(
@@ -149,13 +149,24 @@ class Organization(models.Model):
         help_text="Utilisateur ayant créé cette organisation"
     )
     modified_by = models.ForeignKey(
-        'CustomUser', 
-        on_delete=models.SET_NULL, 
-        null=True, 
+        'CustomUser',
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
         related_name='modified_organizations',
         verbose_name="Modifié par",
         help_text="Utilisateur ayant effectué la dernière modification de cette organisation"
+    )
+    # NB : le champ historique s'appelle `modified_by` ; l'API expose l'alias `updated_by_email`
+    # (nom unifié dans toute l'app) en plus de `modified_by_email` conservé pour compatibilité.
+    deleted_by = models.ForeignKey(
+        'CustomUser',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='deleted_organizations',
+        verbose_name="Supprimé par",
+        help_text="Utilisateur ayant supprimé (logiquement) cette organisation"
     )
 
     class Meta:
@@ -284,13 +295,50 @@ class CustomUser(AbstractUser):
     # Soft-delete
     is_deleted = models.BooleanField(
         default=False,
-        verbose_name="Supprimé (logique)",
+        verbose_name="Supprimé",
         help_text="Indique si l'utilisateur a été supprimé logiquement"
     )
     deleted_at = models.DateTimeField(
         null=True,
         blank=True,
-        verbose_name="Date de suppression"
+        verbose_name="Supprimé le",
+        help_text="Date et heure de la suppression logique de l'utilisateur"
+    )
+
+    # --- Colonnes d'audit standard (cf. CLAUDE.md « Colonnes d'audit obligatoires ») ---
+    # `date_joined` (hérité d'AbstractUser) tient lieu de date de création : il est exposé par
+    # l'API sous l'alias `created_at` pour rester homogène avec les autres tableaux.
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="Modifié le",
+        help_text="Date et heure de la dernière modification de la fiche utilisateur"
+    )
+    created_by = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_users',
+        verbose_name="Créé par",
+        help_text="Utilisateur ayant créé ce compte"
+    )
+    updated_by = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='updated_users',
+        verbose_name="Modifié par",
+        help_text="Utilisateur ayant effectué la dernière modification de ce compte"
+    )
+    deleted_by = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='deleted_users',
+        verbose_name="Supprimé par",
+        help_text="Utilisateur ayant supprimé (logiquement) ce compte"
     )
 
     # Photo de profil
@@ -337,6 +385,51 @@ class CustomUser(AbstractUser):
         default=default_ssdgps_sort_config, blank=True,
         verbose_name="Tri multi-niveaux de la liste des SSDGPS",
         help_text="Niveaux de tri (champ + sens) par défaut du tableau de la liste des SSDGPS."
+    )
+
+    # Tri MULTI-NIVEAUX par défaut du tableau de la LISTE DES ORGANISATIONS (miroir SSDGPS).
+    # Forme : liste ordonnée `[{'field': '<colonne>', 'dir': 'asc'|'desc'}, ..]` (niveau 1 =
+    # prioritaire). Défaut = config du super admin (source), repli sur le tri par nom.
+    org_sort_config = models.JSONField(
+        default=default_org_sort_config, blank=True,
+        verbose_name="Tri multi-niveaux de la liste des organisations",
+        help_text="Niveaux de tri (champ + sens) par défaut du tableau de la liste des organisations."
+    )
+
+    # Tri MULTI-NIVEAUX par défaut des tableaux des LISTES D'ORGANISMES (niveau 1 et niveau 2,
+    # miroir des organisations). Deux configs distinctes car les colonnes triables diffèrent.
+    organisme_niveau1_sort_config = models.JSONField(
+        default=default_organisme_niveau1_sort_config, blank=True,
+        verbose_name="Tri multi-niveaux des organismes de premier niveau",
+        help_text="Niveaux de tri (champ + sens) par défaut du tableau des organismes de premier niveau."
+    )
+    organisme_niveau2_sort_config = models.JSONField(
+        default=default_organisme_niveau2_sort_config, blank=True,
+        verbose_name="Tri multi-niveaux des organismes de deuxième niveau",
+        help_text="Niveaux de tri (champ + sens) par défaut du tableau des organismes de deuxième niveau."
+    )
+
+    # Tri MULTI-NIVEAUX par défaut, GÉNÉRIQUE, des autres tableaux de l'app (utilisateurs, projets,
+    # explorateur de projet, pièces d'un SSDGPS, ...). Dictionnaire
+    # `{ '<clé_table>': [{'field','dir'}, ..], .. }` : une entrée par tableau, même forme que les
+    # configs dédiées ci-dessus. Vide par défaut ; la config source (super admin) reste récupérable
+    # via l'action « Réinitialiser avec la configuration source ». Mutualise le mécanisme pour éviter
+    # un champ + une migration par nouvelle liste.
+    table_sort_configs = models.JSONField(
+        default=dict, blank=True,
+        verbose_name="Tri multi-niveaux par tableau (générique)",
+        help_text="Niveaux de tri (champ + sens) par défaut, par tableau, pour les listes génériques."
+    )
+
+    # Configuration des COLONNES par défaut, GÉNÉRIQUE, des tableaux de l'app (colonnes affichées /
+    # masquées + ordre), propre à l'utilisateur. Dictionnaire `{ '<clé_table>': [{'field','visible'}, ..], .. }`
+    # : une entrée par tableau, l'ordre de la liste étant l'ordre d'affichage des colonnes. Vide par
+    # défaut ; la config source (super admin) reste récupérable via « Réinitialiser avec la
+    # configuration source ». Miroir de `table_sort_configs` (un seul champ pour tous les tableaux).
+    table_columns_configs = models.JSONField(
+        default=dict, blank=True,
+        verbose_name="Colonnes par tableau (générique)",
+        help_text="Colonnes affichées/masquées et leur ordre, par tableau, propres à l'utilisateur."
     )
 
     class Meta:

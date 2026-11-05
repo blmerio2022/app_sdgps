@@ -5,6 +5,49 @@
    Thème Sombre par défaut avec toggle Clair
    ======================================== */
 
+/* ============================================================================
+   BARRES DE DÉFILEMENT — STYLE UNIQUE DE L'APPLICATION
+   ----------------------------------------------------------------------------
+   Référence : le défilement de la modale d'organisation des colonnes.
+   Cette règle GLOBALE s'applique à TOUS les défilements, verticaux comme
+   horizontaux, existants et à venir : ne JAMAIS redéfinir `::-webkit-scrollbar`
+   dans un composant (cf. CLAUDE.md, « Barres de défilement »).
+
+   Caractéristiques : rail transparent, pouce fin et arrondi en `--border-color`
+   détaché des bords (bordure transparente + `background-clip`), accentué en
+   `--accent-color` au survol. Firefox : `scrollbar-width: thin`.
+   ============================================================================ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;   /* défilement vertical   */
+  height: 8px;  /* défilement horizontal */
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+
+  &:hover {
+    background: var(--accent-color);
+    background-clip: padding-box;
+  }
+}
+
+/* Coin entre les deux barres (défilements croisés) : neutre. */
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 :root {
   // Dimensions layout
   --sidebar-width-expanded: 280px;
@@ -249,3 +292,74 @@ body {
 }
 
 .auth-links.with-divider { margin-top: 0; padding-top: 18px; border-top: 1px solid var(--border-color); }
+
+/* =====================================================================
+   INFO-BULLE UNIFIÉE DES EN-TÊTES DE TABLEAU (directive `appTableHeaderTooltip`).
+   Styles GLOBAUX : l'élément est ajouté à `document.body` pour ne jamais être
+   rogné par l'`overflow` d'un conteneur de tableau. Structure identique dans
+   toute l'app : titre (+ type) / description / état de tri / actions.
+   ===================================================================== */
+.app-th-tooltip {
+  position: fixed;
+  z-index: 2000;
+  max-width: 340px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--secondary-color);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.35);
+  color: var(--text-color);
+  font-size: 12.5px;
+  line-height: 1.5;
+  pointer-events: none;            /* ne gêne jamais le clic sur l'en-tête */
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.14s ease, transform 0.14s ease;
+  text-transform: none;            /* neutralise l'uppercase des <th> */
+  letter-spacing: normal;
+  font-weight: 400;
+  white-space: normal;
+
+  &.is-visible { opacity: 1; transform: translateY(0); }
+  &[data-placement='top'] { transform: translateY(4px); &.is-visible { transform: translateY(0); } }
+
+  .tt-head {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 6px;
+  }
+  .tt-title {
+    font-size: 13.5px; font-weight: 700; color: var(--text-color);
+    overflow-wrap: anywhere;
+  }
+  .tt-type {
+    flex: 0 0 auto;
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.4px;
+    padding: 2px 6px; border-radius: 5px;
+    background: var(--hover-bg); color: var(--text-muted);
+  }
+
+  .tt-desc {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+
+  .tt-meta {
+    margin-top: 9px; padding-top: 9px;
+    border-top: 1px solid var(--border-color);
+    display: flex; flex-direction: column; gap: 5px;
+  }
+  .tt-row {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 11.5px; color: var(--text-muted);
+    i { width: 12px; text-align: center; font-size: 10.5px; color: var(--text-muted); }
+    b { color: var(--text-color); font-weight: 700; }
+  }
+  /* L'état de tri est l'information la plus utile : on l'accentue. */
+  .tt-sort {
+    color: var(--accent-color);
+    i { color: var(--accent-color); }
+    b { color: var(--accent-color); }
+  }
+}

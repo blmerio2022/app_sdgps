@@ -76,6 +76,10 @@ docs/exemples-ssdgps/04-EXEMPLES-SDGPS/
 docs/notes/*.xlsm
 docs/notes/test.md
 tableau.md
+# Données géospatiales de travail (exports GeoPackage)
+*.gpkg
 
 # Agent/IDE config directories
 .claude/
+# Espaces de travail d'éditeur locaux
+*.code-workspace

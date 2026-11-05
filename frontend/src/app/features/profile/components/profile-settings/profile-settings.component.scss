@@ -8,23 +8,7 @@
   margin: 0;
 
   // Style personnalisé du scrollbar
-  &::-webkit-scrollbar {
-    width: 8px;
-  }
-  
-  &::-webkit-scrollbar-track {
-    background: var(--secondary-color);
-    border-radius: 4px;
-  }
-  
-  &::-webkit-scrollbar-thumb {
-    background: var(--border-color);
-    border-radius: 4px;
-    
-    &:hover {
-      background: var(--accent-color);
-    }
-  }
+
 }
 
 // Contenu principal avec scroll
@@ -32,25 +16,7 @@
   overflow-y: auto;
   max-height: calc(100vh - 200px); // Ajusté pour réduire l'espace vide
   padding-right: 10px; // Espace pour scrollbar
-  
-  // Scrollbar personnalisée
-  &::-webkit-scrollbar {
-    width: 8px;
-  }
-  
-  &::-webkit-scrollbar-track {
-    background: var(--secondary-color);
-    border-radius: 4px;
-  }
-  
-  &::-webkit-scrollbar-thumb {
-    background: var(--border-color);
-    border-radius: 4px;
-    
-    &:hover {
-      background: var(--accent-color);
-    }
-  }
+
 }
 
 // Header de page

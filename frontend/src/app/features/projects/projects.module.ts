@@ -2,6 +2,7 @@ import { NgModule } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { ProjectsRoutingModule } from './projects-routing.module';
+import { SharedModule } from '../../shared/shared.module';
 import { ProjectListComponent } from './project-list/project-list.component';
 import { ProjectExplorerComponent } from './project-explorer/project-explorer.component';
 import { ProjectSsdgpsListComponent } from './project-ssdgps-list/project-ssdgps-list.component';
@@ -23,6 +24,6 @@ import { PieceDataTableComponent } from './piece-data-table/piece-data-table.com
     PieceAddPageComponent, PieceDetailPageComponent, PiecePhotoPointsComponent,
     PieceDataTableComponent,
   ],
-  imports: [CommonModule, FormsModule, ReactiveFormsModule, ProjectsRoutingModule],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, ProjectsRoutingModule, SharedModule],
 })
 export class ProjectsModule {}

@@ -69,6 +69,27 @@ describe('AuthService', () => {
     expect(service.isPlatformAdmin()).toBeFalse();
   });
 
+  it('getPostLoginRoute() → /admin/dashboard pour Super Admin & Admin Système, /dashboard sinon', () => {
+    localStorage.setItem('authToken', makeJwt({ platform_role: 'ROLE_SUPER_ADMIN' }));
+    expect(service.getPostLoginRoute()).toBe('/admin/dashboard');
+
+    localStorage.setItem('authToken', makeJwt({ platform_role: 'ROLE_ADMIN_SYSTEME' }));
+    expect(service.getPostLoginRoute()).toBe('/admin/dashboard');
+
+    localStorage.setItem('authToken', makeJwt({ is_superuser: true }));
+    expect(service.getPostLoginRoute()).toBe('/admin/dashboard');
+
+    // Rôles d'organisation (Admin/Agent) → tableau de bord opérateur /dashboard.
+    localStorage.setItem('authToken', makeJwt({ platform_role: 'ROLE_ORGANISATION_ADMIN' }));
+    expect(service.getPostLoginRoute()).toBe('/dashboard');
+
+    localStorage.setItem('authToken', makeJwt({ role: 'AGENT' }));
+    expect(service.getPostLoginRoute()).toBe('/dashboard');
+
+    localStorage.removeItem('authToken');
+    expect(service.getPostLoginRoute()).toBe('/dashboard');
+  });
+
   it('forgotPassword() POST /forgot-password/ avec l’email', () => {
     service.forgotPassword('a@b.ma').subscribe();
     const req = httpMock.expectOne(`${API}/forgot-password/`);

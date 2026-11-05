@@ -1,0 +1,30 @@
+# Ignore spécifique à Dockerfile.local (BuildKit lit <Dockerfile>.dockerignore en priorité).
+# = .dockerignore racine, MAIS on N'exclut PAS `**/dist` ni `backend/frontend_dist` : le SPA
+# buildé en natif (frontend/dist/frontend) DOIT entrer dans le contexte pour être cuit.
+**/node_modules
+**/.angular
+.git
+.github
+docs
+_docker_backup
+_ppa_model*.png
+
+# Python / Django local
+**/__pycache__
+**/*.pyc
+backend/.venv
+backend/venv
+backend/db.sqlite3
+backend/test_db.sqlite3
+backend/media
+backend/staticfiles
+
+# Secrets & environnements locaux (jamais dans l'image)
+**/.env
+**/.env.*
+!**/.env*.example
+
+# Divers
+**/.pytest_cache
+**/.mypy_cache
+**/*.log

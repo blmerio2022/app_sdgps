@@ -101,7 +101,10 @@ describe('LayoutService', () => {
     // Un Admin d'organisation ne voit pas les entrées réservées Super/Système.
     service.setMenuByRole('ROLE_ORGANISATION_ADMIN');
     const ids = menu.map(m => m.id);
-    expect(ids).toContain('dashboard');
+    // L'Admin d'organisation a son propre tableau de bord opérateur (id `dashboard-org`,
+    // route /dashboard) ; l'entrée `dashboard` (/admin/dashboard) est réservée Super/Système.
+    expect(ids).toContain('dashboard-org');
+    expect(ids).not.toContain('dashboard');
     expect(ids).toContain('projets');
     expect(ids).not.toContain('organisations'); // roles: SUPER_OR_SYSTEME
     expect(ids).not.toContain('logs-audit');

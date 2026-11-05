@@ -1,0 +1,6 @@
+# Exclut le lourd/inutile du contexte de build (node_modules de l'hôte = binaires Windows).
+node_modules
+dist
+.angular
+.git
+*.log

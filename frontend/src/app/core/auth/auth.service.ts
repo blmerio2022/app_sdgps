@@ -305,6 +305,17 @@ export class AuthService {
     }
 
     /**
+     * @method getPostLoginRoute
+     * @returns string La route d'atterrissage après connexion selon le rôle.
+     * @description Super Admin & Admin Système atterrissent sur le tableau de bord admin
+     *              (`/admin/dashboard`, qui rend l'accueil `HomeModule`). Les rôles
+     *              d'organisation (Admin/Agent) atterrissent sur `/dashboard` (même HomeModule).
+     */
+    getPostLoginRoute(): string {
+        return this.isPlatformAdmin() ? '/admin/dashboard' : '/dashboard';
+    }
+
+    /**
      * @method isManager
      * @returns boolean Vrai si l'utilisateur est gestionnaire.
      * @description Vérifie si l'utilisateur a le rôle MANAGER.
@@ -420,10 +431,12 @@ export class AuthService {
                         return;
                     }
 
-                    // Si aucun changement requis, rediriger vers l'accueil de l'application
+                    // Si aucun changement requis, rediriger vers l'accueil selon le rôle
+                    // (admin plateforme → /admin/dashboard, sinon → /home).
                     console.log('✅ Connexion réussie - Redirection vers l\'accueil...');
+                    const target = this.getPostLoginRoute();
                     setTimeout(() => {
-                        window.location.href = '/home';
+                        window.location.href = target;
                     }, 100);
                 }
             },
@@ -432,8 +445,9 @@ export class AuthService {
 
                 // En cas d'erreur, ne rediriger que depuis une page d'auth (post-login).
                 if (currentPath.startsWith('/auth')) {
+                    const target = this.getPostLoginRoute();
                     setTimeout(() => {
-                        window.location.href = '/home';
+                        window.location.href = target;
                     }, 100);
                 }
             }

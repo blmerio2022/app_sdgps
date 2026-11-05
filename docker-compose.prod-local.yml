@@ -1,0 +1,58 @@
+# ============================================================================
+# Compose de « DEPLOY LOCAL » — lance l'image prod-like PRÉ-BUILDÉE (app_sdgps:<env>),
+# équivalent local du `railway redeploy` (Railway pull & run l'image poussée).
+# ============================================================================
+# Ne build RIEN (l'image est produite par scripts/local-images.ps1). Piloté par --env-file :
+#   docker compose -f docker-compose.prod-local.yml --env-file backend/.env.development up -d
+#   docker compose -f docker-compose.prod-local.yml --env-file backend/.env.staging --profile postgres up -d
+#   (idem preprod / production)
+#
+# Un env = UN SEUL port (8085/8086/8087/8088) servant l'app Angular ET l'API (même origine,
+# WhiteNoise + gunicorn) → pas de frontend séparé, pas de CORS. Le port FRONTEND_PORT (420x)
+# n'est PAS utilisé par ce pipeline. Chaque env a container + base + volumes DISTINCTS.
+# ----------------------------------------------------------------------------
+
+services:
+  # --- PostgreSQL : environnements serveur uniquement (profil `postgres`). ---
+  db:
+    image: postgres:16-alpine
+    container_name: sdgps-proddb-${ENVIRONMENT:-development}
+    profiles: ["postgres"]
+    restart: unless-stopped
+    # Identifiants du MÊME .env que l'app → pas de mismatch de mot de passe.
+    env_file:
+      - path: ./backend/.env.${ENVIRONMENT:-development}
+        required: false
+    volumes:
+      - prod_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-sdgps} -d $${POSTGRES_DB:-sdgps}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # --- Application mono-service (SPA + API), image PRÉ-BUILDÉE. ---
+  app:
+    image: app_sdgps:${ENVIRONMENT:-development}
+    container_name: sdgps-app-${ENVIRONMENT:-development}
+    restart: unless-stopped
+    environment:
+      # ENVIRONMENT sélectionne la config ; PORT = port interne gunicorn ; POSTGRES_HOST = service db.
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      PORT: "8000"
+      POSTGRES_HOST: db
+    env_file:
+      - path: ./backend/.env.${ENVIRONMENT:-development}
+        required: false
+    ports:
+      # Port hôte par env (dev 8085 / staging 8086 / preprod 8087 / prod 8088) → gunicorn :8000.
+      - "${BACKEND_PORT:-8085}:8000"
+    volumes:
+      - prod_media:/app/media
+
+volumes:
+  # Noms par env → données isolées (bases jamais mélangées entre dev/staging/preprod/prod).
+  prod_pgdata:
+    name: sdgps_prodpg_${ENVIRONMENT:-development}
+  prod_media:
+    name: sdgps_prodmedia_${ENVIRONMENT:-development}

@@ -8,7 +8,7 @@ export const USER_MENU: MenuItem[] = [
     id: 'dashboard',
     title: 'Tableau de bord',
     icon: 'fas fa-tachometer-alt',
-    route: '/home', // accueil opérateur servi à la racine (sans préfixe « dashboard »)
+    route: '/dashboard', // tableau de bord opérateur (Agent d'organisation)
     type: 'link',
     exact: true, // évite de rester actif sur les sous-routes (/projets…)
     description: 'Vue d\'ensemble de vos projets et activités'
@@ -58,6 +58,7 @@ const SUPER_OR_SYSTEME = ['ROLE_SUPER_ADMIN', 'ROLE_ADMIN_SYSTEME'];
 
 export const ADMIN_MENU: MenuItem[] = [
   {
+    // Super Admin & Admin Système → tableau de bord admin.
     id: 'dashboard',
     title: 'Tableau de bord',
     icon: 'fas fa-tachometer-alt',
@@ -65,36 +66,29 @@ export const ADMIN_MENU: MenuItem[] = [
     type: 'link',
     exact: true, // correspondance exacte (cohérence avec le menu opérateur)
     description: 'Vue d\'ensemble système',
-    roles: ALL_ADMIN_ROLES,
+    roles: SUPER_OR_SYSTEME,
   },
   {
-    id: 'organisations',
-    title: 'Gestion des Organisations',
-    icon: 'fas fa-building',
-    route: '/admin/organisations',
+    // Admin d'organisation → tableau de bord opérateur /dashboard (même page que l'Agent).
+    id: 'dashboard-org',
+    title: 'Tableau de bord',
+    icon: 'fas fa-tachometer-alt',
+    route: '/dashboard',
     type: 'link',
-    description: 'CRUD des organisations',
+    exact: true,
+    description: 'Vue d\'ensemble de vos projets et activités',
+    roles: ['ROLE_ORGANISATION_ADMIN'],
+  },
+  {
+    // « Liste des organisations » promue à la place de l'ancien parent « Gestion des
+    // Organisations » (sous-menu supprimé, ainsi que « Ajouter une organisation »).
+    id: 'organisations',
+    title: 'Organisations',
+    icon: 'fas fa-building',
+    route: '/admin/organisations/liste',
+    type: 'link',
+    description: 'Voir toutes les organisations',
     roles: SUPER_OR_SYSTEME,
-    children: [
-      {
-        id: 'liste-organisations',
-        title: 'Liste des organisations',
-        icon: 'fas fa-list',
-        route: '/admin/organisations/liste',
-        type: 'link',
-        description: 'Voir toutes les organisations',
-        roles: SUPER_OR_SYSTEME,
-      },
-      {
-        id: 'ajouter-organisation',
-        title: 'Ajouter une organisation',
-        icon: 'fas fa-plus-circle',
-        route: '/admin/organisations/ajouter',
-        type: 'link',
-        description: 'Créer une nouvelle organisation',
-        roles: SUPER_OR_SYSTEME,
-      }
-    ]
   },
   {
     id: 'organismes',
@@ -191,15 +185,6 @@ export const ADMIN_MENU: MenuItem[] = [
         roles: ALL_ADMIN_ROLES,
       },
       {
-        id: 'invitations',
-        title: 'Invitations',
-        icon: 'fas fa-envelope-open-text',
-        route: '/admin/utilisateurs/invitations',
-        type: 'link',
-        description: 'Inviter Admins/Managers/Utilisateurs',
-        roles: ALL_ADMIN_ROLES,
-      },
-      {
         id: 'roles-permissions',
         title: 'Rôles & Permissions',
         icon: 'fas fa-user-shield',
@@ -211,79 +196,13 @@ export const ADMIN_MENU: MenuItem[] = [
     ]
   },
   {
-    id: 'logs-audit',
-    title: 'Logs d\'Audit',
-    icon: 'fas fa-history',
-    route: '/admin/logs-audit',
+    // Espace de stockage promu en entrée de premier niveau (ex-sous-entrée de « Gestion des Quotas »).
+    id: 'stockage',
+    title: 'Espace de stockage',
+    icon: 'fas fa-hdd',
+    route: '/admin/quotas/stockage',
     type: 'link',
-    description: 'Traçabilité des actions utilisateurs',
-    roles: SUPER_OR_SYSTEME,
-  },
-  {
-    id: 'supervision',
-    title: 'Supervision Système',
-    icon: 'fas fa-chart-line',
-    route: '/admin/supervision',
-    type: 'link',
-    description: 'Health Check & Stats globales',
-    roles: SUPER_OR_SYSTEME,
-    children: [
-      {
-        id: 'health-check',
-        title: 'Health Check',
-        icon: 'fas fa-heartbeat',
-        route: '/admin/supervision/health',
-        type: 'link',
-        description: 'État des services',
-        roles: SUPER_OR_SYSTEME,
-      },
-      {
-        id: 'stats-globales',
-        title: 'Statistiques',
-        icon: 'fas fa-chart-bar',
-        route: '/admin/supervision/stats',
-        type: 'link',
-        description: 'Métriques système',
-        roles: SUPER_OR_SYSTEME,
-      }
-    ]
-  },
-  {
-    id: 'quotas',
-    title: 'Gestion des Quotas',
-    icon: 'fas fa-database',
-    route: '/admin/quotas',
-    type: 'link',
-    description: 'Stockage & Limites projets',
-    roles: SUPER_OR_SYSTEME,
-    children: [
-      {
-        id: 'stockage',
-        title: 'Espace de stockage',
-        icon: 'fas fa-hdd',
-        route: '/admin/quotas/stockage',
-        type: 'link',
-        description: 'Gestion du stockage',
-        roles: SUPER_OR_SYSTEME,
-      },
-      {
-        id: 'limites-projets',
-        title: 'Limites projets',
-        icon: 'fas fa-sliders-h',
-        route: '/admin/quotas/limites',
-        type: 'link',
-        description: 'Configuration des quotas',
-        roles: SUPER_OR_SYSTEME,
-      }
-    ]
-  },
-  {
-    id: 'maintenance',
-    title: 'Mode Maintenance',
-    icon: 'fas fa-tools',
-    route: '/admin/maintenance',
-    type: 'link',
-    description: 'Switch global maintenance',
+    description: 'Gestion du stockage',
     roles: SUPER_OR_SYSTEME,
   }
 ];

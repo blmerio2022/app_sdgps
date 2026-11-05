@@ -176,7 +176,8 @@ class UserListView(generics.ListCreateAPIView):
         return queryset.order_by('-date_joined')
 
     def perform_create(self, serializer):
-        serializer.save()
+        # Colonnes d'audit standard (cf. CLAUDE.md) : on trace l'auteur de la création.
+        serializer.save(created_by=self.request.user, updated_by=self.request.user)
         logger.info(f"Utilisateur créé par: {self.request.user.email}")
 
 
@@ -229,8 +230,9 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
 
         instance.is_deleted = True
         instance.deleted_at = timezone.now()
+        instance.deleted_by = self.request.user
         instance.is_active = False
-        instance.save(update_fields=['is_deleted', 'deleted_at', 'is_active'])
+        instance.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by', 'is_active'])
         if instance.is_superuser:
             logger.warning(f"Super admin supprimé (soft delete): {instance.email} par {self.request.user.email}")
         else:
@@ -278,7 +280,8 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
                 from rest_framework.exceptions import PermissionDenied
                 raise PermissionDenied(msg)
 
-        serializer.save()
+        # Colonnes d'audit standard (cf. CLAUDE.md) : on trace l'auteur de la modification.
+        serializer.save(updated_by=self.request.user)
 
         if instance.is_superuser:
             logger.warning(f"Super admin modifié: {instance.email} par {self.request.user.email}")

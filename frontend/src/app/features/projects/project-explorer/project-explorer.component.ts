@@ -1,4 +1,6 @@
-import { Component, OnInit, OnDestroy, HostListener } from '@angular/core';
+import { formatDateTime, formatFieldDate } from '../../../shared/utils/date-format.util';
+import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from '../../../shared/components/table-pagination/table-pagination.component';
+import { Component, OnInit, OnDestroy, HostListener, ViewChild } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Observable, forkJoin, Subscription } from 'rxjs';
 import { skip } from 'rxjs/operators';
@@ -14,6 +16,13 @@ import {
   PROCEDURE_OPTIONS, PROCEDURE_NATURES, PROCEDURES_SANS_DATE_BORNAGE,
   NATURE_AFFAIRE_LABELS, NATURE_SSDGPS_OPTIONS, TYPE_SSDGPS_OPTIONS, NatureAffaire,
 } from '../../../core/models/project.model';
+import { TableSortConfigService, OrgSortLevel } from '../../../core/services/table-sort-config.service';
+import { SortableField, compareByLevels, sortLevelOf, sortDirOf } from '../../../shared/components/multi-level-sort/multi-level-sort.util';
+import { MultiLevelSortComponent } from '../../../shared/components/multi-level-sort/multi-level-sort.component';
+import { ColumnConfigComponent } from '../../../shared/components/column-config/column-config.component';
+import { applyColumnsConfig, toColumnPrefs, ManagedColumn, StoredColumnPref } from '../../../shared/components/column-config/column-config.util';
+import { ColumnFilterMap, withColumnFilter, rowMatchesColumnFilters, activeFilterCount } from '../../../shared/components/column-filter/column-filter.util';
+import { TableColumnsConfigService } from '../../../core/services/table-columns-config.service';
 
 type Level = 'propriete' | 'affaire' | 'ssdgps' | 'session';
 
@@ -29,11 +38,13 @@ const VIEW_MODE_KEY = 'sdgps_explorer_view_mode';
 const COLUMNS_BY_LEVEL: Record<Level, ColumnConfig[]> = {
   propriete: [
     { field: 'nom_propriete', label: 'Propriété-dite', visible: true, type: 'text' },
+    { field: 'id_propriete', label: 'ID propriété', visible: true, type: 'text' },
     { field: 'id_requisition', label: 'Réquisition', visible: true, type: 'text' },
     { field: 'id_titre', label: 'Titre foncier', visible: true, type: 'text' },
     { field: 'nbr_total_affaires', label: 'Affaires', visible: true, type: 'number' },
     { field: 'nbr_total_ssdgps', label: 'SSDGPS', visible: true, type: 'number' },
     { field: 'nbr_total_sessions', label: 'Sessions', visible: true, type: 'number' },
+    { field: 'nbr_total_pieces', label: 'Pièces', visible: true, type: 'number' },
     { field: 'created_at', label: 'Créé le', visible: false, type: 'date' },
     { field: 'updated_at', label: 'Modifié le', visible: false, type: 'date' },
     { field: 'is_deleted', label: 'Supprimé', visible: false, type: 'boolean' },
@@ -49,6 +60,7 @@ const COLUMNS_BY_LEVEL: Record<Level, ColumnConfig[]> = {
     { field: 'date_bornage', label: 'Date bornage', visible: true, type: 'date' },
     { field: 'nbr_total_ssdgps', label: 'SSDGPS', visible: true, type: 'number' },
     { field: 'nbr_total_sessions', label: 'Sessions', visible: true, type: 'number' },
+    { field: 'nbr_total_pieces', label: 'Pièces', visible: true, type: 'number' },
     { field: 'created_at', label: 'Créé le', visible: false, type: 'date' },
     { field: 'updated_at', label: 'Modifié le', visible: false, type: 'date' },
     { field: 'is_deleted', label: 'Supprimé', visible: false, type: 'boolean' },
@@ -89,10 +101,24 @@ const DEFAULT_SORT_BY_LEVEL: Record<Level, string> = {
   propriete: 'nom_propriete', affaire: 'numero_sd_affaire', ssdgps: 'numero_ssdgps', session: 'numero_session',
 };
 
+// Clé de persistance du tri MULTI-NIVEAUX (backend) par niveau de l'explorateur.
+const SORT_KEY_BY_LEVEL: Record<Level, string> = {
+  propriete: 'project_proprietes', affaire: 'project_affaires',
+  ssdgps: 'project_ssdgps', session: 'project_sessions',
+};
+// Champs triables proposés par niveau (dérivés des colonnes du niveau).
+const SORTABLE_FIELDS_BY_LEVEL: Record<Level, SortableField[]> = {
+  propriete: COLUMNS_BY_LEVEL.propriete.map(c => ({ field: c.field, label: c.label })),
+  affaire: COLUMNS_BY_LEVEL.affaire.map(c => ({ field: c.field, label: c.label })),
+  ssdgps: COLUMNS_BY_LEVEL.ssdgps.map(c => ({ field: c.field, label: c.label })),
+  session: COLUMNS_BY_LEVEL.session.map(c => ({ field: c.field, label: c.label })),
+};
+
 const FIELD_DESCRIPTIONS: Record<string, string> = {
   nom_propriete: 'Nom de la propriété (propriété-dite)',
   id_requisition: 'Identifiant de réquisition (R<numéro>/<indice>)',
   id_titre: 'Identifiant du titre foncier (T<numéro>/<indice>)',
+  id_propriete: 'Identifiant de la propriété : le titre foncier s\'il est renseigné, sinon la réquisition',
   numero_sd_affaire: "Numéro d'ordre du SD d'affaire dans la propriété",
   nature_procedure_affaire: "Type de procédure d'immatriculation",
   nature_affaire: "Nature précise de l'affaire (dépend de la procédure)",
@@ -103,7 +129,7 @@ const FIELD_DESCRIPTIONS: Record<string, string> = {
   nbr_total_affaires: 'Nombre total d\'affaires (SD) rattachées',
   nbr_total_ssdgps: 'Nombre total de SSDGPS rattachés',
   nbr_total_sessions: 'Nombre total de sessions rattachées',
-  nbr_total_pieces: 'Nombre total de pièces rattachées au rapport',
+  nbr_total_pieces: 'Nombre total de pièces rattachées',
   numero_session: "Numéro d'ordre de la session",
   date_session: "Date de l'observation",
   created_at: "Date de création de l'enregistrement",
@@ -160,19 +186,38 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
   sortColumn = DEFAULT_SORT_BY_LEVEL.propriete;
   sortDirection: 'asc' | 'desc' = 'asc';
 
-  // Colonnes (mode Tableau)
+  // --- Tri MULTI-NIVEAUX par niveau (config opérateur, héritée du super admin) — parité orgs ---
+  sortLevelsByLevel: Record<Level, OrgSortLevel[]> = {
+    propriete: [], affaire: [], ssdgps: [], session: [],
+  };
+  savingSort = false;
+  savedSortFlash = false;
+  resettingSort = false;
+  private sortSaveTimer: any;
+  @ViewChild(MultiLevelSortComponent) private sortCmp?: MultiLevelSortComponent;
+  /** Ouvre la modale de tri (depuis un clic d'en-tête). */
+  openSort(): void { this.sortCmp?.open(); }
+  /** Niveaux de tri du niveau courant (source de vérité pour la modale + le tri). */
+  get sortLevels(): OrgSortLevel[] { return this.sortLevelsByLevel[this.level]; }
+  /** Clé de persistance backend du niveau courant. */
+  get sortKey(): string { return SORT_KEY_BY_LEVEL[this.level]; }
+  /** Champs triables du niveau courant. */
+  get sortableFields(): SortableField[] { return SORTABLE_FIELDS_BY_LEVEL[this.level]; }
+
+  // Colonnes (mode Tableau) — config opérateur PAR NIVEAU, héritée du super admin, via composant partagé
   columns: ColumnConfig[] = [];
-  private columnsBackup: ColumnConfig[] = [];
-  showColumnConfig = false;
-  columnFilter: 'all' | 'visible' = 'all';
-  showColumnFilterMenu = false;
-  draggedColumnIndex: number | null = null;
-  dragOverIndex: number | null = null;
+  @ViewChild(ColumnConfigComponent) private columnCfg?: ColumnConfigComponent;
+  /** Description d'une colonne pour la modale partagée (référence stable). */
+  describeColumn = (field: string): string => this.getFieldDescription(field);
+  savingColumns = false;
+  savedColumnsFlash = false;
+  resettingColumns = false;
+  private columnsSaveTimer: any;
 
   // Pagination (mode Tableau)
   currentPage = 1;
-  pageSize = 10;
-  pageSizeOptions = [5, 10, 25, 50];
+  pageSize = DEFAULT_PAGE_SIZE;
+  pageSizeOptions = [...PAGE_SIZE_OPTIONS];
 
   // Affichage des éléments supprimés
   showDeleted = false;
@@ -256,6 +301,8 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
     private toast: ToastService,
     private fb: FormBuilder,
     private breadcrumb: BreadcrumbService,
+    private sortConfigService: TableSortConfigService,
+    private columnsConfigService: TableColumnsConfigService,
   ) {}
 
   ngOnInit(): void {
@@ -422,9 +469,10 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
   private resetLevelState(): void {
     this.manualOrder = null;
     this.columns = COLUMNS_BY_LEVEL[this.level].map(c => ({ ...c }));
-    this.loadColumnPreferences();
+    this.loadColumnsConfig();
     this.sortColumn = DEFAULT_SORT_BY_LEVEL[this.level];
     this.sortDirection = 'asc';
+    this.loadSortConfig();
     this.currentPage = 1;
     this.displayMode = 'all';
     this.clearFieldFilter();
@@ -577,6 +625,56 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
     return this.sortDirection === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down';
   }
 
+  // --- Tri MULTI-NIVEAUX (config opérateur par niveau, héritée du super admin) — parité orgs ---
+  sortLevelOf(field: string): number { return sortLevelOf(this.sortLevels, field); }
+  sortDirOf(field: string): '' | 'asc' | 'desc' { return sortDirOf(this.sortLevels, field); }
+
+  /** Charge le tri multi-niveaux du niveau courant (hérité du super admin). */
+  private loadSortConfig(): void {
+    const level = this.level;
+    this.sortConfigService.get(SORT_KEY_BY_LEVEL[level]).subscribe(levels => {
+      this.sortLevelsByLevel[level] = levels;
+    });
+  }
+
+  /** Réception d'une modification depuis la modale : applique + enregistrement auto (anti-rebond). */
+  onSortLevelsChange(levels: OrgSortLevel[]): void {
+    const level = this.level;
+    this.sortLevelsByLevel[level] = levels;
+    this.manualOrder = null;
+    this.currentPage = 1;
+    clearTimeout(this.sortSaveTimer);
+    this.sortSaveTimer = setTimeout(() => this.saveSortConfig(level), 500);
+  }
+  private saveSortConfig(level: Level): void {
+    this.savingSort = true;
+    this.sortConfigService.save(SORT_KEY_BY_LEVEL[level], this.sortLevelsByLevel[level]).subscribe({
+      next: (saved) => {
+        this.sortLevelsByLevel[level] = saved; this.savingSort = false; this.savedSortFlash = true;
+        setTimeout(() => { this.savedSortFlash = false; }, 2500);
+      },
+      error: (err) => { this.savingSort = false; this.toast.error('Erreur', err?.error?.detail || 'Enregistrement du tri impossible'); },
+    });
+  }
+
+  /** Réinitialise le tri du niveau courant avec la configuration SOURCE (compte administrateur). */
+  onResetSort(): void {
+    if (this.resettingSort) return;
+    const level = this.level;
+    this.resettingSort = true;
+    this.sortConfigService.resetToSource(SORT_KEY_BY_LEVEL[level]).subscribe({
+      next: (levels) => {
+        this.sortLevelsByLevel[level] = levels; this.resettingSort = false;
+        this.manualOrder = null; this.currentPage = 1;
+        this.toast.success('Succès', 'Tri réinitialisé avec la configuration source');
+      },
+      error: (e) => {
+        this.resettingSort = false;
+        this.toast.error('Erreur', e?.error?.detail || 'Réinitialisation impossible');
+      },
+    });
+  }
+
   private sortValue(item: any): number | string {
     const v = item[this.sortColumn];
     if (v == null) return '';
@@ -592,7 +690,7 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
     switch (level) {
       case 'propriete': {
         // Identifiant affiché : le titre foncier s'il existe, sinon la réquisition.
-        const idPropriete = item.id_titre || item.id_requisition;
+        const idPropriete = this.proprieteIdentifier(item);
         return item.nom_propriete + (idPropriete ? ` (${idPropriete})` : '');
       }
       // Note : le fil d'Ariane utilise `proprieteBreadcrumbLabel` (identifiant seul).
@@ -603,10 +701,19 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Identifiant d'une propriété : le titre foncier s'il est renseigné, sinon la réquisition
+   * (chaîne vide si aucun des deux). Le backend l'expose déjà sous `id_propriete` ; le repli
+   * sur les deux champs sources couvre les objets construits côté client (chaîne de navigation).
+   */
+  proprieteIdentifier(item: any): string {
+    return item?.id_propriete || item?.id_titre || item?.id_requisition || '';
+  }
+
   /** Libellé de propriété pour le fil d'Ariane : uniquement l'identifiant
    * (titre foncier s'il existe, sinon réquisition), sans le nom de la propriété. */
   proprieteBreadcrumbLabel(item: any): string {
-    return item?.id_titre || item?.id_requisition || item?.nom_propriete || '';
+    return this.proprieteIdentifier(item) || item?.nom_propriete || '';
   }
 
   natureLabel(v: string): string { return NATURE_AFFAIRE_LABELS[v as NatureAffaire] || v; }
@@ -620,26 +727,46 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
     return { propriete: 'propriété', affaire: 'affaire', ssdgps: 'SSDGPS', session: '' }[this.level];
   }
 
-  formatDate(value: any): string {
-    if (!value) return '—';
-    return new Date(value).toLocaleString('fr-FR', {
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-    });
+  /**
+   * Format unifié (cf. `date-format.util`) : `date_bornage` et `date_session` s'affichent SANS
+   * heure ; toutes les autres dates en `jj/mm/aaaa hh:mm:ss`. Passer le nom du champ quand il
+   * est connu pour que la règle s'applique.
+   */
+  formatDate(value: any, field?: string): string {
+    return formatFieldDate(value, field);
   }
 
-  /** Convertit une valeur ISO du backend vers le format attendu par un
-   * `<input type="datetime-local" step="1">` (« YYYY-MM-DDTHH:mm:ss », heure locale). */
-  private toDatetimeLocal(value: any): string | null {
+  /**
+   * Convertit une valeur du backend vers le format attendu par un `<input type="date">`
+   * (« YYYY-MM-DD », heure locale). Les seules dates saisies dans l'explorateur sont
+   * `date_bornage` et `date_session`, qui ne portent pas d'heure (cf. `date-format.util`).
+   */
+  private toDateInput(value: any): string | null {
     if (!value) return null;
     const d = new Date(value);
     if (isNaN(d.getTime())) return null;
     const p = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` +
-      `T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    // Composantes UTC (et non locales) : ces dates sont enregistrées à minuit UTC. Lire en heure
+    // locale décalerait le jour pré-rempli dans le formulaire pour les fuseaux négatifs.
+    return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
   }
 
   // --- Recherche, filtre, tri & sélection ---
+  // --- FILTRES DE COLONNE (façon Excel, composant partagé `<app-column-filter>`) ---
+  /** Valeurs retenues par colonne ; une colonne absente n'est pas filtrée. */
+  columnFilters: ColumnFilterMap = {};
+  /** Texte affiché d'une cellule : le filtre porte sur la valeur VUE (référence stable). */
+  cellText = (row: any, field: string): string => this.getCellValue(row, field);
+
+  onColumnFilterChange(field: string, values: string[] | null): void {
+    this.columnFilters = withColumnFilter(this.columnFilters, field, values);
+  }
+
+  /** Masque une colonne (depuis le menu de filtre) — auto-save comme la modale des colonnes. */
+  hideColumnField(field: string): void {
+    this.onColumnsChange(this.columns.map(c => (c.field === field ? { ...c, visible: false } : { ...c })));
+  }
+
   get filteredItems(): any[] {
     let result = this.items;
     if (this.displayMode === 'selected') {
@@ -657,6 +784,11 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
         return val != null && String(val).toLowerCase().includes(fv);
       });
     }
+    // Filtres de colonne (façon Excel).
+    if (activeFilterCount(this.columnFilters)) {
+      result = result.filter(it => rowMatchesColumnFilters(it, this.columnFilters, this.cellText));
+    }
+
     if (this.manualOrder) {
       const idx = new Map(this.manualOrder.map((id, i) => [id, i]));
       result = [...result].sort((a, b) => {
@@ -664,6 +796,9 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
         const ib = idx.has(b.id) ? idx.get(b.id)! : Number.MAX_SAFE_INTEGER;
         return ia - ib;
       });
+    } else if (this.sortLevels.length) {
+      // Le tri MULTI-NIVEAUX prime sur le tri mono-colonne.
+      result = [...result].sort((a, b) => compareByLevels(a, b, this.sortLevels));
     } else {
       result = [...result].sort((a, b) => {
         const ka = this.sortValue(a), kb = this.sortValue(b);
@@ -759,82 +894,49 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
     this.fieldFilterValue = '';
   }
 
-  // --- Colonnes (mode Tableau) ---
-  private columnPrefsKey(): string { return `sdgps_explorer_columns_${this.level}`; }
-
-  private loadColumnPreferences(): void {
-    try {
-      const raw = localStorage.getItem(this.columnPrefsKey());
-      if (!raw) return;
-      const saved: { field: string; visible: boolean }[] = JSON.parse(raw);
-      saved.forEach(sc => {
-        const col = this.columns.find(c => c.field === sc.field);
-        if (col) col.visible = sc.visible;
-      });
-      const ordered: ColumnConfig[] = [];
-      saved.forEach(sc => {
-        const col = this.columns.find(c => c.field === sc.field);
-        if (col) ordered.push(col);
-      });
-      this.columns.forEach(c => { if (!ordered.includes(c)) ordered.push(c); });
-      if (ordered.length === this.columns.length) this.columns = ordered;
-    } catch { /* ignore */ }
-  }
-
-  private saveColumnPreferences(): void {
-    localStorage.setItem(this.columnPrefsKey(), JSON.stringify(this.columns.map(c => ({ field: c.field, visible: c.visible }))));
-  }
-
+  // --- Colonnes (mode Tableau) — composant partagé, config PAR NIVEAU, source super admin ---
   getVisibleColumns(): ColumnConfig[] { return this.columns.filter(c => c.visible); }
-  getFilteredColumns(): ColumnConfig[] { return this.columnFilter === 'visible' ? this.columns.filter(c => c.visible) : this.columns; }
-  getColumnStats(): { total: number; visible: number; hidden: number } {
-    const total = this.columns.length;
-    const visible = this.columns.filter(c => c.visible).length;
-    return { total, visible, hidden: total - visible };
-  }
-  toggleColumnVisibility(field: string): void {
-    const col = this.columns.find(c => c.field === field);
-    if (col) col.visible = !col.visible;
-  }
 
-  toggleColumnConfig(): void {
-    if (!this.showColumnConfig) this.saveColumnsBackup();
-    else this.restoreColumnsBackup();
-    this.showColumnConfig = !this.showColumnConfig;
+  /** Ouvre la modale d'organisation des colonnes (composant partagé). */
+  openColumnConfig(): void { this.columnCfg?.open(); }
+
+  private loadColumnsConfig(): void {
+    // La clé dépend du niveau courant (project_proprietes / _affaires / _ssdgps / _sessions).
+    this.columnsConfigService.get(this.sortKey).subscribe(prefs => {
+      this.columns = applyColumnsConfig(this.columns, prefs);
+    });
   }
-  openColumnConfig(): void { this.saveColumnsBackup(); this.showColumnConfig = true; }
-  confirmColumnConfig(): void { this.showColumnConfig = false; this.columnsBackup = []; this.saveColumnPreferences(); }
-  cancelColumnConfig(): void { this.restoreColumnsBackup(); this.showColumnConfig = false; }
-  private saveColumnsBackup(): void { this.columnsBackup = this.columns.map(c => ({ ...c })); }
-  private restoreColumnsBackup(): void {
-    if (this.columnsBackup.length > 0) { this.columns = this.columnsBackup.map(c => ({ ...c })); this.columnsBackup = []; }
+  onColumnsChange(cols: ManagedColumn[]): void {
+    this.columns = cols as ColumnConfig[];
+    // Capturer clé + préférences AU MOMENT du changement (le niveau peut changer avant le timeout).
+    const key = this.sortKey;
+    const prefs = toColumnPrefs(cols);
+    clearTimeout(this.columnsSaveTimer);
+    this.columnsSaveTimer = setTimeout(() => this.saveColumnsConfig(key, prefs), 500);
   }
-
-  selectAllColumns(): void { this.columns.forEach(c => c.visible = true); }
-  deselectAllColumns(): void { this.columns.forEach(c => c.visible = false); }
-  invertColumnSelection(): void { this.columns.forEach(c => c.visible = !c.visible); }
-
-  toggleColumnFilterMenu(event: Event): void { event.stopPropagation(); this.showColumnFilterMenu = !this.showColumnFilterMenu; }
-  applyColumnFilter(filter: 'all' | 'visible'): void { this.columnFilter = filter; this.showColumnFilterMenu = false; }
-  getColumnFilterLabel(): string { return this.columnFilter === 'all' ? 'Toutes les colonnes' : 'Colonnes visibles'; }
-
-  // Drag & drop réordonnancement
-  onDragStart(index: number): void { this.draggedColumnIndex = index; }
-  onDragOver(event: DragEvent, index: number): void { event.preventDefault(); this.dragOverIndex = index; }
-  onDragLeave(): void { this.dragOverIndex = null; }
-  onDrop(index: number): void {
-    if (this.draggedColumnIndex === null || this.draggedColumnIndex === index) { this.draggedColumnIndex = null; this.dragOverIndex = null; return; }
-    const dragged = this.columns[this.draggedColumnIndex];
-    this.columns.splice(this.draggedColumnIndex, 1);
-    this.columns.splice(index, 0, dragged);
-    this.draggedColumnIndex = null; this.dragOverIndex = null;
+  private saveColumnsConfig(key: string, prefs: StoredColumnPref[]): void {
+    this.savingColumns = true;
+    this.columnsConfigService.save(key, prefs).subscribe({
+      next: () => {
+        this.savingColumns = false; this.savedColumnsFlash = true;
+        setTimeout(() => { this.savedColumnsFlash = false; }, 2500);
+      },
+      error: (err) => { this.savingColumns = false; this.toast.error('Erreur', err?.error?.detail || 'Enregistrement des colonnes impossible'); },
+    });
   }
-  onDragEnd(): void { this.draggedColumnIndex = null; this.dragOverIndex = null; }
-
-  moveColumnUp(index: number): void { if (index > 0) { [this.columns[index], this.columns[index - 1]] = [this.columns[index - 1], this.columns[index]]; } }
-  moveColumnDown(index: number): void { if (index < this.columns.length - 1) { [this.columns[index], this.columns[index + 1]] = [this.columns[index + 1], this.columns[index]]; } }
-  moveColumnToTop(index: number): void { if (index > 0) { const c = this.columns.splice(index, 1)[0]; this.columns.unshift(c); } }
-  moveColumnToBottom(index: number): void { if (index < this.columns.length - 1) { const c = this.columns.splice(index, 1)[0]; this.columns.push(c); } }
+  onResetColumns(): void {
+    if (this.resettingColumns) return;
+    this.resettingColumns = true;
+    const key = this.sortKey;
+    this.columnsConfigService.resetToSource(key).subscribe({
+      next: (prefs) => {
+        this.columns = applyColumnsConfig(this.columns, prefs);
+        this.resettingColumns = false;
+        this.toast.success('Succès', 'Colonnes réinitialisées avec la configuration source');
+      },
+      error: (e) => { this.resettingColumns = false; this.toast.error('Erreur', e?.error?.detail || 'Réinitialisation impossible'); },
+    });
+  }
 
   onColumnHeaderRightClick(event: MouseEvent, col: ColumnConfig): void {
     event.preventDefault(); event.stopPropagation();
@@ -843,20 +945,29 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
     this.showColumnContextMenu = true;
   }
   hideColumnFromContext(): void {
-    if (this.contextMenuColumn) this.contextMenuColumn.visible = false;
+    const field = this.contextMenuColumn?.field;
     this.showColumnContextMenu = false; this.contextMenuColumn = null;
+    if (!field) return;
+    this.onColumnsChange(this.columns.map(c => (c.field === field ? { ...c, visible: false } : { ...c })));
   }
   openColumnConfigFromContext(): void { this.showColumnContextMenu = false; this.openColumnConfig(); }
+  /** Ouvrir la modale de tri multi-niveaux depuis le menu contextuel (clic droit en-tête). */
+  openSortFromContext(): void { this.showColumnContextMenu = false; this.openSort(); }
 
   getTypeLabel(type?: string): string {
     return { text: 'TEXTE', date: 'DATE', number: 'NOMBRE', boolean: 'BOOLÉEN' }[type || 'text'] || 'TEXTE';
   }
   getFieldDescription(field: string): string { return FIELD_DESCRIPTIONS[field] || ''; }
 
+  /** Vrai pour les colonnes de comptage (rendu numérique aligné à droite, repli 0). */
+  isCountField(field: string): boolean { return field.startsWith('nbr_total_'); }
+
   getCellValue(item: any, field: string): string {
-    if (field === 'date_bornage' || field === 'date_session' || field === 'created_at' || field === 'updated_at' || field === 'deleted_at') return this.formatDate(item[field]);
+    if (field === 'date_bornage' || field === 'date_session' || field === 'created_at' || field === 'updated_at' || field === 'deleted_at') return this.formatDate(item[field], field);
     if (field === 'nature_affaire') return this.natureLabel(item[field]);
     if (field === 'is_deleted') return item[field] ? 'Oui' : 'Non';
+    if (field === 'id_propriete') return this.proprieteIdentifier(item) || '—';
+    if (this.isCountField(field)) return String(item[field] ?? 0);
     return String(item[field] ?? '—');
   }
 
@@ -904,7 +1015,7 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
           numero_sd_affaire: [item?.numero_sd_affaire ?? null, Validators.required],
           nature_procedure_affaire: [item?.nature_procedure_affaire || '', Validators.required],
           nature_affaire: [item?.nature_affaire || '', Validators.required],
-          date_bornage: [this.toDatetimeLocal(item?.date_bornage)],
+          date_bornage: [this.toDateInput(item?.date_bornage)],
         });
         this.onProcedureChange(item?.nature_procedure_affaire || '');
         this.form.get('nature_procedure_affaire')!.valueChanges.subscribe(v => this.onProcedureChange(v));
@@ -919,7 +1030,7 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
       case 'session':
         this.form = this.fb.group({
           numero_session: [item?.numero_session ?? null, Validators.required],
-          date_session: [this.toDatetimeLocal(item?.date_session)],
+          date_session: [this.toDateInput(item?.date_session)],
         });
         break;
     }
@@ -1161,14 +1272,12 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
     if (!target.closest('.filter-menu-wrapper') && !target.closest('.context-menu') && !target.closest('.dropdown-container')) {
       this.showFilterMenu = false;
       this.showFieldFilterMenu = false;
-      this.showColumnFilterMenu = false;
       this.closeAllContextMenus();
     }
   }
 
   @HostListener('document:keydown.escape')
   onEscape(): void {
-    if (this.showColumnConfig) { this.cancelColumnConfig(); return; }
     if (this.showContextMenu || this.showColumnContextMenu) { this.closeAllContextMenus(); return; }
     if (this.showModal) { this.closeModal(); return; }
     if (this.showDeleteModal) { this.closeDeleteModal(); return; }

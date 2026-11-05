@@ -79,6 +79,42 @@ class ProprieteValidationTests(DomainBaseTest):
         self.assertEqual(resp.status_code, 201, resp.content)
 
 
+class ProprieteIdentifierTests(DomainBaseTest):
+    """`id_propriete` : titre foncier prioritaire, repli sur la réquisition."""
+
+    def _get(self, **over):
+        champs = {'nom_propriete': 'AMADLE 0', 'id_requisition': '', 'id_titre': ''}
+        champs.update(over)
+        propriete = Propriete.objects.create(projet=self._projet(), **champs)
+        resp = self.client.get(f'/api/v1/proprietes/{propriete.id}/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        return resp.json()
+
+    def test_titre_prioritaire_sur_requisition(self):
+        data = self._get(id_titre='T12345/A', id_requisition='R19000/55')
+        self.assertEqual(data['id_propriete'], 'T12345/A')
+
+    def test_repli_sur_requisition_sans_titre(self):
+        data = self._get(id_requisition='R19000/55')
+        self.assertEqual(data['id_propriete'], 'R19000/55')
+
+    def test_vide_si_aucun_identifiant(self):
+        # Cas legacy (données créées hors API) : le champ est présent mais vide, jamais absent.
+        data = self._get()
+        self.assertEqual(data['id_propriete'], '')
+
+    def test_champ_en_lecture_seule(self):
+        """`id_propriete` est dérivé : l'envoyer ne doit pas être persisté ni faire échouer."""
+        projet = self._projet()
+        resp = self.client.post('/api/v1/proprietes/', {
+            'nom_propriete': 'AMADLE 0', 'id_requisition': 'R19000/55', 'projet': str(projet.id),
+            'organisme_niveau1': str(self.on1.id), 'organisme_niveau2': str(self.on2.id),
+            'id_propriete': 'T99999/Z',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.json()['id_propriete'], 'R19000/55')
+
+
 class AffaireCoherenceTests(DomainBaseTest):
     def _post(self, **over):
         propriete = self._propriete()
@@ -274,6 +310,116 @@ class AggregateCountsTests(DomainBaseTest):
         self.assertEqual(data['nbr_total_ssdgps'], 2)
         self.assertEqual(data['nbr_total_sessions'], 2)
 
+    def test_propriete_and_affaire_expose_pieces_count(self):
+        """`nbr_total_pieces` remonte aux niveaux propriété et affaire, en excluant les pièces
+        supprimées. `self.ssdgps` a 2 sessions actives : ses 2 pièces communes comptent donc
+        une fois par session (2 × 2 = 4). `self.ssdgps2` n'a aucune session active → 0."""
+        from pieces.models import Piece
+        Piece.objects.create(type_piece='RDC', ssdgps=self.ssdgps, source_saisie='manuel')
+        Piece.objects.create(type_piece='PGSDGPS', ssdgps=self.ssdgps, source_saisie='manuel')
+        Piece.objects.create(type_piece='RDC', ssdgps=self.ssdgps2, source_saisie='manuel')
+        supprimee = Piece.objects.create(
+            type_piece='PGSDGPS', ssdgps=self.ssdgps2, source_saisie='manuel')
+        supprimee.is_deleted = True
+        supprimee.save(update_fields=['is_deleted'])
+
+        resp = self.client.get(f'/api/v1/proprietes/{self.propriete.id}/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()['nbr_total_pieces'], 4)
+
+        resp = self.client.get(f'/api/v1/affaires/{self.affaire.id}/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()['nbr_total_pieces'], 4)
+
+    def test_pieces_of_deleted_ssdgps_excluded(self):
+        from pieces.models import Piece
+        Piece.objects.create(type_piece='RDC', ssdgps=self.ssdgps, source_saisie='manuel')
+        Piece.objects.create(type_piece='RDC', ssdgps=self.ssdgps2, source_saisie='manuel')
+        self.ssdgps2.is_deleted = True
+        self.ssdgps2.save(update_fields=['is_deleted'])
+
+        # Reste la pièce commune de `self.ssdgps`, comptée sur chacune de ses 2 sessions.
+        self.assertEqual(
+            self.client.get(f'/api/v1/proprietes/{self.propriete.id}/').json()['nbr_total_pieces'], 2)
+        self.assertEqual(
+            self.client.get(f'/api/v1/affaires/{self.affaire.id}/').json()['nbr_total_pieces'], 2)
+
+    def test_ssdgps_total_est_le_cumul_de_ses_sessions(self):
+        """Règle métier : le total d'un SSDGPS est la SOMME des totaux de ses sessions, et
+        chaque niveau supérieur somme ses enfants — tous statuts confondus."""
+        from pieces.models import Piece
+        s1, s2 = self.ssdgps.sessions.order_by('numero_session')
+        # 1 pièce propre à s2 (rejetée) + 1 commune (brouillon) : les statuts ne filtrent rien.
+        Piece.objects.create(type_piece='RDC', ssdgps=self.ssdgps, source_saisie='manuel',
+                             session=s2, statut=Piece.Statut.REJETE)
+        Piece.objects.create(type_piece='PGSDGPS', ssdgps=self.ssdgps, source_saisie='manuel',
+                             statut=Piece.Statut.BROUILLON)
+
+        totaux = {}
+        for level, ident in (('sessions', s1.id), ('sessions', s2.id), ('ssdgps', self.ssdgps.id),
+                             ('affaires', self.affaire.id), ('proprietes', self.propriete.id),
+                             ('projets', self.projet.id)):
+            resp = self.client.get(f'/api/v1/{level}/{ident}/')
+            self.assertEqual(resp.status_code, 200, resp.content)
+            totaux[(level, ident)] = resp.json()['nbr_total_pieces']
+
+        cumul_sessions = totaux[('sessions', s1.id)] + totaux[('sessions', s2.id)]
+        self.assertEqual(totaux[('sessions', s1.id)], 1)   # la commune seule
+        self.assertEqual(totaux[('sessions', s2.id)], 2)   # commune + propre
+        self.assertEqual(totaux[('ssdgps', self.ssdgps.id)], cumul_sessions)   # 3
+        self.assertEqual(totaux[('affaires', self.affaire.id)], cumul_sessions)
+        self.assertEqual(totaux[('proprietes', self.propriete.id)], cumul_sessions)
+        self.assertEqual(totaux[('projets', self.projet.id)], cumul_sessions)
+
+    def test_ssdgps_sans_session_active_totalise_zero(self):
+        """Conséquence assumée de la règle « total = cumul des sessions » : sans session
+        active, un SSDGPS n'a aucun rapport de session, donc un cumul nul — à tous les
+        niveaux (cohérence verticale). `self.ssdgps2` n'a qu'une session supprimée."""
+        from pieces.models import Piece
+        Piece.objects.create(type_piece='RDC', ssdgps=self.ssdgps2, source_saisie='manuel')
+
+        resp = self.client.get(f'/api/v1/ssdgps/{self.ssdgps2.id}/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()['nbr_total_pieces'], 0)
+
+    def test_session_counts_include_common_ssdgps_pieces(self):
+        """Une pièce de portée SSDGPS (`session` nulle) appartient au rapport de CHAQUE
+        session : elle doit être comptée dans chacune, comme le fait la page des pièces."""
+        from pieces.models import Piece
+        s1, s2 = self.ssdgps.sessions.order_by('numero_session')
+        Piece.objects.create(type_piece='RDC', ssdgps=self.ssdgps,
+                             source_saisie='manuel', session=s2)      # propre à la session 2
+        Piece.objects.create(type_piece='PGSDGPS', ssdgps=self.ssdgps,
+                             source_saisie='manuel')                   # commune (portée SSDGPS)
+
+        resp = self.client.get(f'/api/v1/sessions/{s2.id}/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()['nbr_total_pieces'], 2)  # 1 propre + 1 commune
+
+        resp = self.client.get(f'/api/v1/sessions/{s1.id}/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()['nbr_total_pieces'], 1)  # la commune seule
+
+    def test_session_counts_exclude_deleted_and_other_ssdgps_pieces(self):
+        from pieces.models import Piece
+        s1 = self.ssdgps.sessions.order_by('numero_session').first()
+        commune_supprimee = Piece.objects.create(
+            type_piece='RDC', ssdgps=self.ssdgps, source_saisie='manuel')
+        commune_supprimee.is_deleted = True
+        commune_supprimee.save(update_fields=['is_deleted'])
+        # Pièce commune d'un AUTRE SSDGPS : ne doit pas fuiter dans les sessions de celui-ci.
+        Piece.objects.create(type_piece='PGSDGPS', ssdgps=self.ssdgps2, source_saisie='manuel')
+
+        resp = self.client.get(f'/api/v1/sessions/{s1.id}/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()['nbr_total_pieces'], 0)
+
+    def test_propriete_without_pieces_reports_zero(self):
+        self.assertEqual(
+            self.client.get(f'/api/v1/proprietes/{self.propriete.id}/').json()['nbr_total_pieces'], 0)
+        self.assertEqual(
+            self.client.get(f'/api/v1/affaires/{self.affaire.id}/').json()['nbr_total_pieces'], 0)
+
     def test_ssdgps_counts(self):
         resp = self.client.get(f'/api/v1/ssdgps/{self.ssdgps.id}/')
         self.assertEqual(resp.status_code, 200, resp.content)
@@ -298,6 +444,81 @@ class AggregateCountsTests(DomainBaseTest):
         resp = self.client.post(f'/api/v1/projets/{self.projet.id}/restore/')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.json()['nbr_total_proprietes'], 1)
+
+
+class CumulPiecesCorbeilleTests(DomainBaseTest):
+    """Le cumul des pièces ignore TOUT ce qui est en corbeille : la pièce elle-même, ou
+    n'importe quel palier au-dessus d'elle (session / SSDGPS / affaire / propriété)."""
+
+    def setUp(self):
+        super().setUp()
+        from pieces.models import Piece
+        self.projet = self._projet(code='P-CORBEILLE')
+        self.propriete = self._propriete(projet=self.projet)
+        self.affaire = self._affaire(propriete=self.propriete)
+        self.ssdgps = self._ssdgps(affaire=self.affaire, numero=1)  # multi-session
+        self.s1 = Session.objects.create(ssdgps=self.ssdgps, numero_session=1)
+        self.s2 = Session.objects.create(ssdgps=self.ssdgps, numero_session=2)
+        # 1 pièce commune (dans le rapport des 2 sessions) + 1 propre à la session 1.
+        self.commune = Piece.objects.create(
+            type_piece='PGSDGPS', ssdgps=self.ssdgps, source_saisie='manuel')
+        self.propre = Piece.objects.create(
+            type_piece='RDC', ssdgps=self.ssdgps, source_saisie='manuel', session=self.s1)
+
+    def _totaux(self):
+        """Total de pièces à chaque niveau, tel qu'exposé par l'API."""
+        cibles = {
+            'session1': f'sessions/{self.s1.id}', 'session2': f'sessions/{self.s2.id}',
+            'ssdgps': f'ssdgps/{self.ssdgps.id}', 'affaire': f'affaires/{self.affaire.id}',
+            'propriete': f'proprietes/{self.propriete.id}', 'projet': f'projets/{self.projet.id}',
+        }
+        totaux = {}
+        for nom, chemin in cibles.items():
+            resp = self.client.get(f'/api/v1/{chemin}/?show_deleted=true')
+            if resp.status_code != 200:  # l'élément est actif → sans le filtre corbeille
+                resp = self.client.get(f'/api/v1/{chemin}/')
+            self.assertEqual(resp.status_code, 200, resp.content)
+            totaux[nom] = resp.json()['nbr_total_pieces']
+        return totaux
+
+    @staticmethod
+    def _corbeille(instance):
+        instance.is_deleted = True
+        instance.save(update_fields=['is_deleted'])
+
+    def test_etat_initial(self):
+        t = self._totaux()
+        self.assertEqual(t['session1'], 2)   # commune + propre
+        self.assertEqual(t['session2'], 1)   # commune seule
+        self.assertEqual(t['ssdgps'], 3)     # cumul des 2 sessions
+        self.assertEqual((t['affaire'], t['propriete'], t['projet']), (3, 3, 3))
+
+    def test_piece_en_corbeille_exclue(self):
+        self._corbeille(self.commune)
+        t = self._totaux()
+        self.assertEqual((t['session1'], t['session2']), (1, 0))
+        self.assertEqual((t['ssdgps'], t['affaire'], t['propriete'], t['projet']), (1, 1, 1, 1))
+
+    def test_session_en_corbeille_exclue(self):
+        """La session 1 en corbeille : ni sa pièce propre, ni sa part de la pièce commune."""
+        self._corbeille(self.s1)
+        t = self._totaux()
+        self.assertEqual(t['session2'], 1)
+        self.assertEqual((t['ssdgps'], t['affaire'], t['propriete'], t['projet']), (1, 1, 1, 1))
+
+    def test_ssdgps_en_corbeille_exclu_des_niveaux_superieurs(self):
+        self._corbeille(self.ssdgps)
+        t = self._totaux()
+        self.assertEqual((t['affaire'], t['propriete'], t['projet']), (0, 0, 0))
+
+    def test_affaire_en_corbeille_exclue_des_niveaux_superieurs(self):
+        self._corbeille(self.affaire)
+        t = self._totaux()
+        self.assertEqual((t['propriete'], t['projet']), (0, 0))
+
+    def test_propriete_en_corbeille_exclue_du_projet(self):
+        self._corbeille(self.propriete)
+        self.assertEqual(self._totaux()['projet'], 0)
 
 
 class AuditFieldsTests(DomainBaseTest):

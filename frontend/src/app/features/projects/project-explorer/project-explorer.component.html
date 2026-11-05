@@ -79,6 +79,21 @@
 
       <div class="toolbar-sep"></div>
 
+      <!-- Tri multi-niveaux (design partagé, parité liste des organisations) -->
+      <app-multi-level-sort
+        [sortableFields]="sortableFields"
+        [levels]="sortLevels"
+        [title]="'Tri multi-niveaux — ' + levelTitle"
+        emptyHint="Aucun niveau de tri — ordre par défaut du serveur."
+        [saving]="savingSort"
+        [savedFlash]="savedSortFlash"
+        [resetting]="resettingSort"
+        (levelsChange)="onSortLevelsChange($event)"
+        (resetToSource)="onResetSort()">
+      </app-multi-level-sort>
+
+      <div class="toolbar-sep"></div>
+
       <button class="btn btn-danger sm" *ngIf="!showDeleted" [disabled]="selectedCount === 0" (click)="openBulkDelete()" title="Supprimer la sélection">
         <i class="fas fa-trash"></i> <span *ngIf="selectedCount > 0" class="btn-count">{{ selectedCount }}</span>
       </button>
@@ -112,12 +127,35 @@
 
       <div class="toolbar-sep"></div>
 
-      <button class="icon-tool" (click)="toggleColumnConfig()" title="Organiser les colonnes">
-        <i class="fas fa-columns"></i>
-      </button>
+      <!-- Configuration des colonnes (composant partagé, config par niveau, parité tri multi-niveaux) -->
+      <app-column-config
+        [columns]="columns"
+          [describe]="describeColumn"
+        [title]="'Organiser les colonnes — ' + levelTitle"
+        [saving]="savingColumns"
+        [savedFlash]="savedColumnsFlash"
+        [resetting]="resettingColumns"
+        (columnsChange)="onColumnsChange($event)"
+        (resetToSource)="onResetColumns()">
+      </app-column-config>
       <button class="icon-tool" (click)="exportCsv()" title="Exporter en CSV">
         <i class="fas fa-file-csv"></i>
       </button>
+
+      <div class="toolbar-sep"></div>
+
+      <!-- Tri multi-niveaux (design partagé, parité liste des organisations) -->
+      <app-multi-level-sort #sorter
+        [sortableFields]="sortableFields"
+        [levels]="sortLevels"
+        [title]="'Tri multi-niveaux — ' + levelTitle"
+        emptyHint="Aucun niveau de tri — ordre par défaut du serveur."
+        [saving]="savingSort"
+        [savedFlash]="savedSortFlash"
+        [resetting]="resettingSort"
+        (levelsChange)="onSortLevelsChange($event)"
+        (resetToSource)="onResetSort()">
+      </app-multi-level-sort>
 
       <div class="toolbar-sep"></div>
 
@@ -161,23 +199,26 @@
           <span class="deleted-badge" *ngIf="it.is_deleted"><i class="fas fa-trash"></i> Supprimé</span>
         </span>
         <span class="item-meta" *ngIf="level==='propriete'">
+          <span class="tag id-tag" *ngIf="proprieteIdentifier(it)"><i class="fas fa-fingerprint"></i> {{ proprieteIdentifier(it) }}</span>
           <span class="tag">{{ it.nbr_total_affaires ?? 0 }} affaire(s)</span>
           <span class="tag">{{ it.nbr_total_ssdgps ?? 0 }} SSDGPS</span>
           <span class="tag">{{ it.nbr_total_sessions ?? 0 }} session(s)</span>
+          <span class="tag">{{ it.nbr_total_pieces ?? 0 }} pièce(s)</span>
         </span>
         <span class="item-meta" *ngIf="level==='affaire'">
           <span class="tag">{{ it.nature_procedure_affaire }}</span>
           {{ natureLabel(it.nature_affaire) }}
-          <ng-container *ngIf="it.date_bornage"> · bornage {{ formatDate(it.date_bornage) }}</ng-container>
+          <ng-container *ngIf="it.date_bornage"> · bornage {{ formatDate(it.date_bornage, 'date_bornage') }}</ng-container>
           <span class="tag">{{ it.nbr_total_ssdgps ?? 0 }} SSDGPS</span>
           <span class="tag">{{ it.nbr_total_sessions ?? 0 }} session(s)</span>
+          <span class="tag">{{ it.nbr_total_pieces ?? 0 }} pièce(s)</span>
         </span>
         <span class="item-meta" *ngIf="level==='ssdgps'">
           <span class="tag">{{ it.type_ssdgps }}</span> {{ it.nbr_total_sessions ?? 0 }} session(s)
           <span class="tag">{{ it.nbr_total_pieces ?? 0 }} pièce(s)</span>
         </span>
         <span class="item-meta" *ngIf="level==='session'">
-          <ng-container *ngIf="it.date_session">{{ formatDate(it.date_session) }} · </ng-container>{{ it.nbr_total_pieces ?? 0 }} pièce(s)
+          <ng-container *ngIf="it.date_session">{{ formatDate(it.date_session, 'date_session') }} · </ng-container>{{ it.nbr_total_pieces ?? 0 }} pièce(s)
         </span>
       </div>
       <div class="item-actions" (click)="$event.stopPropagation()">
@@ -218,12 +259,27 @@
               <input type="checkbox" [checked]="isAllSelected" (change)="toggleSelectAll()">
             </th>
             <th *ngFor="let col of getVisibleColumns()"
-                [class.sortable]="true"
-                (click)="sortBy(col.field)"
+                class="sortable"
+                [class.is-sorted]="sortLevelOf(col.field)"
+                (click)="openSort()"
                 (contextmenu)="onColumnHeaderRightClick($event, col)"
-                [title]="getFieldDescription(col.field)">
+                appTableHeaderTooltip [tipLabel]="col.label" [tipDescription]="getFieldDescription(col.field)" [tipType]="col.type" [tipSortLevel]="sortLevelOf(col.field)" [tipSortDir]="sortDirOf(col.field)">
               <span>{{ col.label }}</span>
-              <i [class]="getSortIcon(col.field)"></i>
+                <app-column-filter
+                  [field]="col.field" [label]="col.label" [type]="col.type"
+                  [rows]="items" [format]="cellText"
+                  [selected]="columnFilters[col.field] || null"
+                  (selectedChange)="onColumnFilterChange(col.field, $event)"
+                  (openSort)="openSort()"
+                  (hideColumn)="hideColumnField(col.field)"
+                  (openColumnConfig)="openColumnConfig()">
+                </app-column-filter>
+              <span class="sort-badge" *ngIf="sortLevelOf(col.field)">
+                <span class="sort-rank">{{ sortLevelOf(col.field) }}</span>
+                <i class="fas" [class.fa-arrow-up-short-wide]="sortDirOf(col.field) === 'asc'"
+                   [class.fa-arrow-down-wide-short]="sortDirOf(col.field) === 'desc'"></i>
+              </span>
+              <i *ngIf="!sortLevelOf(col.field)" [class]="getSortIcon(col.field)"></i>
             </th>
             <th class="actions-col">Actions</th>
           </tr>
@@ -238,10 +294,17 @@
               <input type="checkbox" [checked]="isSelected(it)" (change)="toggleSelect(it, $event)">
             </td>
             <td *ngFor="let col of getVisibleColumns()" (contextmenu)="onItemRightClick($event, it, col.field)" (click)="$event.stopPropagation()">
-              <span *ngIf="col.field === 'date_bornage' || col.field === 'date_session' || col.field === 'created_at' || col.field === 'updated_at' || col.field === 'deleted_at'">{{ formatDate(it[col.field]) }}</span>
-              <span *ngIf="col.field === 'nature_affaire'">{{ natureLabel(it[col.field]) }}</span>
-              <span *ngIf="col.field === 'is_deleted'">{{ it.is_deleted ? 'Oui' : 'Non' }}</span>
-              <span *ngIf="col.field !== 'date_bornage' && col.field !== 'date_session' && col.field !== 'created_at' && col.field !== 'updated_at' && col.field !== 'deleted_at' && col.field !== 'nature_affaire' && col.field !== 'is_deleted'">{{ it[col.field] ?? '—' }}</span>
+              <ng-container [ngSwitch]="col.field">
+                <!-- Identifiant de la propriété (titre foncier, sinon réquisition) — chip monospace -->
+                <span *ngSwitchCase="'id_propriete'" class="code-chip" [class.empty]="!proprieteIdentifier(it)">{{ getCellValue(it, col.field) }}</span>
+                <!-- Compteurs : chiffres tabulaires, valeur nulle grisée pour lire la densité d'un coup d'œil -->
+                <span *ngSwitchCase="'nbr_total_affaires'" class="num-value" [class.zero]="!it.nbr_total_affaires">{{ it.nbr_total_affaires ?? 0 }}</span>
+                <span *ngSwitchCase="'nbr_total_ssdgps'" class="num-value" [class.zero]="!it.nbr_total_ssdgps">{{ it.nbr_total_ssdgps ?? 0 }}</span>
+                <span *ngSwitchCase="'nbr_total_sessions'" class="num-value" [class.zero]="!it.nbr_total_sessions">{{ it.nbr_total_sessions ?? 0 }}</span>
+                <span *ngSwitchCase="'nbr_total_pieces'" class="num-value" [class.zero]="!it.nbr_total_pieces">{{ it.nbr_total_pieces ?? 0 }}</span>
+                <span *ngSwitchCase="'is_deleted'" class="badge" [class.badge-success]="!it.is_deleted" [class.badge-secondary]="it.is_deleted">{{ it.is_deleted ? 'Oui' : 'Non' }}</span>
+                <span *ngSwitchDefault>{{ getCellValue(it, col.field) }}</span>
+              </ng-container>
             </td>
             <td class="actions-col" (click)="$event.stopPropagation()">
               <button class="btn-icon" title="Ouvrir" *ngIf="!isLeaf() && !it.is_deleted" (click)="descend(it)"><i class="fas fa-folder-open"></i></button>
@@ -306,31 +369,17 @@
         </div>
       </div>
       <div class="table-footer-right">
-        <div class="pagination-size">
-          <span class="pagination-size-label">Éléments par page :</span>
-          <div class="pagination-size-select-wrapper">
-            <select class="pagination-size-select" [value]="pageSize" (change)="setPageSize(+$any($event.target).value)">
-              <option *ngFor="let opt of pageSizeOptions" [value]="opt">{{ opt }}</option>
-            </select>
-            <i class="fas fa-chevron-down pagination-size-arrow"></i>
-          </div>
-        </div>
-        <div class="pagination-nav">
-          <button class="pagination-nav-btn" [disabled]="currentPage <= 1" (click)="goToFirstPage()" title="Première page">
-            <i class="fas fa-angle-double-left"></i>
-          </button>
-          <button class="pagination-nav-btn" [disabled]="currentPage <= 1" (click)="prevPage()" title="Page précédente">
-            <i class="fas fa-chevron-left"></i>
-          </button>
-          <button *ngFor="let p of pageNumbers" class="pagination-page-btn" [class.active]="p === currentPage" (click)="goToPage(p)">{{ p }}</button>
-          <span class="pagination-nav-label">Page {{ currentPage }} sur {{ totalPages }}</span>
-          <button class="pagination-nav-btn" [disabled]="currentPage >= totalPages" (click)="nextPage()" title="Page suivante">
-            <i class="fas fa-chevron-right"></i>
-          </button>
-          <button class="pagination-nav-btn" [disabled]="currentPage >= totalPages" (click)="goToLastPage()" title="Dernière page">
-            <i class="fas fa-angle-double-right"></i>
-          </button>
-        </div>
+        <app-table-pagination
+          [page]="currentPage"
+          [pageSize]="pageSize"
+          [total]="filteredItems.length"
+          [pageSizeOptions]="pageSizeOptions"
+          (pageSizeChange)="setPageSize($event)"
+          (first)="goToFirstPage()"
+          (prev)="prevPage()"
+          (next)="nextPage()"
+          (last)="goToLastPage()">
+        </app-table-pagination>
       </div>
     </div>
   </div>
@@ -381,6 +430,11 @@
      [style.top.px]="contextMenuPosition.y"
      [style.left.px]="contextMenuPosition.x"
      (click)="$event.stopPropagation()">
+  <div class="context-menu-item" (click)="openSortFromContext()">
+    <i class="fas fa-sort-amount-down"></i>
+    <span>Tri multi-niveaux…</span>
+  </div>
+  <div class="context-menu-divider"></div>
   <div class="context-menu-item" (click)="hideColumnFromContext()">
     <i class="fas fa-eye-slash"></i>
     <span>Masquer la colonne</span>
@@ -392,123 +446,7 @@
   </div>
 </div>
 
-<!-- Modale : organiser les colonnes -->
-<div class="modal-overlay" *ngIf="showColumnConfig" (click)="toggleColumnConfig()">
-  <div class="modal-content modal-column-config" (click)="$event.stopPropagation()">
-    <div class="modal-header">
-      <div class="modal-header-left">
-        <i class="fas fa-columns header-icon"></i>
-        <div>
-          <h3>Organiser les colonnes</h3>
-          <span class="modal-stats">
-            <i class="fas fa-table"></i>
-            Total: {{ getColumnStats().total }}
-            <span class="stat-sep">|</span>
-            <i class="fas fa-eye"></i>
-            Visibles : {{ getColumnStats().visible }}
-            <span class="stat-sep">|</span>
-            <i class="fas fa-eye-slash"></i>
-            Masquées : {{ getColumnStats().hidden }}
-          </span>
-        </div>
-      </div>
-      <div class="modal-header-right">
-        <div class="dropdown-container" [class.open]="showColumnFilterMenu">
-          <button type="button" class="btn btn-filter-toggle" (click)="toggleColumnFilterMenu($event)" [title]="getColumnFilterLabel()">
-            <i class="fas fa-filter"></i>
-            {{ getColumnFilterLabel() }}
-            <i class="fas fa-chevron-down"></i>
-          </button>
-          <div class="dropdown-menu" [hidden]="!showColumnFilterMenu">
-            <div class="dropdown-item" (click)="$event.stopPropagation(); applyColumnFilter('all')" [class.active]="columnFilter === 'all'">
-              <i class="fas fa-eye"></i>
-              <span>Afficher toutes les colonnes</span>
-              <i class="fas fa-check" *ngIf="columnFilter === 'all'"></i>
-            </div>
-            <div class="dropdown-item" (click)="$event.stopPropagation(); applyColumnFilter('visible')" [class.active]="columnFilter === 'visible'">
-              <i class="fas fa-eye-slash"></i>
-              <span>Afficher uniquement les colonnes visibles</span>
-              <i class="fas fa-check" *ngIf="columnFilter === 'visible'"></i>
-            </div>
-          </div>
-        </div>
-        <button class="close-btn" (click)="toggleColumnConfig()">
-          <i class="fas fa-times"></i>
-        </button>
-      </div>
-    </div>
-
-    <div class="modal-body">
-      <ul class="column-list">
-        <li *ngFor="let col of getFilteredColumns(); let i = index"
-            class="column-item"
-            [class.dragging]="draggedColumnIndex === columns.indexOf(col)"
-            [class.drag-over]="dragOverIndex === columns.indexOf(col)"
-            draggable="true"
-            (dragstart)="onDragStart(columns.indexOf(col))"
-            (dragover)="onDragOver($event, columns.indexOf(col))"
-            (dragleave)="onDragLeave()"
-            (drop)="onDrop(columns.indexOf(col))"
-            (dragend)="onDragEnd()">
-          <div class="column-row">
-            <input type="checkbox" [checked]="col.visible" (change)="toggleColumnVisibility(col.field)">
-
-            <div class="column-reorder-buttons">
-              <button type="button" class="btn-reorder" [disabled]="i === 0" (click)="moveColumnToTop(i)" title="Déplacer en première position">
-                <i class="fas fa-angle-double-up"></i>
-              </button>
-              <button type="button" class="btn-reorder" [disabled]="i === 0" (click)="moveColumnUp(i)" title="Monter">
-                <i class="fas fa-angle-up"></i>
-              </button>
-              <button type="button" class="btn-reorder" [disabled]="i === columns.length - 1" (click)="moveColumnDown(i)" title="Descendre">
-                <i class="fas fa-angle-down"></i>
-              </button>
-              <button type="button" class="btn-reorder" [disabled]="i === columns.length - 1" (click)="moveColumnToBottom(i)" title="Déplacer en dernière position">
-                <i class="fas fa-angle-double-down"></i>
-              </button>
-            </div>
-
-            <label>
-              <span class="column-type">{{ getTypeLabel(col.type) }}</span>
-              <span class="column-name">{{ col.label }}</span>
-              <i class="fas fa-info-circle column-info-icon" *ngIf="getFieldDescription(col.field)" [title]="getFieldDescription(col.field)"></i>
-            </label>
-            <div class="column-description-cell" *ngIf="getFieldDescription(col.field)">
-              {{ getFieldDescription(col.field) }}
-            </div>
-          </div>
-        </li>
-      </ul>
-    </div>
-
-    <div class="modal-footer">
-      <div class="footer-actions">
-        <button class="btn btn-action" (click)="selectAllColumns()">
-          <i class="fas fa-check-double"></i>
-          Sélectionner tout
-        </button>
-        <button class="btn btn-action" (click)="deselectAllColumns()">
-          <i class="fas fa-times"></i>
-          Désélectionner tout
-        </button>
-        <button class="btn btn-action" (click)="invertColumnSelection()">
-          <i class="fas fa-exchange-alt"></i>
-          Inverser
-        </button>
-      </div>
-      <div class="footer-buttons">
-        <button class="btn btn-cancel" (click)="cancelColumnConfig()">
-          <i class="fas fa-times"></i>
-          Annuler
-        </button>
-        <button class="btn btn-confirm" (click)="confirmColumnConfig()">
-          <i class="fas fa-check"></i>
-          OK
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
+<!-- La modale « Organiser les colonnes » est fournie par <app-column-config> dans la barre d'outils. -->
 
 <!-- Modale de saisie -->
 <div class="modal-overlay" *ngIf="showModal" (click)="closeModal()">
@@ -582,7 +520,7 @@
           </div>
           <div class="form-group" *ngIf="dateBornageRequired">
             <label>Date et heure de bornage / recollement <span class="req">*</span></label>
-            <input type="datetime-local" step="1" formControlName="date_bornage">
+            <input type="date" formControlName="date_bornage">
           </div>
           <p class="form-hint" *ngIf="!dateBornageRequired && form.value.nature_procedure_affaire">
             <i class="fas fa-info-circle"></i> Date de bornage non applicable (procédures IFE/IFR).
@@ -622,7 +560,7 @@
             </div>
             <div class="form-group">
               <label>Date et heure de la session</label>
-              <input type="datetime-local" step="1" formControlName="date_session">
+              <input type="date" formControlName="date_session">
             </div>
           </div>
         </ng-container>

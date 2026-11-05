@@ -1,47 +1,94 @@
+# ============================================================================
+# Compose UNIQUE — l'environnement est piloté par la variable ENVIRONMENT, qui
+# mappe automatiquement le fichier de config backend/.env.<ENVIRONMENT>.
+# ============================================================================
+# Sélection de l'environnement via --env-file (un SEUL fichier pilote tout : ENVIRONMENT,
+# ports hôte, config conteneur). Ports hôte par environnement :
+#   dev 8085/4205 · staging 8086/4206 · preprod 8087/4207 · production 8088/4208
+# (BACKEND_PORT / FRONTEND_PORT définis dans chaque backend/.env.<env>).
+#
+# Ce compose orchestre le BACKEND (+ PostgreSQL pour les env serveur). Le FRONTEND tourne
+# en NATIF (ng serve) — voir la note dans la section `frontend` plus bas.
+#
+#   Développement (SQLite, pas de db) :
+#     docker compose --env-file backend/.env.development up -d backend
+#
+#   Local « type serveur » (PostgreSQL) — staging | preprod | production :
+#     docker compose --env-file backend/.env.staging    --profile postgres up -d
+#     docker compose --env-file backend/.env.preprod    --profile postgres up -d
+#     docker compose --env-file backend/.env.production  --profile postgres up -d
+#
+# Chaque env a container + volume + ports DISTINCTS → ils peuvent coexister.
+# Le fichier backend/.env.<ENVIRONMENT> fournit TOUTE la config (DEBUG, POSTGRES_*,
+# SendGrid, seed…). Il est `required: false` : absent (ex. CI/Railway), la config vient
+# des variables du service.
+#
+# NB déploiement réel : la production tourne sur Railway/GHCR via le Dockerfile racine
+# (SPA buildé + gunicorn, même origine). Ce compose sert l'orchestration LOCALE.
+# ----------------------------------------------------------------------------
+
 services:
+  # --- PostgreSQL : uniquement pour les environnements serveur (profil `postgres`). ---
   db:
     image: postgres:16-alpine
-    container_name: sdgps-db
+    # Container + volume PAR environnement : staging/preprod/production ne partagent
+    # jamais la même base locale (règle « chaque env a SA propre base »).
+    container_name: sdgps-db-${ENVIRONMENT:-development}
+    profiles: ["postgres"]
     restart: unless-stopped
+    # Les identifiants viennent du MÊME .env que le backend → pas de mismatch de mot de
+    # passe (POSTGRES_DB/USER/PASSWORD lus directement par l'image postgres).
     env_file:
-      - ./backend/.env.production
-    environment:
-      # Alimente l'initialisation du serveur Postgres depuis les variables POSTGRES_* du .env.
-      POSTGRES_DB: ${POSTGRES_DB:-sdgps}
-      POSTGRES_USER: ${POSTGRES_USER:-sdgps}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sdgps}
+      - path: ./backend/.env.${ENVIRONMENT:-development}
+        required: false
     volumes:
       - backend_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sdgps} -d ${POSTGRES_DB:-sdgps}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-sdgps} -d $${POSTGRES_DB:-sdgps}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
+  # --- Backend Django (toujours démarré). ---
   backend:
-    # Image déployable = fork onedevasus (où tourne la CI). Nécessite `docker login ghcr.io`
-    # (package privé). Surcharger via GITHUB_REPOSITORY si besoin.
-    image: ghcr.io/${GITHUB_REPOSITORY:-onedevasus/app_sdgps}:latest
-    container_name: sdgps-backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: sdgps-backend:${ENVIRONMENT:-development}
+    container_name: sdgps-backend-${ENVIRONMENT:-development}
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    ports:
-      - "8085:8000"
-    env_file:
-      - ./backend/.env.production
+    # runserver --noreload : stable sous Docker Desktop Windows (l'autoreloader crashe sur
+    # I/O des fichiers montés). Le code étant monté, `docker restart` recharge les modifs.
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000", "--noreload"]
     environment:
-      # Déploiement = production → PostgreSQL (indépendamment du .env versionné).
-      ENVIRONMENT: production
-      # Dans le réseau Docker, la base est joignable via le nom de service `db`.
-      POSTGRES_HOST: db
+      # ENVIRONMENT vient de l'OS/shell (jamais du .env) et sélectionne le fichier de config.
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    env_file:
+      - path: ./backend/.env.${ENVIRONMENT:-development}
+        required: false
     volumes:
+      # Source montée : itération sans rebuild + réutilise la base SQLite seedée de l'hôte
+      # (en dev). En env serveur, la base est PostgreSQL (service `db`), SQLite est ignorée.
+      - ./backend:/app
       - backend_media:/app/media
-      # Données d'initialisation externes (optionnel) : monter un fichier JSON et pointer
-      # SEED_DATA_FILE dessus dans .env.production pour surcharger le fichier embarqué.
-      # - ./backend/config/initial_data.json:/app/config/initial_data.json:ro
+    ports:
+      # Port hôte par environnement (dev 8085 / staging 8086 / preprod 8087 / prod 8088),
+      # fourni par BACKEND_PORT dans backend/.env.<env> (via --env-file au lancement).
+      - "${BACKEND_PORT:-8085}:8000"
+
+  # --- Frontend Angular : PAS de service Docker (volontaire). ---
+  # Le `npm ci` dans Docker est instable sur cette machine (réseau WSL2 → ECONNRESET).
+  # Le frontend tourne donc en NATIF (node hôte), avec les mêmes configs Angular par env :
+  #   cd frontend
+  #   npx ng serve --configuration=development     --port 4205 --host localhost   # → API :8085
+  #   npx ng serve --configuration=staging         --port 4206 --host localhost   # → API :8086
+  #   npx ng serve --configuration=preprod         --port 4207 --host localhost   # → API :8087
+  #   npx ng serve --configuration=production-local --port 4208 --host localhost  # → API :8088
+  # (frontend/Dockerfile.dev reste dispo comme fallback si le réseau npm-in-Docker est réparé.)
 
 volumes:
+  # Noms réels interpolés par environnement → données isolées entre dev/staging/preprod/prod.
   backend_media:
+    name: sdgps_media_${ENVIRONMENT:-development}
   backend_pgdata:
+    name: sdgps_pgdata_${ENVIRONMENT:-development}
