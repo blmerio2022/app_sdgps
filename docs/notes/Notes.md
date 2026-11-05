@@ -2,6 +2,8 @@
 
 
 
+
+
 ## Sommaire
 
 - [Notes — Application SDGPS](#notes-application-sdgps)
@@ -74,6 +76,10 @@
     - Finaliser l'interface graphique UI/UX
       - redesigner pages consultation/modification des pieces. (fait)
       - redesigner les pages de creation de nouvelles pieces.
+        - taille max des fichiers images/csv/excel/html = 2Mo.
+        - ajouter option choix orientation page contenu de la piece
+        - supprimer l'etape choix de la session. vu que les pieces sont ajoutees dans une session.
+        - 
       - ajouter la vue en cartes de la liste des projets.
       - style affichage du menu de filtre dans page liste des pieces.
   

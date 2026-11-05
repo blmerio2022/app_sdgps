@@ -9,15 +9,24 @@
 
     <span class="head-icon"><i class="fas fa-plus"></i></span>
 
-    <h1 class="head-main">Ajouter une pièce</h1>
+    <!-- Titre : rappelle le type dès qu'il est choisi — on sait toujours ce qu'on est en
+         train de créer, même après avoir défilé jusqu'au bas d'un long formulaire. -->
+    <h1 class="head-main">
+      Ajouter une nouvelle pièce<ng-container *ngIf="selectedType"> de type
+        <span class="head-type" [title]="selectedType.nom">{{ selectedType.code }}</span>
+      </ng-container>
+    </h1>
 
     <div class="head-actions">
-      <span class="head-context">
-        <i class="fas fa-satellite-dish"></i>
-        SSDGPS n°{{ ssdgps.numero_ssdgps }}
-        <span class="context-sep">·</span>
-        {{ ssdgps.type_ssdgps === 'multi-session' ? 'Multi-session' : 'Mono-session' }}
-      </span>
+      <!-- Chemin complet de destination : propriété › affaire › SSDGPS › session. -->
+      <nav class="head-path" aria-label="Emplacement de la pièce">
+        <ng-container *ngFor="let seg of pathSegments; let last = last">
+          <span class="path-seg" [class.current]="last" [title]="seg.label">
+            <i class="fas" [ngClass]="seg.icon" aria-hidden="true"></i>{{ seg.label }}
+          </span>
+          <i class="fas fa-chevron-right path-sep" *ngIf="!last" aria-hidden="true"></i>
+        </ng-container>
+      </nav>
     </div>
   </header>
 
@@ -29,6 +38,7 @@
       [catalog]="catalog"
       [existingPieces]="existingPieces"
       [defaultSessionId]="defaultSessionId"
+      (typeSelected)="onTypeSelected($event)"
       (created)="onCreated()"
       (cancelled)="onCancelled()">
     </app-piece-add-wizard>

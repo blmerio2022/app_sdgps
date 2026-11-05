@@ -90,7 +90,15 @@
     /* Filet d'accent : ancre le titre sans recourir à une icône de plus. */
     padding-left: 11px; border-left: 3px solid var(--accent-color);
   }
-  .step-hint { margin: 0; font-size: 12px; color: var(--text-muted); }
+
+  /* Code du type accolé au nom dans le titre : même jeton monospace que `.ctx-code` et que
+     l'en-tête de la page d'ajout — un code de pièce se lit toujours de la même façon. */
+  .step-code {
+    display: inline-flex; align-items: center; margin-left: 9px; vertical-align: 2px;
+    font-family: 'Consolas', monospace; font-size: 11.5px; font-weight: 700; letter-spacing: 0.4px;
+    padding: 2px 9px; border-radius: 6px;
+    color: var(--accent-color); background: rgba(204, 88, 88, 0.13); border: 1px solid rgba(204, 88, 88, 0.26);
+  }
 
   /* Contexte : ce qui a été choisi aux étapes précédentes, en jetons relisibles. */
   .step-context { margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -107,6 +115,29 @@
   }
 
   .btn-back { flex-shrink: 0; margin-left: auto; align-self: center; }
+
+  /* Variante centrée (étape 1) : sans retour ni jeton de contexte, une question alignée à
+     gauche paraît décalée face à la grille de cartes. Tout tient sur UNE SEULE LIGNE —
+     question + décompte en jeton — et le filet latéral d'accent est retiré (il ne se centre
+     pas : règle du dépôt, pas de bordure d'un seul côté sur un bloc centré). Le filet
+     inférieur de `.step-head` suffit à séparer l'en-tête de la grille. */
+  &.centered {
+    align-items: center; justify-content: center; flex-wrap: nowrap; gap: 12px;
+
+    .step-question {
+      padding-left: 0; border-left: none; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    /* Décompte des types applicables : information de cadrage, jamais une alerte — même
+       grammaire de jeton neutre que `.type-count` sur les cartes. */
+    .step-count {
+      flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px;
+      padding: 3px 10px; border-radius: 20px; white-space: nowrap;
+      font-size: 11px; font-weight: 700;
+      color: var(--text-muted); background: var(--primary-color); border: 1px solid var(--border-color);
+      i { color: var(--accent-color); font-size: 10px; opacity: 0.9; }
+    }
+  }
 }
 
 /* ---------- Cartes de type de pièce ----------
@@ -255,8 +286,9 @@
   background: var(--primary-color); border: 1px solid var(--border-color);
 
   &:hover:not(:disabled) {
-    border-color: var(--accent-color); background: var(--hover-bg);
+    border-color: var(--accent-color); background: var(--hover-bg); transform: translateY(-1px);
     .source-option-icon { background: var(--accent-color); border-color: var(--accent-color); color: #fff; }
+    .source-option-go { opacity: 1; transform: translateX(0); }
   }
   &:focus-visible { outline: none; border-color: var(--accent-color); box-shadow: 0 0 0 2px rgba(204, 88, 88, 0.3); }
   &:disabled { opacity: 0.55; cursor: not-allowed; }
@@ -271,7 +303,36 @@
   .source-option-name { font-size: 13.5px; font-weight: 600; color: var(--text-color); }
   .source-option-desc { font-size: 11.5px; color: var(--text-muted); line-height: 1.35; }
 
+  /* Affordance de navigation : révélée au survol (comme `.type-go` des cartes de type). */
+  .source-option-go {
+    flex-shrink: 0; font-size: 12px; color: var(--accent-color);
+    opacity: 0; transform: translateX(-4px); transition: all 0.15s;
+  }
+
   input[type="file"] { display: none; }
+}
+
+/* Récapitulatif de la sous-étape « Placement » : ce que l'on s'apprête à créer, en une grille
+   lisible de couples libellé / valeur, avant de fixer la position et de valider. */
+.recap-card {
+  list-style: none; margin: 0; padding: 14px 16px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 13px 20px;
+  background: var(--primary-color); border: 1px solid var(--border-color); border-radius: 12px;
+
+  .recap-item { display: flex; align-items: center; gap: 11px; min-width: 0; }
+  .recap-icon {
+    flex-shrink: 0; width: 34px; height: 34px; border-radius: 9px;
+    display: flex; align-items: center; justify-content: center; font-size: 14px;
+    color: var(--accent-color); background: rgba(204, 88, 88, 0.13); border: 1px solid rgba(204, 88, 88, 0.26);
+  }
+  .recap-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .recap-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);
+  }
+  .recap-value {
+    font-size: 13px; font-weight: 600; color: var(--text-color);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
 }
 
 .source-form {
@@ -338,14 +399,48 @@
   padding-top: 12px; margin-top: 2px; border-top: 1px solid var(--border-color);
 }
 
-/* Ligne de sélection de fichier : bouton + nom du fichier retenu. */
-.file-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.file-chosen {
-  display: inline-flex; align-items: center; gap: 7px; min-width: 0;
-  padding: 5px 11px; border-radius: 20px; font-size: 12px; font-weight: 500;
-  color: var(--text-color); background: var(--primary-color); border: 1px solid var(--border-color);
-  i { color: var(--accent-color); font-size: 11px; flex-shrink: 0; }
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+/* Zone de dépôt (import CSV/Excel « Colonnes », images) : parcours au clic ou glisser-déposer.
+   Se compacte en carte-fichier une fois un fichier retenu. Style flat, aux teintes du thème. */
+.dropzone {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  padding: 26px 20px; text-align: center; cursor: pointer;
+  border: 1.5px dashed var(--border-color); border-radius: 12px;
+  background: var(--primary-color); transition: all 0.15s;
+
+  &:hover, &.dragging {
+    border-color: var(--accent-color); background: var(--hover-bg);
+    .dropzone-icon { color: #fff; background: var(--accent-color); border-color: var(--accent-color); }
+  }
+  &.dragging { background: rgba(204, 88, 88, 0.08); }
+  &:focus-within { outline: none; border-color: var(--accent-color); box-shadow: 0 0 0 2px rgba(204, 88, 88, 0.25); }
+  /* Fichier retenu : la zone se resserre en carte compacte. */
+  &.compact { padding: 14px 18px; }
+
+  .dropzone-icon {
+    flex-shrink: 0; width: 48px; height: 48px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center; font-size: 20px;
+    color: var(--accent-color); background: rgba(204, 88, 88, 0.13); border: 1px solid rgba(204, 88, 88, 0.26);
+    transition: all 0.15s;
+  }
+  .dropzone-title {
+    max-width: 100%; font-size: 13.5px; font-weight: 600; color: var(--text-color);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .dropzone-hint { font-size: 11.5px; color: var(--text-muted); }
+  .dropzone-link { color: var(--accent-color); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+
+  &.compact .dropzone-icon { width: 40px; height: 40px; font-size: 16px; }
+}
+
+/* Bandeau de synthèse de la sous-étape « Aperçu » : jetons d'état de l'import à mapper. */
+.preview-summary { display: flex; flex-wrap: wrap; gap: 8px; }
+.preview-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 20px;
+  font-size: 11.5px; font-weight: 600; color: var(--text-muted);
+  background: var(--primary-color); border: 1px solid var(--border-color);
+  i { font-size: 10.5px; opacity: 0.85; }
+  /* Vert sémantique quand tous les champs sont mappés. */
+  &.ok { color: #2ecc71; background: rgba(46, 204, 113, 0.12); border-color: rgba(46, 204, 113, 0.3); i { opacity: 1; } }
 }
 
 /* Bouton icône UNIQUE : une définition + une variante compacte (`.sm`), au lieu d'une
@@ -535,16 +630,82 @@
   }
 }
 
+/* Barre d'outils des images : décompte à gauche, bascule vignettes/liste à droite — même
+   paire de contrôles que la galerie de consultation d'une pièce. */
+.image-toolbar {
+  display: flex; align-items: center; gap: 12px;
+  .image-count { font-size: 12.5px; color: var(--text-muted); }
+  .view-toggle {
+    margin-left: auto; display: inline-flex; gap: 2px; padding: 2px;
+    background: var(--primary-color); border: 1px solid var(--border-color); border-radius: 6px;
+    .view-toggle-btn {
+      width: 32px; height: 28px; display: flex; align-items: center; justify-content: center;
+      background: transparent; border: none; border-radius: 4px; color: var(--text-muted);
+      cursor: pointer; font-size: 12px; transition: all 0.15s;
+      &:hover:not(.active) { color: var(--text-color); background: var(--hover-bg); }
+      &:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(204, 88, 88, 0.35); }
+      &.active { background: var(--accent-color); color: #fff; }
+    }
+  }
+}
+
+/* Vue liste des images choisies : une ligne par image, métadonnées en clair. Utile quand les
+   vignettes se ressemblent (planches de même cadrage) — c'est le nom et le format qui
+   distinguent alors les fichiers. */
+.img-list {
+  display: flex; flex-direction: column; gap: 6px; min-width: 0;
+  .img-list-row {
+    display: flex; align-items: center; gap: 10px; padding: 6px 8px;
+    border: 1px solid var(--border-color); border-radius: 8px; background: var(--primary-color);
+    cursor: pointer; transition: all 0.15s;
+    &:hover { border-color: var(--accent-color); }
+    &.active { border-color: var(--accent-color); background: rgba(204, 88, 88, 0.08); }
+
+    .img-list-index {
+      width: 22px; flex-shrink: 0; text-align: center;
+      font-size: 11px; font-weight: 700; color: var(--text-muted);
+    }
+    .img-list-thumb {
+      width: 48px; height: 48px; flex-shrink: 0; border-radius: 6px; overflow: hidden; cursor: zoom-in;
+      display: flex; align-items: center; justify-content: center; background: var(--secondary-color);
+      img { width: 100%; height: 100%; object-fit: cover; }
+      .image-picker-fallback.mini { color: var(--text-muted); i { font-size: 18px; } }
+    }
+    .img-list-meta {
+      flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;
+      .img-list-name {
+        font-size: 13px; font-weight: 500; color: var(--text-color);
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .img-list-sub {
+        font-size: 11.5px; color: var(--text-muted);
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+    }
+    .img-list-actions { flex-shrink: 0; display: flex; gap: 2px; }
+  }
+}
+
+/* Espace de travail images : vignettes réordonnables à gauche, panneau de détails à droite
+   (miroir de la galerie de consultation d'une pièce à images). */
+.image-workspace {
+  display: grid; grid-template-columns: 1fr minmax(220px, 300px); gap: 14px; align-items: start;
+  @media (max-width: 720px) { grid-template-columns: 1fr; }
+}
+
 /* Sélecteur d'images (multi) du wizard */
 .image-picker {
-  display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0;
+  display: flex; flex-wrap: wrap; gap: 10px; margin: 0; align-content: flex-start;
   .image-picker-item {
     width: 120px; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;
-    background: var(--primary-color); display: flex; flex-direction: column;
+    background: var(--primary-color); display: flex; flex-direction: column; cursor: pointer; transition: border-color 0.15s;
+    &:hover { border-color: var(--accent-color); }
+    /* Image mise en avant dans le panneau de détails : liseré d'accent franc. */
+    &.active { border-color: var(--accent-color); box-shadow: 0 0 0 1px var(--accent-color); }
   }
   .image-picker-thumb {
     position: relative; height: 84px; display: flex; align-items: center; justify-content: center;
-    overflow: hidden; background: var(--secondary-color);
+    overflow: hidden; background: var(--secondary-color); cursor: zoom-in;
     img { width: 100%; height: 100%; object-fit: cover; }
     .image-picker-fallback { color: var(--text-muted); font-size: 12px; display: flex; flex-direction: column; align-items: center; gap: 3px; i { font-size: 22px; } }
     .image-picker-index { position: absolute; top: 4px; left: 4px; background: rgba(0,0,0,0.6); color: #fff; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px; }
@@ -553,6 +714,72 @@
   .image-picker-actions {
     display: flex; justify-content: center; gap: 2px; padding: 3px; border-top: 1px solid var(--border-color);
     /* Taille compacte via la variante partagée `.icon-btn.sm` — plus de redéfinition locale. */
+  }
+}
+
+/* Panneau de détails techniques de l'image sélectionnée + bouton plein écran (repris de la
+   galerie de consultation `piece-image-gallery`, adapté aux fichiers locaux non encore envoyés). */
+.details {
+  border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; background: var(--secondary-color);
+
+  .details-preview {
+    position: relative; width: 100%; height: 170px; border-radius: 8px; overflow: hidden;
+    display: flex; align-items: center; justify-content: center; background: var(--primary-color); margin-bottom: 12px;
+    img { width: 100%; height: 100%; object-fit: contain; }
+    &.zoomable { cursor: zoom-in; }
+    .image-picker-fallback.big { color: var(--text-muted); font-size: 12px; text-align: center;
+      display: flex; flex-direction: column; align-items: center; gap: 6px; i { font-size: 30px; } }
+    /* Outil « plein écran » révélé au survol de l'aperçu. */
+    .details-fullscreen {
+      position: absolute; top: 8px; right: 8px; display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 10px; border-radius: 16px; border: none; cursor: pointer;
+      background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 11px; font-weight: 600; opacity: 0; transition: opacity 0.15s;
+      i { font-size: 11px; }
+      &:hover { background: rgba(0, 0, 0, 0.75); }
+      &:focus-visible { outline: none; opacity: 1; box-shadow: 0 0 0 2px rgba(204, 88, 88, 0.35); }
+    }
+    &:hover .details-fullscreen { opacity: 1; }
+  }
+  h4 { margin: 0 0 10px; font-size: 13px; display: flex; align-items: center; gap: 7px; color: var(--text-color);
+    i { color: var(--accent-color); } }
+  .details-grid {
+    display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; font-size: 12.5px;
+    dt { color: var(--text-muted); white-space: nowrap; }
+    /* Pas de `text-transform` global : il déformerait le NOM du fichier (« photo.png »). */
+    dd { margin: 0; color: var(--text-color); font-weight: 500; text-align: right;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    /* Valeurs issues du code (« portrait », « paysage ») : capitale d'affichage seulement. */
+    dd.cap { text-transform: capitalize; }
+  }
+}
+
+/* Onglets de l'étape « Colonnes » (mapping / aperçu) — même grammaire que le contrôle segmenté
+   de position, mais en pleine largeur pour deux volets de contenu. */
+.wizard-tabs {
+  display: inline-flex; gap: 4px; padding: 4px; align-self: flex-start;
+  background: var(--secondary-color); border: 1px solid var(--border-color); border-radius: 9px;
+}
+.wizard-tab {
+  display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; min-height: 34px;
+  border: 1px solid transparent; border-radius: 6px; background: transparent;
+  color: var(--text-muted); font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.15s;
+  i { font-size: 11px; }
+  &:hover:not(.active) { color: var(--text-color); background: var(--hover-bg); }
+  &:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(204, 88, 88, 0.35); }
+  &.active { background: rgba(204, 88, 88, 0.14); color: var(--accent-color); border-color: rgba(204, 88, 88, 0.4); }
+}
+.wizard-tabpanel { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+/* Visionneuse plein écran (lightbox) — reprise de la galerie de consultation. */
+.lightbox {
+  position: fixed; inset: 0; z-index: 11000; background: rgba(0, 0, 0, 0.85);
+  display: flex; align-items: center; justify-content: center; cursor: zoom-out;
+  img { max-width: 92vw; max-height: 92vh; object-fit: contain; cursor: default; box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5); }
+  .lightbox-close {
+    position: absolute; top: 18px; right: 22px; width: 42px; height: 42px; border-radius: 50%;
+    background: rgba(255, 255, 255, 0.12); border: none; color: #fff; font-size: 18px; cursor: pointer;
+    &:hover { background: rgba(255, 255, 255, 0.25); }
+    &:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5); }
   }
 }
 

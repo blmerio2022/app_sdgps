@@ -1,4 +1,5 @@
 import { FormBuilder } from '@angular/forms';
+import { of } from 'rxjs';
 import { PieceAddWizardComponent } from './piece-add-wizard.component';
 import { PieceTypeDef } from '../../../core/models/piece.model';
 
@@ -19,42 +20,298 @@ describe('PieceAddWizardComponent (logique)', () => {
     cmp.existingPieces = [];
   });
 
-  describe('stepper', () => {
-    it('mono-session : 2 étapes (type, source) — pas d’étape Session', () => {
-      expect(cmp.wizardSteps.map(s => s.key)).toEqual(['type', 'source']);
+  describe('stepper — sous-étapes de la source', () => {
+    it('avant tout choix de type : la phase source est une pastille unique', () => {
+      expect(cmp.wizardSteps.map(s => s.key)).toEqual(['type', 'data']);
+      cmp.ssdgps = { ...cmp.ssdgps, type_ssdgps: 'multi-session' } as any;
+      expect(cmp.wizardSteps.map(s => s.key)).toEqual(['type', 'scope', 'data']);
     });
 
-    it('multi-session : 3 étapes, Session insérée au milieu', () => {
+    it('multi-session AVEC session de contexte : aucune étape « Session »', () => {
       cmp.ssdgps = { ...cmp.ssdgps, type_ssdgps: 'multi-session' } as any;
-      expect(cmp.wizardSteps.map(s => s.key)).toEqual(['type', 'scope', 'source']);
+      cmp.defaultSessionId = 'sess1';
+      expect(cmp.needsSessionStep).toBeFalse();
+      expect(cmp.wizardSteps.map(s => s.key)).not.toContain('scope');
+    });
+
+    it('needsSessionStep : vrai seulement si multi-session ET aucune session de contexte', () => {
+      expect(cmp.needsSessionStep).toBeFalse();               // mono-session
+      cmp.ssdgps = { ...cmp.ssdgps, type_ssdgps: 'multi-session' } as any;
+      expect(cmp.needsSessionStep).toBeTrue();                // multi sans contexte
+      cmp.defaultSessionId = 'sess1';
+      expect(cmp.needsSessionStep).toBeFalse();               // multi avec contexte
+    });
+
+    it('type multi-méthodes : Méthode + Données + Placement', () => {
+      cmp.selectType(def());   // csv_manuel → 2 méthodes
+      expect(cmp.wizardSteps.map(s => s.key)).toEqual(['type', 'method', 'data', 'place']);
+    });
+
+    it('type mono-méthode : pas de sous-étape Méthode', () => {
+      cmp.selectType(def({ source: 'manuel' }));
+      expect(cmp.wizardSteps.map(s => s.key)).toEqual(['type', 'data', 'place']);
+    });
+
+    it('type à photos par point : ajoute la sous-étape Photos', () => {
+      cmp.selectType(def({ source: 'image_csv_manuel', champs: [{ name: 'fichier_image' } as any] }));
+      expect(cmp.wizardSteps.map(s => s.key)).toContain('photos');
     });
 
     it('currentStepIndex suit l’étape courante', () => {
-      expect(cmp.currentStepIndex).toBe(0);
-      cmp.step = 'source';
+      cmp.selectType(def());   // step = method (index 1)
       expect(cmp.currentStepIndex).toBe(1);
-    });
-
-    it('l’étape « photos » reste rattachée au dernier rang (prolonge la source)', () => {
-      cmp.step = 'photos';
-      expect(cmp.currentStepIndex).toBe(1);
+      cmp.step = 'place';
+      expect(cmp.currentStepIndex).toBe(3);
     });
 
     it('goToStep revient à une étape déjà franchie', () => {
       cmp.selectType(def());
-      expect(cmp.step).toBe('source');
+      cmp.step = 'place';        // simule une progression
       cmp.goToStep(0);
       expect(cmp.step).toBe('type');
       expect(cmp.selectedType).toBeNull();
     });
 
     it('goToStep ignore l’étape courante et les étapes à venir', () => {
-      cmp.selectType(def());
+      cmp.selectType(def());     // method (index 1)
       cmp.goToStep(1);           // étape courante
-      expect(cmp.step).toBe('source');
-      cmp.step = 'type';
-      cmp.goToStep(1);           // étape à venir
-      expect(cmp.step).toBe('type');
+      expect(cmp.step).toBe('method');
+      cmp.goToStep(2);           // étape à venir (data)
+      expect(cmp.step).toBe('method');
+    });
+  });
+
+  describe('phase source — sous-étapes', () => {
+    it('sourceChoices reflète les méthodes disponibles', () => {
+      cmp.selectedType = def({ source: 'image_csv_manuel' });
+      expect(cmp.sourceChoices.map(m => m.id)).toEqual(['image', 'csv', 'manuel']);
+      cmp.selectedType = def({ source: 'manuel' });
+      expect(cmp.sourceChoices.map(m => m.id)).toEqual(['manuel']);
+      cmp.selectedType = def({ source: 'calcul', computed: true });
+      expect(cmp.sourceChoices.map(m => m.id)).toEqual(['compute']);
+      cmp.selectedType = def({ source: 'manuel', assemble: true });
+      expect(cmp.sourceChoices.map(m => m.id)).toEqual(['manuel', 'assemble', 'assemble-files']);
+    });
+
+    it('isImageOnly : vrai seulement si l’image est la SEULE méthode', () => {
+      cmp.selectedType = def({ source: 'image' });          // RDC & co.
+      expect(cmp.isImageOnly).toBeTrue();
+      cmp.selectedType = def({ source: 'image_csv_manuel' }); // image + csv + manuel
+      expect(cmp.isImageOnly).toBeFalse();
+      cmp.selectedType = def({ source: 'manuel' });
+      expect(cmp.isImageOnly).toBeFalse();
+      // Photos par point (PPA/PPN) : l'image n'est pas une méthode de saisie du tableau.
+      cmp.selectedType = def({ source: 'image', champs: [{ name: 'fichier_image' } as any] });
+      expect(cmp.isImageOnly).toBeFalse();
+    });
+
+    it('image masquée pour un type à photos par point', () => {
+      cmp.selectedType = def({ source: 'image_csv_manuel', champs: [{ name: 'fichier_image' } as any] });
+      expect(cmp.sourceChoices.map(m => m.id)).toEqual(['csv', 'manuel']);
+    });
+
+    it('un type mono-méthode saute la sous-étape Méthode', () => {
+      cmp.selectType(def({ source: 'manuel' }));
+      expect(cmp.step).toBe('data');
+      expect(cmp.selectedSource).toBe('manuel');
+      expect(cmp.manualForm).toBeTruthy();
+    });
+
+    it('un type multi-méthodes s’arrête sur Méthode', () => {
+      cmp.selectType(def());     // csv_manuel
+      expect(cmp.step).toBe('method');
+      expect(cmp.selectedSource).toBeNull();
+    });
+
+    it('selectMethod(bulk) ouvre la création en masse sans changer d’étape', () => {
+      cmp.selectType(def({ repeatable: true, html_import: true }));
+      cmp.selectMethod({ id: 'bulk', icon: '', title: '', desc: '' });
+      expect(cmp.bulkModalOpen).toBeTrue();
+      expect(cmp.step).toBe('method');
+    });
+
+    it('selectMethod(source) ouvre la sous-étape Données', () => {
+      cmp.selectType(def());
+      cmp.selectMethod({ id: 'manuel', icon: '', title: '', desc: '' });
+      expect(cmp.step).toBe('data');
+      expect(cmp.selectedSource).toBe('manuel');
+    });
+  });
+
+  describe('navigation Données ↔ Placement', () => {
+    it('goToPlace exige une saisie exploitable', () => {
+      cmp.selectType(def({ source: 'manuel' }));   // data + manualForm
+      expect(cmp.canContinueFromData).toBeTrue();
+      cmp.goToPlace();
+      expect(cmp.step).toBe('place');
+    });
+
+    it('goToPlace reste bloqué tant qu’aucune image n’est choisie', () => {
+      cmp.selectType(def({ source: 'image' }));     // 1 méthode → data (image)
+      expect(cmp.selectedSource).toBe('image');
+      expect(cmp.canContinueFromData).toBeFalse();
+      cmp.goToPlace();
+      expect(cmp.step).toBe('data');
+    });
+
+    it('backToData revient sans perdre la saisie', () => {
+      cmp.selectType(def({ source: 'manuel' }));
+      cmp.goToPlace();
+      const form = cmp.manualForm;
+      cmp.backToData();
+      expect(cmp.step).toBe('data');
+      expect(cmp.manualForm).toBe(form);
+    });
+
+    it('backFromData : vers Méthode si plusieurs, sinon vers le niveau', () => {
+      cmp.selectType(def());     // 2 méthodes → method
+      cmp.selectMethod({ id: 'manuel', icon: '', title: '', desc: '' });
+      cmp.backFromData();
+      expect(cmp.step).toBe('method');
+      expect(cmp.selectedSource).toBeNull();
+
+      cmp.selectType(def({ source: 'manuel' }));   // 1 méthode → data
+      cmp.backFromData();
+      expect(cmp.step).toBe('type');               // mono-session
+    });
+
+    it('submitCurrent aiguille vers le sous-submit de la source', () => {
+      const spies: any = {
+        image: spyOn(cmp, 'submitImages'),
+        csv: spyOn(cmp, 'confirmImport'),
+        manuel: spyOn(cmp, 'submitManual'),
+        html: spyOn(cmp, 'submitHtml'),
+        compute: spyOn(cmp, 'submitCompute'),
+        assemble: spyOn(cmp, 'submitAssemble'),
+        'assemble-files': spyOn(cmp, 'submitAssembleFiles'),
+      };
+      (['image', 'csv', 'manuel', 'html', 'compute', 'assemble', 'assemble-files'] as any[]).forEach(src => {
+        cmp.selectedSource = src;
+        cmp.submitCurrent();
+        expect(spies[src]).toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('récapitulatif de placement', () => {
+    it('methodLabel traduit chaque source', () => {
+      expect(cmp.methodLabel('manuel')).toBe('Saisie manuelle');
+      expect(cmp.methodLabel('compute')).toBe('Calcul automatique');
+      expect(cmp.methodLabel(null)).toBe('—');
+    });
+
+    it('placementRecap résume type, rattachement, méthode et contenu', () => {
+      cmp.selectedType = def({ code: 'RDL', nom: 'Rattachement' });
+      cmp.selectedNiveau = 'ssdgps';
+      cmp.selectedSource = 'manuel';
+      cmp.wizardRows = [{}, {}];
+      expect(cmp.placementRecap.map(r => r.label)).toEqual(['Type', 'Rattachement', 'Méthode', 'Contenu']);
+      expect(cmp.placementRecap.find(r => r.label === 'Contenu')?.value).toBe('2 ligne(s)');
+    });
+
+    it('placementRecap ajoute le numéro pour un type répétable', () => {
+      cmp.selectedType = def({ repeatable: true });
+      cmp.selectedNiveau = 'ssdgps';
+      cmp.selectedSource = 'manuel';
+      cmp.existingPieces = [{ type_piece: 'RDL', numero: 1, is_deleted: false, session: null } as any];
+      expect(cmp.placementRecap.some(r => r.label === 'Numéro' && r.value === 'n°2')).toBeTrue();
+    });
+  });
+
+  describe('import CSV — « Méthode & import » puis « Colonnes » (onglets)', () => {
+    const preview = () => ({
+      columns: ['Pt', 'Est', 'Nord'],
+      preview_rows: [['B12', '100', '200'], ['B13', '101', '201']],
+      total_rows: 148,
+      champs: [{ name: 'nom_point', label: 'Point' }, { name: 'x', label: 'X' }],
+    }) as any;
+
+    it('choisir l’import CSV reste sur « Méthode » (dépôt du fichier inline)', () => {
+      cmp.selectType(def());     // csv_manuel → Méthode
+      cmp.selectMethod({ id: 'csv', icon: '', title: '', desc: '' });
+      expect(cmp.step).toBe('method');
+      expect(cmp.selectedSource).toBe('csv');
+    });
+
+    it('l’import CSV insère une unique étape « Colonnes » (mapping + aperçu)', () => {
+      cmp.selectType(def());
+      cmp.selectMethod({ id: 'csv', icon: '', title: '', desc: '' });
+      expect(cmp.wizardSteps.map(s => s.key)).toEqual(['type', 'method', 'map', 'place']);
+    });
+
+    it('goToMap n’avance qu’une fois le fichier lu, sur l’onglet Mapping', () => {
+      cmp.selectedType = def();
+      cmp.selectedSource = 'csv';
+      cmp.step = 'method';
+      cmp.goToMap();
+      expect(cmp.step).toBe('method');   // bloqué : pas d'aperçu
+      cmp.importPreview = preview();
+      cmp.mapTab = 'preview';
+      cmp.goToMap();
+      expect(cmp.step).toBe('map');
+      expect(cmp.mapTab).toBe('mapping');
+    });
+
+    it('setMapTab(preview) construit l’aperçu mappé (échantillon reprojeté)', () => {
+      cmp.selectedType = def();
+      cmp.selectedSource = 'csv';
+      cmp.importPreview = preview();
+      cmp.currentMapping = { nom_point: 'Pt', x: 'Est' };
+      cmp.setMapTab('preview');
+      expect(cmp.mapTab).toBe('preview');
+      expect(cmp.mappedPreviewChamps.map(c => c.name)).toEqual(['nom_point', 'x']);
+      expect(cmp.mappedPreviewRows[0]).toEqual({ nom_point: 'B12', x: '100' });
+      expect(cmp.importMappedCount).toBe(2);
+      expect(cmp.importTotalChamps).toBe(2);
+    });
+
+    it('deselectMethod abandonne le fichier et revient aux cartes', () => {
+      cmp.selectedType = def();
+      cmp.selectedSource = 'csv';
+      cmp.selectedFile = new File(['x'], 'r.csv');
+      cmp.importPreview = preview();
+      cmp.deselectMethod();
+      expect(cmp.step).toBe('method');
+      expect(cmp.selectedSource).toBeNull();
+      expect(cmp.selectedFile).toBeNull();
+      expect(cmp.importPreview).toBeNull();
+    });
+
+    it('backFromMap revient au dépôt du fichier en conservant méthode et fichier', () => {
+      cmp.selectedSource = 'csv';
+      cmp.selectedFile = new File(['x'], 'r.csv');
+      cmp.step = 'map';
+      cmp.backFromMap();
+      expect(cmp.step).toBe('method');
+      expect(cmp.selectedSource).toBe('csv');
+      expect(cmp.selectedFile).toBeTruthy();
+    });
+
+    it('backToData revient à « Colonnes » pour un import CSV (aux Données sinon)', () => {
+      cmp.selectedSource = 'csv';
+      cmp.backToData();
+      expect(cmp.step).toBe('map');
+      cmp.selectedSource = 'manuel';
+      cmp.backToData();
+      expect(cmp.step).toBe('data');
+    });
+
+    it('onCsvDrop lit le fichier déposé et arme l’aperçu', () => {
+      cmp.selectedType = def();
+      (cmp as any).piecesService = { previewImport: () => of(preview()) };
+      const file = new File(['x'], 'releve.csv');
+      cmp.onCsvDrop({ preventDefault() {}, dataTransfer: { files: [file] } } as any);
+      expect(cmp.selectedFile).toBe(file);
+      expect(cmp.importPreview).toBeTruthy();
+      expect(cmp.dragOver).toBeFalse();
+    });
+
+    it('onDragOver / onDragLeave basculent l’état de survol', () => {
+      const e: any = { preventDefault() {} };
+      cmp.onDragOver(e);
+      expect(cmp.dragOver).toBeTrue();
+      cmp.onDragLeave(e);
+      expect(cmp.dragOver).toBeFalse();
     });
   });
 
@@ -85,25 +342,52 @@ describe('PieceAddWizardComponent (logique)', () => {
       expect(cmp.isMulti).toBeTrue();
     });
 
-    it('selectType (mono) va directement à la source', () => {
-      cmp.selectType(def());
+    it('selectType (mono) entre dans la phase source', () => {
+      cmp.selectType(def());   // csv_manuel → 2 méthodes → sous-étape Méthode
       expect(cmp.selectedNiveau).toBe('ssdgps');
-      expect(cmp.step).toBe('source');
+      expect(cmp.step).toBe('method');
     });
 
-    it('selectType (multi) va à l’étape scope avec session par défaut', () => {
+    it('selectType (multi SANS session de contexte) va à l’étape scope', () => {
+      cmp.ssdgps = { ...cmp.ssdgps, type_ssdgps: 'multi-session' } as any;
+      cmp.defaultSessionId = null;
+      cmp.selectType(def());
+      expect(cmp.step).toBe('scope');
+      expect(cmp.selectedSessionId).toBeNull();
+    });
+
+    it('selectType (multi AVEC session de contexte) saute l’étape scope', () => {
       cmp.ssdgps = { ...cmp.ssdgps, type_ssdgps: 'multi-session' } as any;
       cmp.defaultSessionId = 'sess1';
       cmp.selectType(def());
-      expect(cmp.step).toBe('scope');
+      expect(cmp.step).toBe('method');          // pas de choix de session
+      expect(cmp.selectedNiveau).toBe('session');
       expect(cmp.selectedSessionId).toBe('sess1');
     });
 
-    it('chooseNiveauSession fixe la session et passe à source', () => {
+    it('chooseNiveauSession fixe la session et entre dans la phase source', () => {
+      cmp.ssdgps = { ...cmp.ssdgps, type_ssdgps: 'multi-session' } as any;
+      cmp.selectedType = def();   // csv_manuel → 2 méthodes
       cmp.chooseNiveauSession('sess2');
       expect(cmp.selectedNiveau).toBe('session');
       expect(cmp.selectedSessionId).toBe('sess2');
-      expect(cmp.step).toBe('source');
+      expect(cmp.step).toBe('method');
+    });
+
+    it('typeSelected remonte le type choisi puis son abandon', () => {
+      const emitted: any[] = [];
+      cmp.typeSelected.subscribe(t => emitted.push(t));
+      cmp.selectType(def({ code: 'RDC' }));
+      cmp.backToType();
+      expect(emitted.map(t => t?.code ?? null)).toEqual(['RDC', null]);
+    });
+
+    it('backToNiveau saute l’étape session quand elle n’existe pas', () => {
+      cmp.ssdgps = { ...cmp.ssdgps, type_ssdgps: 'multi-session' } as any;
+      cmp.defaultSessionId = 'sess1';
+      cmp.selectType(def());
+      cmp.backToNiveau();
+      expect(cmp.step).toBe('type');
     });
 
     it('selectedSessionNumero résout le numéro', () => {
@@ -211,24 +495,110 @@ describe('PieceAddWizardComponent (logique)', () => {
   });
 
   describe('images locales', () => {
+    const li = (name: string, url: string, w: number | null = null, h: number | null = null) =>
+      ({ file: new File(['x'], name), url, width: w, height: h }) as any;
+
     beforeEach(() => {
-      cmp.selectedImages = [new File(['a'], 'a.png'), new File(['b'], 'b.png')];
-      cmp.selectedImagePreviews = ['ua', 'ub'];
+      cmp.localImages = [li('a.png', 'ua'), li('b.png', 'ub')];
+      cmp.selectedImageIndex = 0;
       spyOn(URL, 'revokeObjectURL');
     });
-    it('moveLocalImage échange deux images', () => {
+
+    it('moveLocalImage échange deux images et suit la sélection', () => {
+      cmp.selectedImageIndex = 0;
       cmp.moveLocalImage(0, 1);
-      expect(cmp.selectedImages.map(f => f.name)).toEqual(['b.png', 'a.png']);
-      expect(cmp.selectedImagePreviews).toEqual(['ub', 'ua']);
+      expect(cmp.localImages.map(x => x.file.name)).toEqual(['b.png', 'a.png']);
+      expect(cmp.selectedImageIndex).toBe(1);   // l'image sélectionnée a suivi
     });
-    it('removeLocalImage retire et révoque l’URL', () => {
-      cmp.removeLocalImage(0);
-      expect(cmp.selectedImages.map(f => f.name)).toEqual(['b.png']);
-      expect(URL.revokeObjectURL).toHaveBeenCalledWith('ua');
+
+    it('removeLocalImage retire, révoque l’URL et borne la sélection', () => {
+      cmp.selectedImageIndex = 1;
+      cmp.removeLocalImage(1);
+      expect(cmp.localImages.map(x => x.file.name)).toEqual(['a.png']);
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('ub');
+      expect(cmp.selectedImageIndex).toBe(0);
     });
+
+    it('selectLocalImage + selectedLocalImage pointent la bonne image', () => {
+      cmp.selectLocalImage(1);
+      expect(cmp.selectedLocalImage?.file.name).toBe('b.png');
+    });
+
     it('isPreviewable faux pour un TIFF', () => {
       expect(cmp.isPreviewable(new File(['x'], 'p.tiff'))).toBeFalse();
       expect(cmp.isPreviewable(new File(['x'], 'p.png'))).toBeTrue();
+    });
+
+    it('imageOrientation / imagesOrientation d’après les dimensions', () => {
+      cmp.localImages = [li('p.png', 'u1', 1000, 1500), li('q.png', 'u2', 800, 1200)];
+      expect(cmp.imageOrientation(cmp.localImages[0])).toBe('portrait');
+      expect(cmp.imagesOrientation).toBe('portrait');
+      cmp.localImages = [li('l.png', 'u3', 1600, 900)];
+      expect(cmp.imageOrientation(cmp.localImages[0])).toBe('paysage');
+      expect(cmp.imagesOrientation).toBe('paysage');
+      cmp.localImages = [li('t.tiff', 'u4')];   // dimensions inconnues
+      expect(cmp.imagesOrientation).toBeNull();
+    });
+
+    it('imageRecommendation s’adapte à l’orientation dominante', () => {
+      cmp.localImages = [];
+      expect(cmp.imageRecommendation.orient).toBe('portrait ou paysage');
+      cmp.localImages = [li('l.png', 'u', 1600, 900)];
+      expect(cmp.imageRecommendation.orient).toBe('paysage');
+      expect(cmp.imageRecommendation.ratio).toBe('4:3');
+    });
+
+    it('imageFormat / humanSize', () => {
+      expect(cmp.imageFormat(li('Photo.JPG', 'u'))).toBe('JPG');
+      expect(cmp.humanSize(2 * 1024 * 1024)).toBe('2.0 Mo');
+      expect(cmp.humanSize(0)).toBe('—');
+    });
+
+    it('la visionneuse plein écran ne s’ouvre que pour une image prévisualisable', () => {
+      cmp.localImages = [li('p.png', 'u1', 10, 10)];
+      cmp.selectedImageIndex = 0;
+      cmp.openImageLightbox();
+      expect(cmp.imageLightboxOpen).toBeTrue();
+      cmp.closeImageLightbox();
+      expect(cmp.imageLightboxOpen).toBeFalse();
+      cmp.localImages = [li('t.tiff', 'u2')];
+      cmp.openImageLightbox();
+      expect(cmp.imageLightboxOpen).toBeFalse();   // TIFF : pas d'aperçu
+    });
+
+    it('ingestImages rejette les fichiers > 2 Mo et les formats non gérés', () => {
+      const big = new File([new Uint8Array(3 * 1024 * 1024)], 'big.png');
+      const ok = new File([new Uint8Array(100)], 'ok.png');
+      const bad = new File([new Uint8Array(100)], 'doc.pdf');
+      cmp.localImages = [];
+      (cmp as any).ingestImages([big, ok, bad]);
+      expect(cmp.localImages.map(x => x.file.name)).toEqual(['ok.png']);
+      expect(toast.error).toHaveBeenCalled();
+    });
+
+    it('ingestImages renseigne compression et date de modification dès la sélection', () => {
+      const f = new File([new Uint8Array(10)], 'plan.png', { lastModified: Date.UTC(2026, 2, 15, 9, 0, 0) });
+      cmp.localImages = [];
+      (cmp as any).ingestImages([f]);
+      const li = cmp.localImages[0];
+      expect(li.compression).toBe('Deflate/ZIP (sans perte)');
+      expect(li.dateModification.getTime()).toBe(f.lastModified);
+      // Renseignés après décodage / lecture EXIF — vides à cet instant.
+      expect(li.modeCouleur).toBe('');
+      expect(li.dateCreation).toBeNull();
+    });
+
+    it('setImageViewMode bascule miniatures ↔ liste', () => {
+      expect(cmp.imageViewMode).toBe('grid');
+      cmp.setImageViewMode('list');
+      expect(cmp.imageViewMode).toBe('list');
+      cmp.setImageViewMode('grid');
+      expect(cmp.imageViewMode).toBe('grid');
+    });
+
+    it('formatImageDate suit le format daté de l’app et « — » si absente', () => {
+      expect(cmp.formatImageDate(null)).toBe('—');
+      expect(cmp.formatImageDate(new Date(2026, 2, 15, 14, 30, 5))).toBe('15/03/2026 14:30:05');
     });
   });
 

@@ -33,14 +33,14 @@
     <div class="modal-body">
       <!-- Étape 1 : type -->
       <ng-container *ngIf="step==='type'">
-        <!-- En-tête d'étape unifié : question à gauche, contexte en jetons, retour à droite.
-             Les valeurs déjà choisies deviennent des jetons plutôt que du gras en ligne —
-             elles se relisent d'un coup d'œil sans relire la phrase. -->
-        <div class="step-head">
-          <div class="step-head-text">
-            <h2 class="step-question">Quel type de pièce ajouter au rapport ?</h2>
-            <p class="step-hint">{{ applicableTypes.length }} type(s) applicable(s) à ce SSDGPS.</p>
-          </div>
+        <!-- Première étape : aucun retour ni jeton de contexte à afficher — la question tient
+             donc sur UNE SEULE LIGNE centrée (variante `.centered`), le décompte des types
+             passant en jeton à sa droite plutôt qu'en sous-titre sur une 2ᵉ ligne. -->
+        <div class="step-head centered">
+          <h2 class="step-question">Quel type de pièce ajouter au rapport ?</h2>
+          <span class="step-count" [title]="applicableTypes.length + ' type(s) applicable(s) à ce SSDGPS'">
+            <i class="fas fa-shapes" aria-hidden="true"></i>{{ applicableTypes.length }} type(s) applicable(s)
+          </span>
         </div>
         <div class="type-grid">
           <button *ngFor="let def of applicableTypes" class="type-card" (click)="selectType(def)"
@@ -92,11 +92,14 @@
         </div>
       </div>
 
-      <!-- Étape 3 : source -->
-      <div class="source-step" *ngIf="step==='source'">
+      <!-- Étape 3 — phase « Source des données », scindée en sous-étapes selon le type.
+           Sous-étape A : Méthode (choix de la façon de fournir les données). N'apparaît que
+           lorsque le type en propose au moins deux ; sinon l'unique méthode est pré-sélectionnée
+           et l'on passe directement à « Données ». -->
+      <div class="source-step" *ngIf="step==='method'">
         <div class="step-head">
           <div class="step-head-text">
-            <h2 class="step-question">D'où proviennent les données ?</h2>
+            <h2 class="step-question">Comment fournir les données ?</h2>
             <p class="step-context">
               <span class="ctx-chip"><span class="ctx-code">{{ selectedType?.code }}</span>{{ selectedType?.nom }}</span>
               <span class="ctx-chip" *ngIf="selectedNiveau==='session'">
@@ -107,154 +110,190 @@
               </span>
             </p>
           </div>
-          <button class="btn-back" *ngIf="!selectedSource" (click)="backToNiveau()">
-            <i class="fas fa-arrow-left"></i> {{ isMulti ? 'Changer de session' : 'Changer de type' }}
+          <button class="btn-back" (click)="selectedSource==='csv' ? deselectMethod() : backToNiveau()">
+            <i class="fas fa-arrow-left"></i>
+            {{ selectedSource==='csv' ? 'Autre méthode' : (needsSessionStep ? 'Changer de session' : 'Changer de type') }}
           </button>
         </div>
 
-        <!-- Position d'insertion : deux choix exclusifs → contrôle segmenté. Le champ
-             numérique n'apparaît qu'en mode « position précise », au lieu d'être présent
-             mais désactivé. -->
-        <div class="position-selector">
-          <span class="position-label"><i class="fas fa-hashtag"></i> Position dans le rapport</span>
-          <div class="position-switch" role="group" aria-label="Position d'insertion de la pièce">
-            <button type="button" class="position-seg" [class.active]="insertAtEnd"
-                    [attr.aria-pressed]="insertAtEnd" (click)="setInsertAtEnd(true)">
-              <i class="fas fa-arrow-down-long"></i> À la fin du rapport
-            </button>
-            <button type="button" class="position-seg" [class.active]="!insertAtEnd"
-                    [attr.aria-pressed]="!insertAtEnd" (click)="setInsertAtEnd(false)">
-              <i class="fas fa-arrows-up-down"></i> Position précise
-            </button>
-          </div>
-          <div class="position-field" *ngIf="!insertAtEnd">
-            <input type="number" class="position-input" min="1" [max]="maxPosition"
-                   [(ngModel)]="customPosition" aria-label="Position précise dans le rapport">
-            <span class="position-hint">sur {{ maxPosition }}</span>
-          </div>
-        </div>
-
-        <!-- Cartes-options : chaque source porte une description d'une ligne, sans quoi rien
-             ne distingue « Calculer » d'« Assembler » sans connaissance métier préalable. -->
-        <div class="source-options" *ngIf="!selectedSource">
-          <button class="source-option" *ngIf="sourceAllows('image') && !isPhotoPoints" (click)="selectSource('image')">
-            <span class="source-option-icon"><i class="fas fa-images"></i></span>
+        <!-- Cartes-options : chaque méthode porte une description d'une ligne (source de vérité
+             `sourceChoices`), sans quoi rien ne distingue « Calculer » d'« Assembler ». -->
+        <div class="source-options" *ngIf="selectedSource!=='csv'">
+          <button class="source-option" *ngFor="let m of sourceChoices" (click)="selectMethod(m)"
+                  [attr.aria-label]="m.title">
+            <span class="source-option-icon"><i class="fas" [ngClass]="m.icon"></i></span>
             <span class="source-option-body">
-              <span class="source-option-name">Importer des images</span>
-              <span class="source-option-desc">Une ou plusieurs images, rendues en pleine page dans le rapport.</span>
+              <span class="source-option-name">{{ m.title }}</span>
+              <span class="source-option-desc">{{ m.desc }}</span>
             </span>
-          </button>
-          <button class="source-option" *ngIf="sourceAllows('csv')" (click)="selectSource('csv')">
-            <span class="source-option-icon"><i class="fas fa-file-csv"></i></span>
-            <span class="source-option-body">
-              <span class="source-option-name">Importer un fichier CSV / Excel</span>
-              <span class="source-option-desc">Vous associez ensuite chaque colonne du fichier au champ correspondant.</span>
-            </span>
-          </button>
-          <button class="source-option" *ngIf="sourceAllows('manuel')" (click)="selectSource('manuel')">
-            <span class="source-option-icon"><i class="fas fa-keyboard"></i></span>
-            <span class="source-option-body">
-              <span class="source-option-name">Saisie manuelle</span>
-              <span class="source-option-desc">Un tableau vide à remplir directement dans l'application.</span>
-            </span>
-          </button>
-          <button class="source-option" *ngIf="selectedType?.html_import" (click)="selectSource('html')">
-            <span class="source-option-icon"><i class="fas fa-file-code"></i></span>
-            <span class="source-option-body">
-              <span class="source-option-name">Importer un rapport HTML (TBC)</span>
-              <span class="source-option-desc">Les lignes sont extraites automatiquement du rapport produit par TBC.</span>
-            </span>
-          </button>
-          <button class="source-option" *ngIf="supportsBulkHtml" (click)="openBulkModal()">
-            <span class="source-option-icon"><i class="fas fa-layer-group"></i></span>
-            <span class="source-option-body">
-              <span class="source-option-name">Créer plusieurs {{ selectedType?.code }} en une fois</span>
-              <span class="source-option-desc">Un dossier de rapports TBC produit une pièce par rapport détecté.</span>
-            </span>
-          </button>
-          <button class="source-option" *ngIf="selectedType?.computed" (click)="selectSource('compute')">
-            <span class="source-option-icon"><i class="fas fa-calculator"></i></span>
-            <span class="source-option-body">
-              <span class="source-option-name">Calculer automatiquement</span>
-              <span class="source-option-desc">Croise la liste des points anciens (LPA) avec les déterminations du dossier.</span>
-            </span>
-          </button>
-          <button class="source-option" *ngIf="supportsAssemble" (click)="selectSource('assemble')">
-            <span class="source-option-icon"><i class="fas fa-object-group"></i></span>
-            <span class="source-option-body">
-              <span class="source-option-name">Assembler depuis le dossier</span>
-              <span class="source-option-desc">Réunit les déterminations déjà présentes dans ce dossier en un seul rapport.</span>
-            </span>
-          </button>
-          <button class="source-option" *ngIf="supportsAssemble" (click)="selectSource('assemble-files')">
-            <span class="source-option-icon"><i class="fas fa-file-import"></i></span>
-            <span class="source-option-body">
-              <span class="source-option-name">Importer puis assembler des fichiers</span>
-              <span class="source-option-desc">Mêmes règles, mais depuis des fichiers CSV, Excel ou HTML de votre disque.</span>
-            </span>
+            <i class="fas fa-arrow-right source-option-go" aria-hidden="true"></i>
           </button>
         </div>
 
-        <!-- Sous-formulaire : images (multi) -->
-        <div class="source-form" *ngIf="selectedSource==='image'">
-          <label class="btn-secondary file-label"
-                 title="Ces images sont affichées en pleine page portrait (A4) dans le rapport PDF. Une orientation portrait proche du A4 (rapport ≈ 3:4) évite les bandes blanches ; résolution conseillée ≥ 1240×1754 px (150 dpi).">
-            <input type="file" accept=".png,.jpg,.jpeg,.tif,.tiff,.webp" multiple hidden (change)="onImagesSelected($event)">
-            <i class="fas fa-plus"></i> Sélectionner des images (png/jpg/jpeg/tiff/webp)
+        <!-- Import CSV/Excel : le dépôt du fichier vit dans CETTE étape (méthode + import). Une
+             fois le fichier lu, « Continuer » mène à « Colonnes » (mapping + aperçu). -->
+        <ng-container *ngIf="selectedSource==='csv'">
+          <label class="dropzone" [class.dragging]="dragOver" [class.compact]="selectedFile"
+                 (dragover)="onDragOver($event)" (dragleave)="onDragLeave($event)" (drop)="onCsvDrop($event)">
+            <input type="file" accept=".csv,.xlsx" hidden (change)="onImportFileSelected($event)">
+            <span class="dropzone-icon"><i class="fas" [ngClass]="selectedFile ? 'fa-file-csv' : 'fa-cloud-arrow-up'"></i></span>
+            <span class="dropzone-title" *ngIf="!selectedFile">Déposez un fichier CSV / Excel ou <span class="dropzone-link">parcourez</span></span>
+            <span class="dropzone-title" *ngIf="selectedFile" [title]="selectedFile.name">{{ selectedFile.name }}</span>
+            <span class="dropzone-hint" *ngIf="!selectedFile">.csv, .xlsx</span>
+            <span class="dropzone-hint" *ngIf="selectedFile && importPreview">
+              {{ importPreview.columns.length }} colonne(s) · {{ importPreview.total_rows }} ligne(s) —
+              <span class="dropzone-link">changer de fichier</span>
+            </span>
           </label>
+
+          <div class="source-form-actions">
+            <button class="btn-cancel" (click)="deselectMethod()">Retour</button>
+            <button class="btn-confirm" [disabled]="!importPreview" (click)="goToMap()">
+              Continuer <i class="fas fa-arrow-right"></i>
+            </button>
+          </div>
+        </ng-container>
+      </div>
+
+      <!-- Sous-étape B : Données — le formulaire propre à la méthode retenue. La création n'a
+           pas lieu ici : « Continuer » mène à la sous-étape « Placement ». -->
+      <div class="source-step" *ngIf="step==='data'">
+        <div class="step-head">
+          <div class="step-head-text">
+            <!-- Titre = identité de la pièce : son nom, suivi de son code en jeton. Le couple
+                 nom + code ne vit donc plus en double dans un jeton de contexte. -->
+            <h2 class="step-question">
+              {{ selectedType?.nom }}<span class="step-code">{{ selectedType?.code }}</span>
+            </h2>
+            <!-- Pièces à images seules : la méthode n'a jamais été proposée (aucune
+                 alternative) — on l'ANNONCE, et rien d'autre : le rattachement se lit déjà
+                 dans le chemin de l'en-tête de page. -->
+            <p class="step-context" *ngIf="isImageOnly">
+              <span class="ctx-chip"><i class="fas fa-images"></i> Données de la pièce : images uniquement</span>
+            </p>
+            <p class="step-context" *ngIf="!isImageOnly">
+              <span class="ctx-chip" *ngIf="selectedNiveau==='session'">
+                <i class="fas fa-clock"></i> Session n°{{ selectedSessionNumero }}
+              </span>
+              <span class="ctx-chip" *ngIf="selectedNiveau==='ssdgps'">
+                <i class="fas fa-globe"></i> Commune au SSDGPS
+              </span>
+              <span class="ctx-chip" *ngIf="selectedSource">
+                <i class="fas fa-wand-magic-sparkles"></i> {{ methodLabel(selectedSource) }}
+              </span>
+            </p>
+          </div>
+          <button class="btn-back" (click)="backFromData()">
+            <i class="fas fa-arrow-left"></i>
+            {{ sourceChoices.length > 1 ? 'Changer de méthode' : (needsSessionStep ? 'Changer de session' : 'Changer de type') }}
+          </button>
+        </div>
+
+        <!-- Sous-formulaire : images (multi) — dépôt + vignettes + panneau de détails + plein écran -->
+        <div class="source-form" *ngIf="selectedSource==='image'">
+          <label class="dropzone" [class.dragging]="dragOver"
+                 (dragover)="onDragOver($event)" (dragleave)="onDragLeave($event)" (drop)="onImagesDrop($event)">
+            <input type="file" accept=".png,.jpg,.jpeg,.tif,.tiff,.webp" multiple hidden (change)="onImagesSelected($event)">
+            <span class="dropzone-icon"><i class="fas fa-cloud-arrow-up"></i></span>
+            <span class="dropzone-title">Déposez des images ou <span class="dropzone-link">parcourez</span></span>
+            <span class="dropzone-hint">png, jpg, jpeg, tiff, webp — <strong>2 Mo max</strong> par image</span>
+          </label>
+          <!-- Recommandation ADAPTÉE à l'orientation automatique de la pièce (déduite des images). -->
           <p class="upload-hint">
             <i class="fas fa-info-circle"></i>
-            <span>Pour un rendu optimal dans le rapport PDF : images en <strong>format portrait</strong>
-              (type A4, rapport ≈ 3:4), résolution conseillée <strong>≥ 1240×1754 px</strong>.</span>
+            <span>Rendu optimal en pleine page ({{ imageRecommendation.orient }}) : ratio largeur/hauteur
+              ≈ <strong>{{ imageRecommendation.ratio }}</strong>, résolution conseillée
+              <strong>{{ imageRecommendation.dims }}</strong>.</span>
           </p>
 
-          <div class="image-picker" *ngIf="selectedImages.length">
-            <div class="image-picker-item" *ngFor="let f of selectedImages; let i = index">
-              <div class="image-picker-thumb">
-                <img *ngIf="isPreviewable(f)" [src]="selectedImagePreviews[i]" [alt]="f.name">
-                <div class="image-picker-fallback" *ngIf="!isPreviewable(f)"><i class="fas fa-file-image"></i> TIFF</div>
-                <span class="image-picker-index">{{ i + 1 }}</span>
-              </div>
-              <div class="image-picker-name" [title]="f.name">{{ f.name }}</div>
-              <div class="image-picker-actions">
-                <button class="icon-btn" title="Vers la gauche" [disabled]="i===0" (click)="moveLocalImage(i, -1)"><i class="fas fa-arrow-left"></i></button>
-                <button class="icon-btn" title="Vers la droite" [disabled]="i===selectedImages.length-1" (click)="moveLocalImage(i, 1)"><i class="fas fa-arrow-right"></i></button>
-                <button class="icon-btn danger" title="Retirer" (click)="removeLocalImage(i)"><i class="fas fa-trash-alt"></i></button>
-              </div>
+          <!-- Barre d'outils : décompte + bascule vignettes / liste (même paire que la
+               galerie de consultation d'une pièce). -->
+          <div class="image-toolbar" *ngIf="localImages.length">
+            <span class="image-count">{{ localImages.length }} image(s)</span>
+            <div class="view-toggle" role="group" aria-label="Présentation des images">
+              <button type="button" class="view-toggle-btn" [class.active]="imageViewMode==='grid'"
+                      [attr.aria-pressed]="imageViewMode==='grid'" title="Vue miniatures"
+                      aria-label="Vue miniatures" (click)="setImageViewMode('grid')">
+                <i class="fas fa-th-large"></i>
+              </button>
+              <button type="button" class="view-toggle-btn" [class.active]="imageViewMode==='list'"
+                      [attr.aria-pressed]="imageViewMode==='list'" title="Vue liste"
+                      aria-label="Vue liste" (click)="setImageViewMode('list')">
+                <i class="fas fa-list"></i>
+              </button>
             </div>
           </div>
 
-          <div class="source-form-actions">
-            <button class="btn-cancel" (click)="cancelSourceForm()">Retour</button>
-            <button class="btn-confirm" [disabled]="!selectedImages.length || submittingImages" (click)="submitImages()">
-              <i class="fas" [ngClass]="submittingImages ? 'fa-spinner fa-spin' : 'fa-check'"></i>
-              Créer avec {{ selectedImages.length }} image(s)
-            </button>
-          </div>
-        </div>
+          <div class="image-workspace" *ngIf="localImages.length">
+            <!-- Vue miniatures : vignettes réordonnables ; cliquer sélectionne l'image du panneau. -->
+            <div class="image-picker" *ngIf="imageViewMode==='grid'">
+              <div class="image-picker-item" *ngFor="let li of localImages; let i = index"
+                   [class.active]="i===selectedImageIndex" (click)="selectLocalImage(i)">
+                <div class="image-picker-thumb" (click)="selectLocalImage(i); openImageLightbox()">
+                  <img *ngIf="isPreviewable(li.file)" [src]="li.url" [alt]="li.file.name">
+                  <div class="image-picker-fallback" *ngIf="!isPreviewable(li.file)"><i class="fas fa-file-image"></i> TIFF</div>
+                  <span class="image-picker-index">{{ i + 1 }}</span>
+                </div>
+                <div class="image-picker-name" [title]="li.file.name">{{ li.file.name }}</div>
+                <div class="image-picker-actions">
+                  <button class="icon-btn" title="Vers la gauche" [disabled]="i===0" (click)="moveLocalImage(i, -1); $event.stopPropagation()"><i class="fas fa-arrow-left"></i></button>
+                  <button class="icon-btn" title="Vers la droite" [disabled]="i===localImages.length-1" (click)="moveLocalImage(i, 1); $event.stopPropagation()"><i class="fas fa-arrow-right"></i></button>
+                  <button class="icon-btn danger" title="Retirer" (click)="removeLocalImage(i); $event.stopPropagation()"><i class="fas fa-trash-alt"></i></button>
+                </div>
+              </div>
+            </div>
 
-        <!-- Sous-formulaire : import CSV/Excel -->
-        <div class="source-form" *ngIf="selectedSource==='csv'">
-          <div class="file-row">
-            <label class="btn-secondary file-label">
-              <input type="file" accept=".csv,.xlsx" hidden (change)="onImportFileSelected($event)">
-              <i class="fas fa-paperclip"></i> {{ selectedFile ? 'Changer de fichier' : 'Choisir un fichier CSV / Excel…' }}
-            </label>
-            <span class="file-chosen" *ngIf="selectedFile" [title]="selectedFile.name">
-              <i class="fas fa-file-csv"></i> {{ selectedFile.name }}
-            </span>
-          </div>
-          <app-piece-column-mapper
-            *ngIf="importPreview"
-            [champs]="importPreview.champs"
-            [preview]="importPreview"
-            (mappingChange)="onMappingChange($event)">
-          </app-piece-column-mapper>
-          <div class="source-form-actions">
-            <button class="btn-cancel" (click)="cancelSourceForm()">Retour</button>
-            <button class="btn-confirm" [disabled]="!importPreview || importing" (click)="confirmImport()">
-              <i class="fas" [ngClass]="importing ? 'fa-spinner fa-spin' : 'fa-check'"></i> Confirmer l'import
-            </button>
+            <!-- Vue liste : une ligne par image, métadonnées en clair (format, type, dimensions,
+                 poids) — plus lisible qu'une vignette quand les images se ressemblent. -->
+            <div class="img-list" *ngIf="imageViewMode==='list'">
+              <div class="img-list-row" *ngFor="let li of localImages; let i = index"
+                   [class.active]="i===selectedImageIndex" (click)="selectLocalImage(i)">
+                <span class="img-list-index">{{ i + 1 }}</span>
+                <div class="img-list-thumb" (click)="selectLocalImage(i); openImageLightbox()">
+                  <img *ngIf="isPreviewable(li.file)" [src]="li.url" [alt]="li.file.name">
+                  <div class="image-picker-fallback mini" *ngIf="!isPreviewable(li.file)"><i class="fas fa-file-image"></i></div>
+                </div>
+                <div class="img-list-meta">
+                  <span class="img-list-name" [title]="li.file.name">{{ li.file.name }}</span>
+                  <span class="img-list-sub">
+                    {{ imageFormat(li) }} · {{ li.modeCouleur || '—' }} ·
+                    {{ li.width != null ? (li.width + '×' + li.height + ' px') : '— px' }} ·
+                    {{ humanSize(li.file.size) }}
+                  </span>
+                </div>
+                <div class="img-list-actions">
+                  <button class="icon-btn sm" title="Monter" [disabled]="i===0" (click)="moveLocalImage(i, -1); $event.stopPropagation()"><i class="fas fa-arrow-up"></i></button>
+                  <button class="icon-btn sm" title="Descendre" [disabled]="i===localImages.length-1" (click)="moveLocalImage(i, 1); $event.stopPropagation()"><i class="fas fa-arrow-down"></i></button>
+                  <button class="icon-btn sm danger" title="Retirer" (click)="removeLocalImage(i); $event.stopPropagation()"><i class="fas fa-trash-alt"></i></button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Panneau de détails de l'image sélectionnée (miroir de la galerie de consultation). -->
+            <div class="details" *ngIf="selectedLocalImage as sel">
+              <div class="details-preview" [class.zoomable]="isPreviewable(sel.file)" (click)="openImageLightbox()">
+                <img *ngIf="isPreviewable(sel.file)" [src]="sel.url" alt="Aperçu">
+                <div class="image-picker-fallback big" *ngIf="!isPreviewable(sel.file)">
+                  <i class="fas fa-file-image"></i><span>{{ imageFormat(sel) }} — non prévisualisable</span>
+                </div>
+                <button type="button" class="details-fullscreen" *ngIf="isPreviewable(sel.file)"
+                        aria-label="Voir en plein écran" (click)="openImageLightbox(); $event.stopPropagation()">
+                  <i class="fas fa-expand"></i> Plein écran
+                </button>
+              </div>
+              <h4><i class="fas fa-circle-info"></i> Détails techniques</h4>
+              <dl class="details-grid">
+                <dt>Nom</dt><dd [title]="sel.file.name">{{ sel.file.name }}</dd>
+                <dt>Format</dt><dd>{{ imageFormat(sel) }}</dd>
+                <dt>Taille</dt><dd>{{ humanSize(sel.file.size) }}</dd>
+                <dt>Dimensions</dt><dd>{{ sel.width != null ? (sel.width + ' × ' + sel.height + ' px') : '—' }}</dd>
+                <dt>Type d'image</dt><dd>{{ sel.modeCouleur || '—' }}</dd>
+                <dt>Compression</dt><dd>{{ sel.compression || '—' }}</dd>
+                <dt>Orientation</dt><dd class="cap">{{ imageOrientation(sel) || '—' }}</dd>
+                <dt>Date de création</dt><dd>{{ formatImageDate(sel.dateCreation) }}</dd>
+                <dt>Dernière modification</dt><dd>{{ formatImageDate(sel.dateModification) }}</dd>
+              </dl>
+            </div>
           </div>
         </div>
 
@@ -262,12 +301,6 @@
         <div class="source-form" *ngIf="selectedSource==='manuel' && manualForm">
           <app-piece-data-table [editable]="true" [champs]="manualChamps" [rows]="wizardRows"
                                 (rowsChange)="wizardRows = $event" [defaultSort]="defaultSort"></app-piece-data-table>
-          <div class="source-form-actions">
-            <button class="btn-cancel" (click)="selectedSource=null">Retour</button>
-            <button class="btn-confirm" [disabled]="submittingManual" (click)="submitManual()">
-              <i class="fas" [ngClass]="submittingManual ? 'fa-spinner fa-spin' : 'fa-check'"></i> Enregistrer
-            </button>
-          </div>
         </div>
 
         <!-- Sous-formulaire : import HTML (RFB — rapport TBC), grille auto-générée éditable -->
@@ -281,7 +314,7 @@
           <p class="step-intro" *ngIf="htmlPreviewing"><i class="fas fa-spinner fa-spin"></i> Analyse du rapport…</p>
 
           <div class="html-loaded" *ngIf="htmlFile && !htmlPreviewing && manualForm">
-            <p class="step-intro"><i class="fas fa-check-circle"></i> Table générée, vérifiez/complétez puis créez.</p>
+            <p class="step-intro"><i class="fas fa-check-circle"></i> Table générée, vérifiez/complétez puis continuez.</p>
             <button class="btn-back sm" (click)="openHtmlModal()">
               <i class="fas fa-sync"></i> Changer de rapport
             </button>
@@ -289,18 +322,11 @@
 
           <app-piece-data-table *ngIf="manualForm" [editable]="true" [champs]="manualChamps"
                                 [rows]="wizardRows" (rowsChange)="wizardRows = $event" [defaultSort]="defaultSort"></app-piece-data-table>
-
-          <div class="source-form-actions">
-            <button class="btn-cancel" (click)="cancelSourceForm()">Retour</button>
-            <button class="btn-confirm" [disabled]="!manualForm || submittingHtml" (click)="submitHtml()">
-              <i class="fas" [ngClass]="submittingHtml ? 'fa-spinner fa-spin' : 'fa-check'"></i> Créer la pièce
-            </button>
-          </div>
         </div>
 
         <!-- Sous-formulaire : calcul automatique (RC — depuis LPA + déterminations) -->
         <div class="source-form" *ngIf="selectedSource==='compute'">
-          <p class="wizard-note"><i class="fas fa-info-circle"></i><span>Le tableau est calculé automatiquement en croisant la « Liste des points anciens » (coordonnées fixes) avec les coordonnées calculées, prises soit dans les « Rapports de la détermination N°k » (RDN), soit dans le « Rapport des déterminations intermédiaires assemblé » (RDIA). Vérifiez/ajustez puis créez.</span></p>
+          <p class="wizard-note"><i class="fas fa-info-circle"></i><span>Le tableau est calculé automatiquement en croisant la « Liste des points anciens » (coordonnées fixes) avec les coordonnées calculées, prises soit dans les « Rapports de la détermination N°k » (RDN), soit dans le « Rapport des déterminations intermédiaires assemblé » (RDIA). Vérifiez/ajustez puis continuez.</span></p>
 
           <!-- Choix de la source des coordonnées calculées (seulement si RDN ET RDIA disponibles). -->
           <div class="rc-source-choice" *ngIf="!computing && rcAvailableSources.length > 1">
@@ -325,13 +351,6 @@
 
           <app-piece-data-table *ngIf="manualForm" [editable]="true" [champs]="manualChamps"
                                 [rows]="wizardRows" (rowsChange)="wizardRows = $event" [defaultSort]="defaultSort"></app-piece-data-table>
-
-          <div class="source-form-actions">
-            <button class="btn-cancel" (click)="cancelSourceForm()">Retour</button>
-            <button class="btn-confirm" [disabled]="!manualForm || submittingCompute" (click)="submitCompute()">
-              <i class="fas" [ngClass]="submittingCompute ? 'fa-spinner fa-spin' : 'fa-check'"></i> Créer la pièce
-            </button>
-          </div>
         </div>
 
         <!-- Sous-formulaire : assemblage RDIA (RDL + RDNₖ → une pièce) -->
@@ -344,19 +363,12 @@
           <p class="step-intro" *ngIf="assembling"><i class="fas fa-spinner fa-spin"></i> Assemblage en cours…</p>
 
           <div class="html-loaded" *ngIf="manualForm && !assembling">
-            <p class="step-intro"><i class="fas fa-check-circle"></i> Table assemblée, vérifiez/complétez puis créez.</p>
+            <p class="step-intro"><i class="fas fa-check-circle"></i> Table assemblée, vérifiez/complétez puis continuez.</p>
             <button class="btn-back sm" (click)="openAssembleModal()"><i class="fas fa-object-group"></i> Modifier la sélection</button>
           </div>
 
           <app-piece-data-table *ngIf="manualForm" [editable]="true" [champs]="manualChamps"
                                 [rows]="wizardRows" (rowsChange)="wizardRows = $event" [defaultSort]="defaultSort"></app-piece-data-table>
-
-          <div class="source-form-actions">
-            <button class="btn-cancel" (click)="cancelSourceForm()">Retour</button>
-            <button class="btn-confirm" [disabled]="!manualForm || submittingAssemble" (click)="submitAssemble()">
-              <i class="fas" [ngClass]="submittingAssemble ? 'fa-spinner fa-spin' : 'fa-check'"></i> Créer la pièce
-            </button>
-          </div>
         </div>
 
         <!-- Sous-formulaire : import & assemblage de FICHIERS de déterminations -->
@@ -369,21 +381,152 @@
           <p class="step-intro" *ngIf="assembleFilesParsing"><i class="fas fa-spinner fa-spin"></i> Analyse des fichiers…</p>
 
           <div class="html-loaded" *ngIf="manualForm && !assembleFilesParsing">
-            <p class="step-intro"><i class="fas fa-check-circle"></i> Table assemblée, vérifiez/complétez puis créez.</p>
+            <p class="step-intro"><i class="fas fa-check-circle"></i> Table assemblée, vérifiez/complétez puis continuez.</p>
             <button class="btn-back sm" (click)="openAssembleFilesModal()"><i class="fas fa-file-import"></i> Modifier les fichiers</button>
           </div>
 
           <app-piece-data-table *ngIf="manualForm" [editable]="true" [champs]="manualChamps"
                                 [rows]="wizardRows" (rowsChange)="wizardRows = $event" [defaultSort]="defaultSort"></app-piece-data-table>
+        </div>
 
-          <div class="source-form-actions">
-            <button class="btn-cancel" (click)="cancelSourceForm()">Retour</button>
-            <button class="btn-confirm" [disabled]="!manualForm || submittingAssembleFiles" (click)="submitAssembleFiles()">
-              <i class="fas" [ngClass]="submittingAssembleFiles ? 'fa-spinner fa-spin' : 'fa-check'"></i> Créer la pièce
+        <!-- Barre d'action commune : la saisie ne CRÉE pas encore la pièce ; elle mène à la
+             sous-étape « Placement » où l'on choisit la position puis on valide. -->
+        <div class="source-form-actions" *ngIf="selectedSource">
+          <button class="btn-cancel" (click)="backFromData()">Retour</button>
+          <button class="btn-confirm" [disabled]="!canContinueFromData" (click)="goToPlace()">
+            Continuer <i class="fas fa-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Sous-étape « Colonnes » (import CSV/Excel) : DEUX onglets — mapping des colonnes et
+           aperçu (read-only) des premières lignes une fois mappées. Le fichier a déjà été déposé
+           à l'étape « Méthode ». -->
+      <div class="source-step" *ngIf="step==='map'">
+        <div class="step-head">
+          <div class="step-head-text">
+            <h2 class="step-question">Colonnes &amp; aperçu des données</h2>
+            <p class="step-context">
+              <span class="ctx-chip"><span class="ctx-code">{{ selectedType?.code }}</span>{{ selectedType?.nom }}</span>
+              <span class="ctx-chip" *ngIf="selectedFile" [title]="selectedFile.name">
+                <i class="fas fa-file-csv"></i> {{ selectedFile.name }}
+              </span>
+            </p>
+          </div>
+          <button class="btn-back" (click)="backFromMap()">
+            <i class="fas fa-arrow-left"></i> Fichier
+          </button>
+        </div>
+
+        <!-- Onglets : mapping des colonnes / aperçu des premières lignes. -->
+        <div class="wizard-tabs" role="tablist" aria-label="Colonnes et aperçu">
+          <button type="button" class="wizard-tab" role="tab" [class.active]="mapTab==='mapping'"
+                  [attr.aria-selected]="mapTab==='mapping'" (click)="setMapTab('mapping')">
+            <i class="fas fa-table-columns"></i> Mapping des colonnes
+          </button>
+          <button type="button" class="wizard-tab" role="tab" [class.active]="mapTab==='preview'"
+                  [attr.aria-selected]="mapTab==='preview'" (click)="setMapTab('preview')">
+            <i class="fas fa-table"></i> Aperçu des données
+          </button>
+        </div>
+
+        <!-- Onglet mapping -->
+        <div class="wizard-tabpanel" role="tabpanel" *ngIf="mapTab==='mapping'">
+          <app-piece-column-mapper
+            *ngIf="importPreview"
+            [champs]="importPreview.champs"
+            [preview]="importPreview"
+            (mappingChange)="onMappingChange($event)">
+          </app-piece-column-mapper>
+        </div>
+
+        <!-- Onglet aperçu (read-only) : échantillon serveur reprojeté selon le mapping courant. -->
+        <div class="wizard-tabpanel" role="tabpanel" *ngIf="mapTab==='preview'">
+          <div class="preview-summary">
+            <span class="preview-chip" [class.ok]="importMappedCount === importTotalChamps">
+              <i class="fas fa-check"></i> {{ importMappedCount }} / {{ importTotalChamps }} champs mappés
+            </span>
+            <span class="preview-chip"><i class="fas fa-list-ol"></i> {{ importPreview?.total_rows }} ligne(s) au total</span>
+            <span class="preview-chip"><i class="fas fa-eye"></i> échantillon de {{ mappedPreviewRows.length }}</span>
+          </div>
+
+          <app-piece-data-table [editable]="false" [champs]="mappedPreviewChamps" [rows]="mappedPreviewRows"
+                                [showStats]="false"></app-piece-data-table>
+
+          <p class="upload-hint">
+            <i class="fas fa-info-circle"></i>
+            <span>Aperçu d'un échantillon. Les <strong>{{ importPreview?.total_rows }} ligne(s)</strong> du fichier
+              seront importées à la création ; revenez à l'onglet « Mapping » si une colonne n'est pas alignée.</span>
+          </p>
+        </div>
+
+        <div class="source-form-actions">
+          <button class="btn-cancel" (click)="backFromMap()">Retour</button>
+          <button class="btn-confirm" [disabled]="!importPreview" (click)="goToPlace()">
+            Continuer <i class="fas fa-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Sous-étape C : Placement — récapitulatif de la pièce + position dans le rapport,
+           puis création effective (aiguillée selon la source par `submitCurrent`). -->
+      <div class="source-step" *ngIf="step==='place'">
+        <div class="step-head">
+          <div class="step-head-text">
+            <h2 class="step-question">Où placer la pièce dans le rapport ?</h2>
+            <p class="step-context">
+              <span class="ctx-chip"><span class="ctx-code">{{ selectedType?.code }}</span>{{ selectedType?.nom }}</span>
+              <span class="ctx-chip" *ngIf="selectedNiveau==='session'">
+                <i class="fas fa-clock"></i> Session n°{{ selectedSessionNumero }}
+              </span>
+              <span class="ctx-chip" *ngIf="selectedNiveau==='ssdgps'">
+                <i class="fas fa-globe"></i> Commune au SSDGPS
+              </span>
+            </p>
+          </div>
+          <button class="btn-back" (click)="backToData()">
+            <i class="fas fa-arrow-left"></i> Revenir aux données
+          </button>
+        </div>
+
+        <!-- Récapitulatif : ce que l'on s'apprête à créer, d'un coup d'œil. -->
+        <ul class="recap-card">
+          <li class="recap-item" *ngFor="let it of placementRecap">
+            <span class="recap-icon"><i class="fas" [ngClass]="it.icon"></i></span>
+            <span class="recap-body">
+              <span class="recap-label">{{ it.label }}</span>
+              <span class="recap-value">{{ it.value }}</span>
+            </span>
+          </li>
+        </ul>
+
+        <!-- Position d'insertion : deux choix exclusifs → contrôle segmenté. Le champ
+             numérique n'apparaît qu'en mode « position précise ». -->
+        <div class="position-selector">
+          <span class="position-label"><i class="fas fa-hashtag"></i> Position dans le rapport</span>
+          <div class="position-switch" role="group" aria-label="Position d'insertion de la pièce">
+            <button type="button" class="position-seg" [class.active]="insertAtEnd"
+                    [attr.aria-pressed]="insertAtEnd" (click)="setInsertAtEnd(true)">
+              <i class="fas fa-arrow-down-long"></i> À la fin du rapport
             </button>
+            <button type="button" class="position-seg" [class.active]="!insertAtEnd"
+                    [attr.aria-pressed]="!insertAtEnd" (click)="setInsertAtEnd(false)">
+              <i class="fas fa-arrows-up-down"></i> Position précise
+            </button>
+          </div>
+          <div class="position-field" *ngIf="!insertAtEnd">
+            <input type="number" class="position-input" min="1" [max]="maxPosition"
+                   [(ngModel)]="customPosition" aria-label="Position précise dans le rapport">
+            <span class="position-hint">sur {{ maxPosition }}</span>
           </div>
         </div>
 
+        <div class="source-form-actions">
+          <button class="btn-cancel" (click)="backToData()">Retour</button>
+          <button class="btn-confirm" [disabled]="submitting" (click)="submitCurrent()">
+            <i class="fas" [ngClass]="submitting ? 'fa-spinner fa-spin' : 'fa-check'"></i> Créer la pièce
+          </button>
+        </div>
       </div>
 
       <!-- Étape photos (PPA/PPN) : rattacher les photos aux points -->
@@ -412,6 +555,12 @@
       </div>
     </div>
   </div>
+</div>
+
+<!-- ========== Visionneuse plein écran d'une image locale (avant création) ========== -->
+<div class="lightbox" *ngIf="imageLightboxOpen && selectedLocalImage as sel" (click)="closeImageLightbox()">
+  <button class="lightbox-close" aria-label="Fermer" (click)="closeImageLightbox()"><i class="fas fa-times"></i></button>
+  <img [src]="sel.url" alt="Image agrandie" (click)="$event.stopPropagation()">
 </div>
 
 <!-- ========== Modale de confirmation : vider le tableau ========== -->
