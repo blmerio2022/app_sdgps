@@ -159,13 +159,85 @@ assistants de codage IA comme aux contributeurs humains (cf. `AGENTS.md`).
 - Ne jamais désactiver, ignorer (`skip`/`xit`) ou supprimer un test pour faire passer la CI
   sans justification explicite dans le message de commit.
 
+## Règles du dépôt (local et distant)
+
+> Règles reprises du dépôt frère `ancfcc/datacap-web` (section « Règles du dépôt » de son
+> `README.md`) et adaptées à ce projet. Elles sont mises à jour à chaque nouvelle règle adoptée.
+
+### Dépôts
+
+| Dépôt | Emplacement |
+|---|---|
+| Local | `D:\BOULMANE\PycharmProjects\perso\ancfcc\app-sdgps` |
+| Distant (`origin`, privé) | https://github.com/blmerio2022/app_sdgps |
+
+Identité Git configurée **pour ce dépôt uniquement** :
+`blmerio2022 <120096166+blmerio2022@users.noreply.github.com>`.
+
+### Branches
+
+| Branche | Rôle |
+|---|---|
+| `main` | Production : code stable et livré. Aucun commit direct. |
+| `develop` | Intégration (branche par défaut sur GitHub). Reçoit les `feature/vX.Y` via PR. |
+| `feature/vX.Y` | Branche de travail de la version en cours (`feature/v1.0`, puis `feature/v1.1`, …). Une seule version active à la fois. |
+
+Les branches historiques (`fix/*`, `release/*`, `chore/*`, `docs/*`, `feature/<sujet>`) restent
+dans l'historique mais le **modèle à suivre désormais est `feature/vX.Y`**.
+
+### Cycle de vie d'une version
+
+1. Créer `feature/vX.Y` à partir de `develop` à jour et la pousser
+   (`git push -u origin feature/vX.Y`).
+2. Développer : **un commit par fonctionnalité ou tâche terminée**, poussé immédiatement vers
+   `origin` (le dépôt distant est toujours synchronisé avec le local).
+3. Quand toutes les tâches de la version sont terminées et testées (cf. « Politique de tests ») :
+   ouvrir une **PR `feature/vX.Y` → `develop`**, puis la fusionner.
+4. Créer `feature/vX.(Y+1)` depuis `develop` et continuer.
+5. Quand `develop` atteint un jalon stable : PR `develop` → `main`
+   (**uniquement sur demande explicite**).
+
+### Pull Requests
+
+- **Toute PR cible et est fusionnée dans `develop`, sauf indication contraire explicite.**
+- Fusion par **commit de merge** (`gh pr merge <n> --merge`) pour conserver l'historique de la
+  version — jamais de squash ni de rebase à la fusion.
+- Après la fusion, `develop` est fusionnée dans la branche `feature/vX.Y` en cours pour rester à
+  jour.
+- La procédure détaillée (vérification de `mergeable`, attente de la CI) est la règle stricte
+  « Fusion vers `develop` / `main` : JAMAIS sans PR » ci-dessous : elle s'applique intégralement.
+
+### Conventions de commit
+
+- Format [Conventional Commits](https://www.conventionalcommits.org/) **en français** :
+  `type(portée): description` — types : `feat`, `fix`, `perf`, `refactor`, `docs`, `test`,
+  `chore`.
+- Description à l'**impératif**, en minuscule, sans point final ; la portée est le domaine
+  fonctionnel (`pieces`, `users`, `organisations`, `projets`, `ci`, `depot`…).
+- Exemple : `feat(pieces): extraire les métadonnées EXIF des images jointes`.
+- **Un commit par fonctionnalité ou tâche terminée**, poussé immédiatement.
+
+### Secrets et fichiers locaux
+
+- **Jamais de mot de passe ni de jeton dans le dépôt.** Les secrets vont dans
+  `backend/.env.<environnement>` (non suivis) ; seuls les templates `*.example` sont versionnés.
+- Non suivis (voir `.gitignore`) : `backend/.env.*`, `db.sqlite3`, `media/`, `logs/`, `*.log`,
+  données de travail volumineuses (`*.gpkg`, `docs/exemples-ssdgps/`) et configurations d'éditeur
+  locales (`*.code-workspace`).
+
+### Tenue de la documentation
+
+`CLAUDE.md` (et `AGENTS.md` quand il est concerné) est mis à jour **dans le même commit** que
+toute nouvelle règle de dépôt, nouvelle fonctionnalité transverse ou nouvelle commande.
+
 ## Conventions & notes de workflow
 
 - **Règles d'auto-commit** (`.opencode/instructions.md`) : ce dépôt est configuré pour un
   workflow OpenCode qui réinitialise l'espace de travail lors des changements de mode ; il
   impose de committer après chaque fonctionnalité/correction. Format des messages :
-  `type(scope): description` (ex. `feat(users): add ROLE_SUPER_ADMIN filter`). Les commits
-  `wip: auto-save` de l'historique proviennent de cet outillage.
+  `type(portée): description` — voir « Conventions de commit » ci-dessus, qui fait foi. Les
+  commits `wip: auto-save` de l'historique proviennent de cet outillage et ne sont **plus** un
+  format acceptable.
 
 - **Fusion vers `develop` / `main` : JAMAIS sans PR (règle stricte).** Ne **jamais** fusionner une
   branche dans `develop` ou `main` en local (pas de `git merge` depuis ces branches, même quand un
