@@ -207,6 +207,37 @@ dans l'historique mais le **modèle à suivre désormais est `feature/vX.Y`**.
 - La procédure détaillée (vérification de `mergeable`, attente de la CI) est la règle stricte
   « Fusion vers `develop` / `main` : JAMAIS sans PR » ci-dessous : elle s'applique intégralement.
 
+#### Suivi des PR fusionnées
+
+Tableau tenu à jour **à chaque fusion** (une ligne par PR, la plus récente en bas).
+Les PR vers `main` sont les promotions de version ; toutes les autres ciblent `develop`.
+
+| PR | Branche | Cible | Fusionnée le |
+|---|---|---|---|
+| [#1](https://github.com/blmerio2022/app_sdgps/pull/1) — analytique de stockage, RBAC suivi-créateur & stockage S3 | `feature/import-donnees-pieces` | `develop` | 2026-07-21 |
+| [#2](https://github.com/blmerio2022/app_sdgps/pull/2) — suite de tests backend/frontend + pipeline CI/CD | `release/preparation-deploiement` | `develop` | 2026-07-21 |
+| [#3](https://github.com/blmerio2022/app_sdgps/pull/3) — préparation déploiement : seed métier + prep Railway | `release/preparation-deploiement` | `develop` | 2026-07-23 |
+| [#4](https://github.com/blmerio2022/app_sdgps/pull/4) — savepoint migration Postgres + vars/gunicorn/whitenoise | `release/preparation-deploiement` | `develop` | 2026-07-23 |
+| [#5](https://github.com/blmerio2022/app_sdgps/pull/5) — synchro mots de passe + CI GHCR sur develop | `release/preparation-deploiement` | `develop` | 2026-07-23 |
+| [#6](https://github.com/blmerio2022/app_sdgps/pull/6) — `fileReplacements` env.prod en build production | `release/preparation-deploiement` | `develop` | 2026-07-23 |
+| [#7](https://github.com/blmerio2022/app_sdgps/pull/7) — supprime le super admin par défaut | `release/preparation-deploiement` | `develop` | 2026-07-23 |
+| [#8](https://github.com/blmerio2022/app_sdgps/pull/8) — retire cadazilal + 2 admins système & 3 admins org | `release/preparation-deploiement` | `develop` | 2026-07-23 |
+| [#9](https://github.com/blmerio2022/app_sdgps/pull/9) — corrige l'organisation des agents | `release/preparation-deploiement` | `develop` | 2026-07-23 |
+| [#10](https://github.com/blmerio2022/app_sdgps/pull/10) — supprime le projet démo `DEMO-SEED-01` + cascade | `release/preparation-deploiement` | `develop` | 2026-07-23 |
+| [#11](https://github.com/blmerio2022/app_sdgps/pull/11) — tests migration 0025 indépendants de l'environnement | `release/preparation-deploiement` | `develop` | 2026-07-23 |
+| [#12](https://github.com/blmerio2022/app_sdgps/pull/12) — services du cadastre ANCFCC (organismes N2) | `release/preparation-deploiement` | `develop` | 2026-07-23 |
+| [#13](https://github.com/blmerio2022/app_sdgps/pull/13) — ne conserver que les services du fichier ANCFCC | `release/preparation-deploiement` | `develop` | 2026-07-23 |
+| [#14](https://github.com/blmerio2022/app_sdgps/pull/14) — socle des environnements progressifs | `release/preparation-deploiement` | `develop` | 2026-07-23 |
+| [#15](https://github.com/blmerio2022/app_sdgps/pull/15) — aligne `main` sur `develop` (production sur `main`) | `develop` | `main` | 2026-07-23 |
+| [#16](https://github.com/blmerio2022/app_sdgps/pull/16) — finalise la config des 4 environnements | `release/preparation-deploiement` | `develop` | 2026-07-23 |
+| [#17](https://github.com/blmerio2022/app_sdgps/pull/17) — `sync-fork` pousse via le PAT | `release/preparation-deploiement` | `develop` | 2026-07-23 |
+| [#18](https://github.com/blmerio2022/app_sdgps/pull/18) — `initial_data.json` source unique + `reset_db` | `release/preparation-deploiement` | `develop` | 2026-07-24 |
+| [#19](https://github.com/blmerio2022/app_sdgps/pull/19) — déploiement tag-based (rc→preprod, release→production) | `chore/ci-tag-based-deploy` | `develop` | 2026-07-24 |
+| [#20](https://github.com/blmerio2022/app_sdgps/pull/20) — colonnes d'audit unifiées, modale des colonnes, info-bulles | `fix/v1.0.1-corrections-ui` | `develop` | 2026-07-26 |
+| [#21](https://github.com/blmerio2022/app_sdgps/pull/21) — filtre de colonne façon Excel | `fix/v1.0.1-corrections-ui` | `develop` | 2026-07-27 |
+| [#22](https://github.com/blmerio2022/app_sdgps/pull/22) — corrections UI/UX des pages pièces + règles de dépôt | `fix/v1.0.1-corrections-ui` | `develop` | 2026-11-05 |
+| [#23](https://github.com/blmerio2022/app_sdgps/pull/23) — promotion de `develop` vers `main` (v1.0.1) | `develop` | `main` | 2026-11-05 |
+
 ### Conventions de commit
 
 - Format [Conventional Commits](https://www.conventionalcommits.org/) **en français** :
