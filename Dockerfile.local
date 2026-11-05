@@ -34,4 +34,6 @@ RUN chmod +x /app/docker-entrypoint.sh
 # L'entrypoint attend la base, applique migrations (+ auto-seed) puis lance la CMD.
 ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
 # gunicorn en forme SHELL pour que ${PORT} soit interprété au runtime (comme le Dockerfile racine).
-CMD gunicorn backend.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 3 --timeout 120
+# --timeout 300 : aligné sur le Dockerfile racine — la génération du rapport PDF est
+# synchrone et dépasse 120 s sur un SSDGPS fourni (cf. commentaire détaillé là-bas).
+CMD gunicorn backend.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 3 --timeout 300

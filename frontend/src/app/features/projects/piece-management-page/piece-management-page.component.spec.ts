@@ -362,3 +362,58 @@ describe('PieceManagementPageComponent (config colonnes)', () => {
     expect(open).toHaveBeenCalled();
   });
 });
+
+/**
+ * Message d'erreur de la génération du rapport PDF.
+ *
+ * Bug couvert : la génération échouait côté serveur (dépendance `reportlab` absente) et la
+ * modale n'affichait qu'« Erreur lors de la génération du rapport. » — barre figée à 90 %,
+ * aucune piste pour l'opérateur. Le `detail` du serveur doit toujours primer, et les échecs
+ * sans `detail` (requête interrompue, délai dépassé) doivent être nommés explicitement.
+ */
+describe('PieceManagementPageComponent.reportErrorMessage', () => {
+  const message = (err: any) => PieceManagementPageComponent.reportErrorMessage(err);
+
+  it('préfère le detail renvoyé par le serveur', () => {
+    const detail = 'La génération PDF est indisponible : reportlab manquant.';
+    expect(message({ status: 501, error: { detail } })).toBe(detail);
+  });
+
+  it('nettoie les espaces autour du detail', () => {
+    expect(message({ status: 500, error: { detail: '  Échec du rendu.  ' } }))
+      .toBe('Échec du rendu.');
+  });
+
+  it('ignore un detail vide ou non textuel et retombe sur le code HTTP', () => {
+    expect(message({ status: 500, error: { detail: '   ' } })).toContain('code 500');
+    expect(message({ status: 500, error: { detail: { x: 1 } } })).toContain('code 500');
+  });
+
+  it('nomme l’interruption de connexion quand le statut est 0', () => {
+    const texte = message({ status: 0, error: null });
+    expect(texte).toContain('n’a pas répondu');
+    expect(texte).toContain('plusieurs minutes');
+  });
+
+  it('nomme le dépassement de délai serveur sur 502/503/504', () => {
+    for (const status of [502, 503, 504]) {
+      const texte = message({ status, error: null });
+      expect(texte).toContain(`erreur ${status}`);
+      expect(texte).toContain('volumineux');
+    }
+  });
+
+  it('nomme le défaut de droits sur 401/403', () => {
+    expect(message({ status: 403, error: null })).toContain('droits');
+    expect(message({ status: 401, error: null })).toContain('droits');
+  });
+
+  it('mentionne toujours le code HTTP à défaut de detail', () => {
+    expect(message({ status: 418, error: null })).toBe(
+      'Erreur lors de la génération du rapport (code 418).');
+  });
+
+  it('reste lisible sans statut ni detail', () => {
+    expect(message(undefined)).toBe('Erreur lors de la génération du rapport.');
+  });
+});

@@ -816,9 +816,40 @@ export class PieceManagementPageComponent implements OnInit {
         this.stopReportTimer();
         this.reportGenerating = false;
         this.reportProgress = 0;
-        this.reportError = err?.error?.detail || 'Erreur lors de la génération du rapport.';
+        this.reportError = PieceManagementPageComponent.reportErrorMessage(err);
       },
     });
+  }
+
+  /** Message d'erreur de génération présenté à l'opérateur.
+   *
+   * Le `detail` du serveur est toujours préféré : la vue `report/` en renvoie un pour
+   * **toute** défaillance (dépendance PDF manquante → 501, échec de rendu → 500). Les
+   * cas sans `detail` sont ceux où la réponse n'a jamais abouti — requête interrompue
+   * ou délai dépassé, fréquents sur un rapport volumineux dont le rendu dure plusieurs
+   * dizaines de secondes. On les nomme explicitement au lieu d'un message générique,
+   * qui ne laissait aucune piste à l'opérateur. */
+  static reportErrorMessage(err: any): string {
+    const detail = err?.error?.detail;
+    if (typeof detail === 'string' && detail.trim()) return detail.trim();
+
+    const status = err?.status;
+    if (status === 0) {
+      return 'Le serveur n’a pas répondu (connexion interrompue ou délai dépassé). '
+           + 'La génération d’un rapport volumineux peut durer plusieurs minutes : '
+           + 'réessayez, et prévenez l’administrateur si l’erreur persiste.';
+    }
+    if (status === 502 || status === 503 || status === 504) {
+      return `Le serveur a interrompu la génération (erreur ${status}) : le rapport est `
+           + 'probablement trop volumineux pour le délai d’attente configuré. '
+           + 'Signalez-le à l’administrateur.';
+    }
+    if (status === 401 || status === 403) {
+      return 'Vous n’avez pas les droits nécessaires pour générer ce rapport '
+           + `(erreur ${status}).`;
+    }
+    return 'Erreur lors de la génération du rapport'
+         + (status ? ` (code ${status}).` : '.');
   }
 
   /** Reconstruit un Blob (PDF) à partir de la chaîne base64 renvoyée par le serveur. */

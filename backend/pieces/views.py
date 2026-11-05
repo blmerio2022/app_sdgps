@@ -8,6 +8,7 @@ précédent (dual ssdgps/session) — mais `PieceViewSet` n'hérite toujours pas
 et l'auto-incrémentation d'`ordre` sont spécifiques aux pièces.
 """
 import json
+import logging
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
@@ -33,6 +34,8 @@ from .rc import (compute_rapport_controle, compute_ecarts_vs_definitive,
                  compute_ecarts_assembled, assemble_determinations,
                  determinations_from_rdia)
 from .serializers import PieceSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class PieceViewSet(viewsets.ModelViewSet):
@@ -1229,7 +1232,21 @@ class PieceViewSet(viewsets.ModelViewSet):
                                           sort_config=sort_config, fields_config=fields_config,
                                           duplex=duplex)
         except RuntimeError as exc:
+            # Chaîne PDF indisponible (dépendance / bibliothèque native manquante) :
+            # message actionnable, levé AVANT le rendu par `check_pdf_toolchain`.
+            logger.error('Rapport PDF indisponible (SSDGPS %s) : %s', ssdgps.pk, exc)
             return Response({'detail': str(exc)}, status=status.HTTP_501_NOT_IMPLEMENTED)
+        except Exception as exc:
+            # Garde-fou : toute autre défaillance du rendu (donnée de pièce inattendue,
+            # image illisible, mémoire…) doit renvoyer un `detail` exploitable et tracer
+            # la pile côté serveur, et NON une 500 opaque — la modale de génération
+            # n'afficherait alors qu'un message générique sans piste de diagnostic.
+            logger.exception('Échec de génération du rapport PDF (SSDGPS %s)', ssdgps.pk)
+            return Response(
+                {'detail': 'Échec de la génération du rapport PDF : '
+                           f'{type(exc).__name__} — {exc}. '
+                           'Le détail complet figure dans les journaux du serveur.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         filename = report_filename(ssdgps, session)
 

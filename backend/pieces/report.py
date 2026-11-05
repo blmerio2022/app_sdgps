@@ -49,6 +49,62 @@ AUTO_LANDSCAPE_TYPES = {
 USE_CATALOG_ORIENTATION = False
 
 
+# --- Chaîne de dépendances PDF ------------------------------------------------
+# Les trois bibliothèques utilisées par la génération, avec le rôle de chacune. Elles
+# sont TOUTES indispensables : WeasyPrint rend le HTML, pypdf assemble les pages et
+# reportlab imprime la pagination globale « Page i/n ».
+#
+# Elles sont importées PARESSEUSEMENT (le module doit rester importable sans elles,
+# notamment sans les bibliothèques natives GTK de WeasyPrint), mais vérifiées en BLOC
+# **avant** le rendu : voir `check_pdf_toolchain`.
+PDF_REQUIREMENTS = (
+    ('weasyprint', 'rendu HTML → PDF'),
+    ('pypdf', 'assemblage des pages'),
+    ('reportlab', 'pagination globale « Page i/n »'),
+)
+
+
+def missing_pdf_requirements() -> list[tuple[str, str, str]]:
+    """Modules de la chaîne PDF absents ou inutilisables, sous la forme
+    `[(module, rôle, détail de l'erreur), …]` — liste vide si tout est en place.
+
+    `OSError` est intercepté en plus d'`ImportError` : WeasyPrint s'importe en Python
+    mais lève `OSError` quand ses bibliothèques natives (GTK/Pango/Cairo) manquent."""
+    import importlib
+    missing = []
+    for module, role in PDF_REQUIREMENTS:
+        try:
+            importlib.import_module(module)
+        except (ImportError, OSError) as exc:
+            missing.append((module, role, str(exc)))
+    return missing
+
+
+def check_pdf_toolchain() -> None:
+    """Vérifie la chaîne PDF **avant** tout rendu et lève un `RuntimeError` explicite
+    si une dépendance manque.
+
+    Pourquoi en amont : le rendu WeasyPrint d'un rapport complet prend des dizaines de
+    secondes. Si l'on découvrait l'absence de `reportlab` (utilisé en toute fin, pour la
+    pagination) seulement à cet instant, l'opérateur attendrait tout ce temps devant une
+    barre de progression bloquée pour n'obtenir qu'une erreur — et le travail de rendu
+    serait perdu. On échoue donc en moins d'une seconde, avec un message actionnable.
+
+    Le `RuntimeError` est converti en réponse 501 + `detail` par la vue, donc affiché
+    tel quel dans la modale de génération."""
+    missing = missing_pdf_requirements()
+    if not missing:
+        return
+    details = ' ; '.join(f'{mod} ({role}) → {err}' for mod, role, err in missing)
+    paquets = ' '.join(mod for mod, _role, _err in missing)
+    raise RuntimeError(
+        "La génération PDF est indisponible : dépendance(s) manquante(s) sur le "
+        f"serveur — {details}. Installation : `pip install {paquets}` "
+        "(ces paquets sont déclarés dans backend/requirements.txt ; WeasyPrint exige "
+        "en plus les bibliothèques natives GTK/Pango/Cairo)."
+    )
+
+
 def _content_column_count(piece) -> int:
     """Nombre de colonnes visibles du contenu tabulaire d'une pièce (tient compte de
     la version « écarts », plus large, quand elle est présente sur CETTE pièce)."""
@@ -706,8 +762,10 @@ def build_report_context(ssdgps, session, pieces, sort_config=None, fields_confi
 
 def render_report_pdf(ssdgps, session, pieces, sort_config=None, fields_config=None,
                       duplex=False):
-    """Rend le rapport en PDF (bytes). Lève `RuntimeError` si WeasyPrint (ou ses
-    bibliothèques natives) n'est pas disponible sur l'environnement d'exécution.
+    """Rend le rapport en PDF (bytes). Lève `RuntimeError` si une dépendance de la
+    chaîne PDF (WeasyPrint et ses bibliothèques natives, pypdf, reportlab) manque sur
+    l'environnement d'exécution — vérification faite **en amont** du rendu, qui dure
+    des dizaines de secondes (cf. `check_pdf_toolchain`).
 
     Chaque « unité » (page de garde, séparateur de pièce, contenu de pièce) est rendue
     comme un document WeasyPrint indépendant, puis les pages sont fusionnées en un seul
@@ -719,13 +777,10 @@ def render_report_pdf(ssdgps, session, pieces, sort_config=None, fields_config=N
     (impaire) par insertion d'une page blanche si nécessaire ; l'identification du pied de
     page bascule côté extérieur via `@page :left/:right`. La pagination globale « Page i/n »
     est superposée après fusion (le compteur global n'existe pas en CSS entre documents)."""
-    try:
-        from weasyprint import HTML
-    except (ImportError, OSError) as exc:  # OSError : bibliothèques GTK absentes
-        raise RuntimeError(
-            "La génération PDF requiert WeasyPrint et ses bibliothèques natives "
-            f"(GTK/Pango/Cairo). Détail : {exc}"
-        ) from exc
+    # Toute la chaîne est contrôlée d'un coup, AVANT le rendu : un `reportlab` manquant
+    # ne doit pas se révéler après une minute de rendu perdu (cf. check_pdf_toolchain).
+    check_pdf_toolchain()
+    from weasyprint import HTML
 
     context = build_report_context(ssdgps, session, pieces, sort_config, fields_config)
     base = {'header': context['header']}
