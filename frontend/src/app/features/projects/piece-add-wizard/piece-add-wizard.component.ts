@@ -6,12 +6,44 @@ import { PieceSortConfigService, PieceSortConfig, brutSortLevels } from '../../.
 import { PieceFieldsConfig, PieceFieldsConfigService } from '../../../core/services/piece-fields-config.service';
 import { Piece, PieceChampDef, PieceImportPreview, PieceTypeDef } from '../../../core/models/piece.model';
 import { Ssdgps, Session } from '../../../core/models/project.model';
+import { formatFieldDate, formatDateTime } from '../../../shared/utils/date-format.util';
+import { classifyColorMode, compressionLabel, readExifDate } from '../piece-image-meta.util';
 import { findTbcReports, TbcReportCandidate } from '../tbc-report.util';
 import { assembleDeterminationRows, sortDeterminationItems, relabelDeterminationItems,
          fixesLabel, DeterminationFileItem, DetSortKey } from '../rdia.util';
 
-type Step = 'type' | 'scope' | 'source' | 'photos';
+/**
+ * Étapes du parcours. La phase « Source des données » est éclatée en sous-étapes dont le
+ * nombre dépend du type de pièce : `method` (choix de la façon de fournir les données —
+ * uniquement quand le type en propose plusieurs), `data` (saisie/import proprement dit),
+ * `place` (récapitulatif + position dans le rapport), et `photos` (PPA/PPN uniquement,
+ * après création).
+ */
+type Step = 'type' | 'scope' | 'method' | 'data' | 'map' | 'place' | 'photos';
 type Source = 'image' | 'csv' | 'manuel' | 'html' | 'compute' | 'assemble' | 'assemble-files';
+
+/** Une façon de fournir les données, telle que présentée en carte à la sous-étape « Méthode ».
+ * `bulk` est une ACTION (création en masse) et non une `Source` menant à un formulaire. */
+interface MethodChoice { id: Source | 'bulk'; icon: string; title: string; desc: string; }
+
+/** Image locale sélectionnée (pas encore envoyée) : fichier + URL d'aperçu (objectURL) et
+ * métadonnées techniques lues côté client (dimensions, type d'image, compression, dates),
+ * pour le panneau de détails et l'orientation recommandée. Mêmes rubriques que la galerie
+ * de consultation d'une pièce — cf. `piece-image-meta.util.ts`. */
+interface LocalImage {
+  file: File;
+  url: string;
+  width: number | null;
+  height: number | null;
+  /** Type d'image (« Couleur », « Niveaux de gris », « Noir & blanc ») ; '' si indéterminé. */
+  modeCouleur: string;
+  /** Libellé de compression déduit du format ; '' si connu seulement après import (TIFF). */
+  compression: string;
+  /** Date de prise de vue (EXIF) ; `null` si le format n'en porte pas. */
+  dateCreation: Date | null;
+  /** Dernière modification du fichier — exactement ce que le serveur enregistrera. */
+  dateModification: Date;
+}
 
 /**
  * Assistant d'ajout d'une pièce, en modal : choix du type applicable, puis du
@@ -36,6 +68,9 @@ export class PieceAddWizardComponent implements OnInit {
   @Input() embedded = false;
   @Output() created = new EventEmitter<Piece>();
   @Output() cancelled = new EventEmitter<void>();
+  /** Type en cours de création (`null` tant qu'aucun n'est choisi) — la page hôte s'en sert
+   * pour titrer « Ajouter une nouvelle pièce de type … ». */
+  @Output() typeSelected = new EventEmitter<PieceTypeDef | null>();
 
   step: Step = 'type';
   selectedType: PieceTypeDef | null = null;
@@ -56,8 +91,11 @@ export class PieceAddWizardComponent implements OnInit {
   submittingManual = false;
 
   // --- Images (multi) ---
-  selectedImages: File[] = [];
-  selectedImagePreviews: string[] = [];
+  localImages: LocalImage[] = [];
+  /** Image mise en avant dans le panneau de détails (index dans `localImages`). */
+  selectedImageIndex = 0;
+  /** Visionneuse plein écran de l'image sélectionnée. */
+  imageLightboxOpen = false;
   submittingImages = false;
 
   // --- Position dans le rapport ---
@@ -106,6 +144,12 @@ export class PieceAddWizardComponent implements OnInit {
    * mono-session les rattache directement au SSDGPS (aucun choix de niveau). */
   get isMulti(): boolean { return this.ssdgps.type_ssdgps === 'multi-session'; }
 
+  /** L'étape « Session » n'a lieu d'être que si le rattachement est AMBIGU : SSDGPS
+   * multi-session ET aucune session de contexte. Quand l'ajout part d'une session donnée,
+   * cette session est la destination par défaut de la pièce — l'étape ne ferait que
+   * redemander une réponse déjà connue. */
+  get needsSessionStep(): boolean { return this.isMulti && !this.defaultSessionId; }
+
   get applicableTypes(): PieceTypeDef[] {
     return this.catalog.filter(def =>
       def.source !== 'ui' &&
@@ -118,31 +162,331 @@ export class PieceAddWizardComponent implements OnInit {
    * (type, session, numéro) diffère — vérifié côté serveur à la confirmation. */
   isTypeDisabled(_def: PieceTypeDef): boolean { return false; }
 
+  // --- Aide à la décision sur les cartes de type -------------------------------
+
+  /** Nombre de pièces de ce type DÉJÀ présentes dans le rapport (hors corbeille). Affiché
+   * sur la carte : ajouter un type déjà présent est légitime (types répétables) mais doit
+   * être un choix informé, pas une surprise. */
+  existingCount(def: PieceTypeDef): number {
+    return this.existingPieces.filter(p => p.type_piece === def.code && !p.is_deleted).length;
+  }
+
+  /** Icône représentant la source de données attendue par un type. */
+  sourceIcon(def: PieceTypeDef): string {
+    if (def.computed || def.assemble) return 'fa-calculator';
+    return { image: 'fa-image', csv_manuel: 'fa-table', manuel: 'fa-keyboard' }[def.source as string]
+      || 'fa-file-lines';
+  }
+
+  /** Libellé court de la source, pour la ligne de méta d'une carte. */
+  sourceLabel(def: PieceTypeDef): string {
+    if (def.computed) return 'Calculée';
+    if (def.assemble) return 'Assemblée';
+    return { image: 'Images', csv_manuel: 'Tableau', manuel: 'Saisie', ui: 'Automatique' }[def.source as string]
+      || 'Données';
+  }
+
+  // --- Sous-étapes de la phase « Source des données » --------------------------
+
+  /** Façons de fournir les données pour le type courant, dans l'ordre d'affichage.
+   * SOURCE DE VÉRITÉ UNIQUE : la sous-étape « Méthode » (cartes), le décompte qui décide
+   * de l'afficher ou non, et l'auto-sélection quand il n'y en a qu'une, en dérivent tous. */
+  get sourceChoices(): MethodChoice[] {
+    const def = this.selectedType;
+    if (!def) return [];
+    const c: MethodChoice[] = [];
+    if (this.sourceAllows('image') && !this.isPhotoPoints)
+      c.push({ id: 'image', icon: 'fa-images', title: 'Importer des images',
+        desc: 'Une ou plusieurs images, rendues en pleine page dans le rapport.' });
+    if (this.sourceAllows('csv'))
+      c.push({ id: 'csv', icon: 'fa-file-csv', title: 'Importer un fichier CSV / Excel',
+        desc: 'Vous associez ensuite chaque colonne du fichier au champ correspondant.' });
+    if (this.sourceAllows('manuel'))
+      c.push({ id: 'manuel', icon: 'fa-keyboard', title: 'Saisie manuelle',
+        desc: 'Un tableau vide à remplir directement dans l\'application.' });
+    if (def.html_import)
+      c.push({ id: 'html', icon: 'fa-file-code', title: 'Importer un rapport HTML (TBC)',
+        desc: 'Les lignes sont extraites automatiquement du rapport produit par TBC.' });
+    if (this.supportsBulkHtml)
+      c.push({ id: 'bulk', icon: 'fa-layer-group', title: `Créer plusieurs ${def.code} en une fois`,
+        desc: 'Un dossier de rapports TBC produit une pièce par rapport détecté.' });
+    if (def.computed)
+      c.push({ id: 'compute', icon: 'fa-calculator', title: 'Calculer automatiquement',
+        desc: 'Croise la liste des points anciens (LPA) avec les déterminations du dossier.' });
+    if (this.supportsAssemble) {
+      c.push({ id: 'assemble', icon: 'fa-object-group', title: 'Assembler depuis le dossier',
+        desc: 'Réunit les déterminations déjà présentes dans ce dossier en un seul rapport.' });
+      c.push({ id: 'assemble-files', icon: 'fa-file-import', title: 'Importer puis assembler des fichiers',
+        desc: 'Mêmes règles, mais depuis des fichiers CSV, Excel ou HTML de votre disque.' });
+    }
+    return c;
+  }
+
+  /** Pièce dont la SEULE façon de fournir les données est l'import d'images (RDC, CCSPA,
+   * CDC, CLC…). Ces pièces n'ont ni tableau ni méthode à choisir : l'étape « Données » se
+   * réduit au dépôt des images, et la méthode doit être ANNONCÉE puisqu'elle n'a jamais été
+   * proposée (sous-étape « Méthode » sautée faute d'alternative). */
+  get isImageOnly(): boolean {
+    const choices = this.sourceChoices;
+    return choices.length === 1 && choices[0].id === 'image';
+  }
+
+  // --- Stepper -----------------------------------------------------------------
+
+  /** Étapes du parcours, dans l'ordre. « Session » n'existe qu'en multi-session, et la phase
+   * source se scinde en `method` (si ≥ 2 façons de fournir les données), `data`, `place` et,
+   * pour les pièces à photos par point (PPA/PPN), `photos`. Tant qu'aucun type n'est choisi,
+   * la phase source reste une pastille unique (on ne connaît pas encore ses sous-étapes). */
+  get wizardSteps(): { key: Step; label: string; icon: string }[] {
+    const s: { key: Step; label: string; icon: string }[] = [
+      { key: 'type', label: 'Type de pièce', icon: 'fa-shapes' },
+    ];
+    if (this.needsSessionStep) s.push({ key: 'scope', label: 'Session', icon: 'fa-clock' });
+    if (!this.selectedType) {
+      s.push({ key: 'data', label: 'Source des données', icon: 'fa-database' });
+      return s;
+    }
+    if (this.sourceChoices.length > 1) s.push({ key: 'method', label: 'Méthode', icon: 'fa-list-check' });
+    // Import CSV/Excel : le fichier est déposé DANS l'étape « Méthode » ; l'étape suivante
+    // « Colonnes » réunit le mapping et l'aperçu des premières lignes sous deux onglets.
+    if (this.selectedSource === 'csv') {
+      s.push({ key: 'map', label: 'Colonnes', icon: 'fa-table-columns' });
+    } else {
+      s.push({ key: 'data', label: 'Données', icon: 'fa-table' });
+    }
+    s.push({ key: 'place', label: 'Placement', icon: 'fa-map-pin' });
+    if (this.isPhotoPoints) s.push({ key: 'photos', label: 'Photos', icon: 'fa-camera' });
+    return s;
+  }
+
+  /** Rang de l'étape courante (0-indexé) — sert à marquer les étapes faites/à venir. */
+  get currentStepIndex(): number {
+    return Math.max(0, this.wizardSteps.findIndex(s => s.key === this.step));
+  }
+
+  /** Une étape déjà franchie est cliquable : revenir en arrière est un besoin courant.
+   * Revenir à `method` (ou avant) réinitialise la source ; revenir à `data` conserve la saisie. */
+  goToStep(index: number): void {
+    if (index >= this.currentStepIndex) return;
+    const target = this.wizardSteps[index];
+    switch (target.key) {
+      case 'type': this.backToType(); break;
+      case 'scope': this.resetSourceState(); this.step = 'scope'; break;
+      case 'method': this.resetSourceState(); this.step = 'method'; break;
+      case 'data': this.step = 'data'; break;
+      // Revenir à « Colonnes » (mapping + aperçu) conserve fichier et mapping.
+      case 'map': this.step = 'map'; break;
+    }
+  }
+
   selectType(def: PieceTypeDef): void {
     this.selectedType = def;
-    if (this.isMulti) {
-      // Multi-session : la pièce appartient à une session ; pré-sélectionner celle
-      // consultée, l'étape « Session » permet d'en changer.
+    this.typeSelected.emit(def);
+    if (this.needsSessionStep) {
+      // Multi-session SANS session de contexte : le rattachement doit être choisi.
       this.selectedNiveau = null;
-      this.selectedSessionId = this.defaultSessionId;
+      this.selectedSessionId = null;
       this.step = 'scope';
+    } else if (this.isMulti) {
+      // Multi-session AVEC session de contexte : la pièce est rattachée à cette session,
+      // sans étape intermédiaire (la question n'a qu'une réponse possible).
+      this.selectedNiveau = 'session';
+      this.selectedSessionId = this.defaultSessionId;
+      this.enterSourcePhase();
     } else {
       // Mono-session : aucun choix de niveau — pièce rattachée au SSDGPS directement.
       this.selectedNiveau = 'ssdgps';
       this.selectedSessionId = null;
-      this.step = 'source';
+      this.enterSourcePhase();
     }
   }
 
-  chooseNiveauSession(sessionId: string): void { this.selectedNiveau = 'session'; this.selectedSessionId = sessionId; this.step = 'source'; }
+  chooseNiveauSession(sessionId: string): void {
+    this.selectedNiveau = 'session';
+    this.selectedSessionId = sessionId;
+    this.enterSourcePhase();
+  }
+
+  /** Entrée dans la phase source : si le type propose plusieurs façons de fournir les données,
+   * on affiche la sous-étape « Méthode » ; sinon on saute directement à « Données » en
+   * pré-sélectionnant l'unique façon disponible (une étape à un seul choix n'apporte rien). */
+  private enterSourcePhase(): void {
+    const choices = this.sourceChoices;
+    if (choices.length > 1) { this.step = 'method'; return; }
+    const sole = choices[0];
+    if (sole && sole.id !== 'bulk') { this.selectSource(sole.id); return; }
+    // Filet de sécurité (aucune façon déclarée) : saisie manuelle d'un tableau vide.
+    this.selectedSource = 'manuel'; this.step = 'data'; this.initManualForm();
+  }
+
+  /** Choix d'une carte de méthode : la création en masse ouvre sa modale, les autres
+   * ouvrent le formulaire de la sous-étape « Données ». */
+  selectMethod(m: MethodChoice): void {
+    if (m.id === 'bulk') { this.openBulkModal(); return; }
+    this.selectSource(m.id);
+  }
+
+  /** Date d'une session au format unifié de l'app (`date_session` s'affiche SANS heure). */
+  formatSessionDate(s: Session): string { return formatFieldDate(s.date_session, 'date_session'); }
+
+  /** Position d'insertion : `true` = à la fin du rapport, `false` = position précise.
+   * Passe par une méthode plutôt qu'une affectation en ligne pour que le contrôle segmenté
+   * reste testable et que la remise à zéro éventuelle vive à un seul endroit. */
+  setInsertAtEnd(atEnd: boolean): void { this.insertAtEnd = atEnd; }
 
   get selectedSessionNumero(): number | undefined {
     return this.sessions.find(s => s.id === this.selectedSessionId)?.numero_session;
   }
 
-  backToType(): void { this.step = 'type'; this.selectedType = null; this.resetSourceState(); }
-  /** Depuis l'étape Source : retour au choix de session (multi) ou au type (mono). */
-  backToNiveau(): void { this.step = this.isMulti ? 'scope' : 'type'; this.resetSourceState(); }
+  backToType(): void {
+    this.step = 'type'; this.selectedType = null; this.typeSelected.emit(null); this.resetSourceState();
+  }
+  /** Depuis la sous-étape « Méthode » : retour au choix de session quand cette étape existe,
+   * sinon directement au choix du type. */
+  backToNiveau(): void {
+    if (this.needsSessionStep) { this.resetSourceState(); this.step = 'scope'; }
+    else this.backToType();
+  }
+
+  /** Retour depuis « Données » : vers « Méthode » quand il y a un choix à refaire, sinon
+   * directement vers l'étape précédente (la sous-étape « Méthode » n'existe pas). */
+  backFromData(): void {
+    if (this.sourceChoices.length > 1) { this.resetSourceState(); this.step = 'method'; }
+    else this.backToNiveau();
+  }
+
+  /** Retour depuis « Colonnes » vers « Méthode & import » — fichier et méthode conservés
+   * (on revient sur la zone de dépôt, pas sur les cartes). */
+  backFromMap(): void { this.step = 'method'; }
+
+  /** Retour depuis « Placement » vers la dernière sous-étape de données — saisie conservée.
+   * Pour l'import CSV, c'est « Colonnes » ; pour les autres sources, « Données ». */
+  backToData(): void { this.step = this.selectedSource === 'csv' ? 'map' : 'data'; }
+
+  /** Passage de « Données » (ou « Aperçu ») à « Placement » : n'avance que si la saisie est exploitable. */
+  goToPlace(): void { if (this.canContinueFromData) this.step = 'place'; }
+
+  /** La saisie de la sous-étape « Données » est-elle prête à être créée ? (Critère par source.) */
+  get canContinueFromData(): boolean {
+    switch (this.selectedSource) {
+      case 'image': return this.localImages.length > 0;
+      case 'csv': return !!this.importPreview;
+      case null: return false;
+      default: return !!this.manualForm;   // manuel / html / compute / assemble / assemble-files
+    }
+  }
+
+  // --- Import CSV/Excel : étape « Méthode & import » puis « Colonnes » (onglets) ---------
+
+  /** Onglet actif de l'étape « Colonnes » : mapping des colonnes ou aperçu des premières lignes. */
+  mapTab: 'mapping' | 'preview' = 'mapping';
+  /** Champs effectivement mappés (colonne source associée), pour l'aperçu et le récapitulatif. */
+  mappedPreviewChamps: PieceChampDef[] = [];
+  /** Lignes d'échantillon (issues du serveur) reprojetées via le mapping, pour l'aperçu. */
+  mappedPreviewRows: any[] = [];
+
+  /** Nombre de champs mappés / nombre total de champs cibles — pour les jetons d'aperçu. */
+  get importMappedCount(): number { return Object.keys(this.currentMapping || {}).length; }
+  get importTotalChamps(): number { return this.importPreview?.champs.length || 0; }
+
+  /** Bascule d'onglet dans « Colonnes » : (re)construit l'aperçu à l'entrée de l'onglet Aperçu
+   * pour qu'il reflète le mapping courant. */
+  setMapTab(tab: 'mapping' | 'preview'): void {
+    if (tab === 'preview') this.buildMappedPreview();
+    this.mapTab = tab;
+  }
+
+  /** « Méthode & import » → « Colonnes » : n'avance qu'une fois le fichier lu. Ouvre sur
+   * l'onglet Mapping. */
+  goToMap(): void {
+    if (!this.importPreview) return;
+    this.mapTab = 'mapping';
+    this.step = 'map';
+  }
+
+  /** Abandonne le fichier choisi et revient au choix de méthode (cartes). */
+  deselectMethod(): void {
+    this.selectedSource = null;
+    this.selectedFile = null;
+    this.importPreview = null;
+    this.currentMapping = {};
+    this.mappedPreviewChamps = []; this.mappedPreviewRows = [];
+    this.dragOver = false;
+    this.step = 'method';
+  }
+
+  /** Construit l'aperçu (échantillon serveur reprojeté selon le mapping courant). READ-ONLY :
+   * la création réelle relit le fichier côté serveur (`confirmImport`) — l'aperçu ne fait que
+   * montrer ce qui sera importé, il n'est pas une source de données éditable. */
+  private buildMappedPreview(): void {
+    const pv = this.importPreview;
+    if (!pv) { this.mappedPreviewChamps = []; this.mappedPreviewRows = []; return; }
+    const champs = pv.champs.filter(c => this.currentMapping[c.name]);
+    this.mappedPreviewChamps = champs;
+    this.mappedPreviewRows = (pv.preview_rows || []).map(raw => {
+      const o: any = {};
+      champs.forEach(c => {
+        const idx = pv.columns.indexOf(this.currentMapping[c.name]);
+        o[c.name] = idx >= 0 ? (raw[idx] ?? '') : '';
+      });
+      return o;
+    });
+  }
+
+  /** Une création (quelle que soit la source) est-elle en cours ? — pour l'état du bouton « Créer ». */
+  get submitting(): boolean {
+    return this.submittingImages || this.importing || this.submittingManual || this.submittingHtml
+      || this.submittingCompute || this.submittingAssemble || this.submittingAssembleFiles;
+  }
+
+  /** Bouton « Créer » de la sous-étape « Placement » : aiguille vers la création propre à la
+   * source retenue. La position (fin / précise) est déjà fixée sur cette même sous-étape et
+   * appliquée par `finishCreate`. */
+  submitCurrent(): void {
+    switch (this.selectedSource) {
+      case 'image': this.submitImages(); break;
+      case 'csv': this.confirmImport(); break;
+      case 'manuel': this.submitManual(); break;
+      case 'html': this.submitHtml(); break;
+      case 'compute': this.submitCompute(); break;
+      case 'assemble': this.submitAssemble(); break;
+      case 'assemble-files': this.submitAssembleFiles(); break;
+    }
+  }
+
+  /** Libellé lisible de la source retenue (récapitulatif de la sous-étape « Placement »). */
+  methodLabel(src: Source | null): string {
+    return ({
+      image: 'Images', csv: 'Import CSV / Excel', manuel: 'Saisie manuelle',
+      html: 'Import HTML (TBC)', compute: 'Calcul automatique',
+      assemble: 'Assemblage du dossier', 'assemble-files': 'Import & assemblage de fichiers',
+    } as Record<string, string>)[src as string] || '—';
+  }
+
+  /** Résumé du contenu saisi, pour le récapitulatif avant création. */
+  get contentSummary(): string {
+    if (this.selectedSource === 'image') return `${this.localImages.length} image(s)`;
+    if (this.selectedSource === 'csv') return this.selectedFile?.name || 'fichier sélectionné';
+    return `${this.wizardRows.length} ligne(s)`;
+  }
+
+  /** Numéro que portera la pièce (types répétables) — exposé pour le récapitulatif. */
+  get previewNumero(): number | undefined { return this.nextNumero(); }
+
+  /** Lignes du récapitulatif de la sous-étape « Placement » (type, rattachement, méthode, contenu…). */
+  get placementRecap(): { icon: string; label: string; value: string }[] {
+    const r: { icon: string; label: string; value: string }[] = [];
+    if (this.selectedType) r.push({ icon: 'fa-shapes', label: 'Type', value: `${this.selectedType.code} — ${this.selectedType.nom}` });
+    if (this.selectedNiveau === 'session') r.push({ icon: 'fa-clock', label: 'Rattachement', value: `Session n°${this.selectedSessionNumero}` });
+    else r.push({ icon: 'fa-globe', label: 'Rattachement', value: 'Commun au SSDGPS' });
+    r.push({ icon: 'fa-wand-magic-sparkles', label: 'Méthode', value: this.methodLabel(this.selectedSource) });
+    r.push({ icon: 'fa-table-list', label: 'Contenu', value: this.contentSummary });
+    if (this.selectedType?.repeatable) {
+      const n = this.nextNumero();
+      if (n) r.push({ icon: 'fa-hashtag', label: 'Numéro', value: `n°${n}` });
+    }
+    return r;
+  }
 
   sourceAllows(kind: Source): boolean {
     const def = this.selectedType;
@@ -168,6 +512,9 @@ export class PieceAddWizardComponent implements OnInit {
 
   selectSource(kind: Source): void {
     this.selectedSource = kind;
+    // L'import CSV/Excel réunit choix de méthode ET dépôt du fichier sur la MÊME étape
+    // (« Méthode ») ; on ne passe à « Colonnes » (mapping + aperçu) qu'une fois le fichier lu.
+    this.step = kind === 'csv' ? 'method' : 'data';
     if (kind === 'manuel') this.initManualForm();
     if (kind === 'html') this.openHtmlModal();
     if (kind === 'compute') this.computeRc();
@@ -226,48 +573,166 @@ export class PieceAddWizardComponent implements OnInit {
     if (this.createdPiece) this.created.emit(this.createdPiece);
   }
 
+  /** Survol d'une zone de dépôt (import CSV comme images) : une seule zone est visible à la
+   * fois, un indicateur unique suffit donc pour l'état « prêt à déposer ». */
+  dragOver = false;
+  onDragOver(e: DragEvent): void { e.preventDefault(); this.dragOver = true; }
+  onDragLeave(e: DragEvent): void { e.preventDefault(); this.dragOver = false; }
+  onCsvDrop(e: DragEvent): void {
+    e.preventDefault(); this.dragOver = false;
+    const f = e.dataTransfer?.files?.[0];
+    if (f) this.ingestImportFile(f);
+  }
+  onImagesDrop(e: DragEvent): void {
+    e.preventDefault(); this.dragOver = false;
+    const files = Array.from(e.dataTransfer?.files ?? []);
+    if (files.length) this.ingestImages(files);
+  }
+
   // --- Upload d'images (multi) ---
   onImagesSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
     const files = Array.from(input.files ?? []);
     input.value = '';
-    const valid = files.filter(f => /\.(png|jpe?g|tiff?|webp)$/i.test(f.name) && f.size <= 20 * 1024 * 1024);
-    if (valid.length < files.length) {
-      this.toast.error('Fichier(s) ignoré(s)', 'Formats acceptés : png/jpg/jpeg/tiff/webp, taille max 20 Mo.');
-    }
-    valid.forEach(f => {
-      this.selectedImages.push(f);
-      this.selectedImagePreviews.push(URL.createObjectURL(f));
-    });
+    this.ingestImages(files);
   }
 
+  /** Taille maximale par image (2 Mo) — plafond strict, image plus lourde rejetée. */
+  static readonly MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+
+  /** Ajoute des images (dépôt ou parcours) après filtrage format ET taille (≤ 2 Mo). Lit les
+   * dimensions côté client pour le panneau de détails et l'orientation recommandée. */
+  private ingestImages(files: File[]): void {
+    const wellFormatted = files.filter(f => /\.(png|jpe?g|tiff?|webp)$/i.test(f.name));
+    const tooBig = wellFormatted.filter(f => f.size > PieceAddWizardComponent.MAX_IMAGE_BYTES);
+    const valid = wellFormatted.filter(f => f.size <= PieceAddWizardComponent.MAX_IMAGE_BYTES);
+    if (wellFormatted.length < files.length) {
+      this.toast.error('Fichier(s) ignoré(s)', 'Formats acceptés : png, jpg, jpeg, tiff, webp.');
+    }
+    if (tooBig.length) {
+      this.toast.error('Image(s) trop lourde(s)', `${tooBig.length} image(s) > 2 Mo ignorée(s). Chaque image doit peser 2 Mo au maximum.`);
+    }
+    const wasEmpty = this.localImages.length === 0;
+    valid.forEach(f => {
+      const li: LocalImage = {
+        file: f, url: URL.createObjectURL(f), width: null, height: null,
+        // Déductibles immédiatement (sans décoder l'image).
+        modeCouleur: '', compression: compressionLabel(f.name),
+        dateCreation: null, dateModification: new Date(f.lastModified),
+      };
+      this.localImages.push(li);
+      this.readImageMeta(li);
+    });
+    if (wasEmpty && this.localImages.length) this.selectedImageIndex = 0;
+  }
+
+  /** Complète les métadonnées nécessitant une lecture du fichier : dimensions et type
+   * d'image (décodage via <img> — impossible pour le TIFF), puis date EXIF de prise de vue. */
+  private readImageMeta(li: LocalImage): void {
+    readExifDate(li.file).then(d => { if (d) li.dateCreation = d; });
+    if (!this.isPreviewable(li.file)) return;
+    const probe = new Image();
+    probe.onload = () => {
+      li.width = probe.naturalWidth;
+      li.height = probe.naturalHeight;
+      li.modeCouleur = classifyColorMode(probe);
+    };
+    probe.src = li.url;
+  }
+
+  /** Date au format unifié de l'app ; « — » si absente (cf. `formatDateTime`). */
+  formatImageDate(d: Date | null): string { return formatDateTime(d); }
+
+  /** Présentation des images choisies : vignettes ou liste détaillée — même bascule que la
+   * galerie de consultation d'une pièce. */
+  imageViewMode: 'grid' | 'list' = 'grid';
+  setImageViewMode(mode: 'grid' | 'list'): void { this.imageViewMode = mode; }
+
+  /** Image mise en avant dans le panneau de détails. */
+  get selectedLocalImage(): LocalImage | null {
+    if (!this.localImages.length) return null;
+    return this.localImages[this.selectedImageIndex] || this.localImages[0];
+  }
+  selectLocalImage(i: number): void { this.selectedImageIndex = i; }
+
   removeLocalImage(i: number): void {
-    URL.revokeObjectURL(this.selectedImagePreviews[i]);
-    this.selectedImages.splice(i, 1);
-    this.selectedImagePreviews.splice(i, 1);
+    URL.revokeObjectURL(this.localImages[i].url);
+    this.localImages.splice(i, 1);
+    if (this.selectedImageIndex >= this.localImages.length) {
+      this.selectedImageIndex = Math.max(0, this.localImages.length - 1);
+    }
   }
 
   moveLocalImage(i: number, dir: -1 | 1): void {
     const j = i + dir;
-    if (j < 0 || j >= this.selectedImages.length) return;
-    [this.selectedImages[i], this.selectedImages[j]] = [this.selectedImages[j], this.selectedImages[i]];
-    [this.selectedImagePreviews[i], this.selectedImagePreviews[j]] =
-      [this.selectedImagePreviews[j], this.selectedImagePreviews[i]];
+    if (j < 0 || j >= this.localImages.length) return;
+    [this.localImages[i], this.localImages[j]] = [this.localImages[j], this.localImages[i]];
+    if (this.selectedImageIndex === i) this.selectedImageIndex = j;
+    else if (this.selectedImageIndex === j) this.selectedImageIndex = i;
   }
 
   /** TIFF n'a pas d'aperçu natif dans un <img>. */
   isPreviewable(f: File): boolean { return !/\.tiff?$/i.test(f.name); }
 
+  /** Format « métier » d'une image locale (extension en majuscules). */
+  imageFormat(li: LocalImage): string {
+    const m = li.file.name.match(/\.([a-z0-9]+)$/i);
+    return m ? m[1].toUpperCase() : '—';
+  }
+
+  /** Orientation d'une image locale d'après ses dimensions (`null` tant qu'inconnues). */
+  imageOrientation(li: LocalImage | null): 'portrait' | 'paysage' | null {
+    if (!li || li.width == null || li.height == null) return null;
+    return li.width > li.height ? 'paysage' : 'portrait';
+  }
+
+  /** Orientation « automatique » de la pièce image : orientation dominante des images
+   * importées (l'affichage pleine page suit le contenu). `null` avant tout import exploitable. */
+  get imagesOrientation(): 'portrait' | 'paysage' | null {
+    let p = 0, l = 0;
+    for (const li of this.localImages) {
+      const o = this.imageOrientation(li);
+      if (o === 'portrait') p++; else if (o === 'paysage') l++;
+    }
+    if (!p && !l) return null;
+    return l > p ? 'paysage' : 'portrait';
+  }
+
+  /** Message de recommandation dimensions/ratio ADAPTÉ à l'orientation automatique de la pièce
+   * (déduite des images) : portrait ≈ 3:4, paysage ≈ 4:3 ; neutre tant qu'aucune image n'est lue. */
+  get imageRecommendation(): { ratio: string; dims: string; orient: string } {
+    const o = this.imagesOrientation;
+    if (o === 'paysage') return { orient: 'paysage', ratio: '4:3', dims: '1754 × 1240 px' };
+    if (o === 'portrait') return { orient: 'portrait', ratio: '3:4', dims: '1240 × 1754 px' };
+    return { orient: 'portrait ou paysage', ratio: '3:4 ou 4:3', dims: '≈ 1240 × 1754 px (portrait) ou 1754 × 1240 px (paysage)' };
+  }
+
+  /** Taille lisible d'un nombre d'octets (o / Ko / Mo…). */
+  humanSize(bytes: number): string {
+    if (!bytes) return '—';
+    const units = ['o', 'Ko', 'Mo', 'Go'];
+    let n = bytes, u = 0;
+    while (n >= 1024 && u < units.length - 1) { n /= 1024; u++; }
+    return `${u === 0 ? n : n.toFixed(1)} ${units[u]}`;
+  }
+
+  // Visionneuse plein écran de l'image sélectionnée (aperçu web uniquement).
+  openImageLightbox(): void {
+    if (this.selectedLocalImage && this.isPreviewable(this.selectedLocalImage.file)) this.imageLightboxOpen = true;
+  }
+  closeImageLightbox(): void { this.imageLightboxOpen = false; }
+
   private clearLocalImages(): void {
-    this.selectedImagePreviews.forEach(u => URL.revokeObjectURL(u));
-    this.selectedImages = [];
-    this.selectedImagePreviews = [];
+    this.localImages.forEach(li => URL.revokeObjectURL(li.url));
+    this.localImages = [];
+    this.selectedImageIndex = 0;
+    this.imageLightboxOpen = false;
   }
 
   submitImages(): void {
-    if (!this.selectedType || !this.selectedImages.length || this.submittingImages) return;
+    if (!this.selectedType || !this.localImages.length || this.submittingImages) return;
     this.submittingImages = true;
-    const files = this.selectedImages;
+    const files = this.localImages.map(li => li.file);
     this.piecesService.createImagePiece(this.selectedType.code, this.parentRef(), this.nextNumero()).subscribe({
       next: (piece) => {
         this.piecesService.addImages(piece.id, files).subscribe({
@@ -287,9 +752,15 @@ export class PieceAddWizardComponent implements OnInit {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     input.value = '';
-    if (!file || !this.selectedType) return;
+    if (file) this.ingestImportFile(file);
+  }
+
+  /** Lit un fichier CSV/Excel (dépôt ou parcours) : aperçu serveur des colonnes + échantillon. */
+  private ingestImportFile(file: File): void {
+    if (!this.selectedType) return;
     this.selectedFile = file;
     this.importPreview = null;
+    this.mappedPreviewChamps = []; this.mappedPreviewRows = [];
     this.piecesService.previewImport(file, this.selectedType.code).subscribe({
       next: (preview) => { this.importPreview = preview; },
       error: (e) => this.toast.error('Échec', e?.error?.detail || 'Lecture du fichier impossible'),
@@ -727,6 +1198,9 @@ export class PieceAddWizardComponent implements OnInit {
     this.selectedFile = null;
     this.importPreview = null;
     this.currentMapping = {};
+    this.mappedPreviewChamps = []; this.mappedPreviewRows = [];
+    this.mapTab = 'mapping';
+    this.dragOver = false;
     this.manualForm = null; this.wizardRows = [];
     this.htmlFile = null;
     this.htmlCandidates = [];

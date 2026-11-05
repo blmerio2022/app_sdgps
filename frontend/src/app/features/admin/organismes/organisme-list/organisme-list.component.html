@@ -32,6 +32,8 @@
 
         <button class="btn btn-danger" *ngIf="canManage && !showDeleted" (click)="openBulkDeleteModal()" [disabled]="selectedIds.size === 0" title="Supprimer la sélection"><i class="fas fa-trash"></i></button>
         <button class="btn btn-success" *ngIf="canManage && showDeleted" (click)="openBulkRestoreModal()" [disabled]="selectedIds.size === 0" title="Restaurer la sélection"><i class="fas fa-undo"></i></button>
+        <!-- Purge définitive de la sélection : proposée UNIQUEMENT dans la corbeille. -->
+        <button class="btn btn-danger" *ngIf="canManage && showDeleted" (click)="openBulkPermanentDelete()" [disabled]="selectedIds.size === 0 || permanentDeleting" title="Supprimer définitivement la sélection"><i class="fas fa-trash-alt"></i></button>
       </div>
 
       <div class="toolbar-right">
@@ -136,6 +138,7 @@
                 <button *ngIf="canManage && !row.is_deleted" class="btn-icon" (click)="openEdit(row)" title="Modifier"><i class="fas fa-edit"></i></button>
                 <button *ngIf="canManage && !row.is_deleted" class="btn-icon btn-icon-danger" (click)="askDelete(row)" title="Supprimer"><i class="fas fa-trash"></i></button>
                 <button *ngIf="canManage && row.is_deleted" class="btn-icon btn-icon-restore" (click)="askRestore(row)" title="Restaurer"><i class="fas fa-undo"></i></button>
+                <button *ngIf="canManage && row.is_deleted" class="btn-icon btn-icon-danger" (click)="askPermanentDelete(row)" title="Supprimer définitivement"><i class="fas fa-trash-alt"></i></button>
               </td>
             </tr>
             <tr *ngIf="filtered.length === 0">
@@ -186,22 +189,18 @@
         </div>
 
         <div class="table-footer-right">
-          <div class="pagination-size">
-            <span class="pagination-size-label">Éléments par page :</span>
-            <div class="pagination-size-select-wrapper">
-              <select class="pagination-size-select" [value]="pageSize" (change)="setPageSize(+$any($event.target).value)">
-                <option *ngFor="let opt of pageSizeOptions" [value]="opt">{{ opt }}</option>
-              </select>
-              <i class="fas fa-chevron-down pagination-size-arrow"></i>
-            </div>
-          </div>
-          <div class="pagination-nav">
-            <button class="pagination-nav-btn" [disabled]="currentPage <= 1" (click)="goToFirstPage()" title="Première page"><i class="fas fa-angle-double-left"></i></button>
-            <button class="pagination-nav-btn" [disabled]="currentPage <= 1" (click)="prevPage()" title="Page précédente"><i class="fas fa-chevron-left"></i></button>
-            <span class="pagination-nav-label">Page {{ currentPage }} sur {{ totalPages }}</span>
-            <button class="pagination-nav-btn" [disabled]="currentPage >= totalPages" (click)="nextPage()" title="Page suivante"><i class="fas fa-chevron-right"></i></button>
-            <button class="pagination-nav-btn" [disabled]="currentPage >= totalPages" (click)="goToLastPage()" title="Dernière page"><i class="fas fa-angle-double-right"></i></button>
-          </div>
+          <app-table-pagination
+          [page]="currentPage"
+          [pageSize]="pageSize"
+          [total]="filtered.length"
+          [pageSizeOptions]="pageSizeOptions"
+      entityPlural="organismes"
+          (pageSizeChange)="setPageSize($event)"
+          (first)="goToFirstPage()"
+          (prev)="prevPage()"
+          (next)="nextPage()"
+          (last)="goToLastPage()">
+        </app-table-pagination>
         </div>
       </div>
     </div>
@@ -363,3 +362,17 @@
 </div>
 
 <!-- Le tri multi-niveaux (bouton + modales) est fourni par <app-multi-level-sort> dans la barre d'outils. -->
+
+<!-- Confirmation de suppression DÉFINITIVE (composant partagé). -->
+<app-permanent-delete-confirm
+  [open]="showPermanentDeleteModal"
+  [bulk]="isBulkPermanent"
+  [count]="selectedIds.size"
+  [label]="permanentDeleteLabel"
+  entitySingular="organisme"
+  entityPlural="organismes"
+  [blockedBy]="permanentDeleteBlockedBy"
+  [busy]="permanentDeleting"
+  (confirm)="confirmPermanentDelete()"
+  (cancel)="closePermanentDelete()">
+</app-permanent-delete-confirm>

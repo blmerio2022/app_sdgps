@@ -37,6 +37,38 @@ describe('PieceAddPageComponent (logique)', () => {
     expect(breadcrumb.clear).toHaveBeenCalled();
   });
 
+  describe('titre & chemin de destination', () => {
+    it('onTypeSelected mémorise puis oublie le type', () => {
+      cmp.onTypeSelected({ code: 'RDC', nom: 'Rapport de Consultation' } as any);
+      expect(cmp.selectedType?.code).toBe('RDC');
+      cmp.onTypeSelected(null);
+      expect(cmp.selectedType).toBeNull();
+    });
+
+    it('pathSegments : propriété › affaire › SSDGPS (mono-session, sans session)', () => {
+      cmp.ssdgps = {
+        id: 's1', numero_ssdgps: 5, type_ssdgps: 'mono-session',
+        propriete_id_titre: 'TF-123', affaire_numero: 9,
+      } as any;
+      expect(cmp.pathSegments.map(s => s.label)).toEqual(['TF-123', 'SD 9', 'SSDGPS 5']);
+    });
+
+    it('pathSegments ajoute la session en multi-session', () => {
+      (cmp as any).sessionId = 'sess1';
+      cmp.sessions = [{ id: 'sess1', numero_session: 3 } as any];
+      cmp.ssdgps = {
+        id: 's1', numero_ssdgps: 5, type_ssdgps: 'multi-session',
+        propriete_id_requisition: 'R-77', affaire_numero: 2,
+      } as any;
+      expect(cmp.pathSegments.map(s => s.label)).toEqual(['R-77', 'SD 2', 'SSDGPS 5', 'Session 3']);
+    });
+
+    it('pathSegments vide tant que le SSDGPS n’est pas chargé', () => {
+      (cmp as any).ssdgps = undefined;
+      expect(cmp.pathSegments).toEqual([]);
+    });
+  });
+
   describe('updateTopbarBreadcrumb (privé)', () => {
     it('termine par « Ajouter une pièce » actif', () => {
       (cmp as any).proprieteId = 'prop1';

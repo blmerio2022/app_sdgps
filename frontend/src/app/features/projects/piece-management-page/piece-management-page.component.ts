@@ -1,3 +1,5 @@
+import { formatDateTime, formatFieldDate } from '../../../shared/utils/date-format.util';
+import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from '../../../shared/components/table-pagination/table-pagination.component';
 import { Component, HostListener, OnInit, ViewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { forkJoin, of } from 'rxjs';
@@ -33,7 +35,8 @@ const PIECE_COLUMNS: ColumnConfig[] = [
   { field: 'portee_label', label: 'Portée', visible: true, type: 'text' },
   { field: 'source_saisie', label: 'Source', visible: true, type: 'text' },
   { field: 'statut', label: 'Statut', visible: true, type: 'text' },
-  { field: 'commentaire', label: 'Commentaire', visible: false, type: 'text' },
+  { field: 'commentaire', label: 'Observations', visible: false, type: 'text' },
+  { field: 'notes_internes', label: 'Notes internes', visible: false, type: 'text' },
   { field: 'created_at', label: 'Créé le', visible: false, type: 'date' },
   { field: 'updated_at', label: 'Modifié le', visible: false, type: 'date' },
   { field: 'is_deleted', label: 'Supprimé', visible: false, type: 'boolean' },
@@ -119,8 +122,8 @@ export class PieceManagementPageComponent implements OnInit {
 
   // Pagination (vue Tableau)
   currentPage = 1;
-  pageSize = 10;
-  pageSizeOptions = [5, 10, 25, 50];
+  pageSize = DEFAULT_PAGE_SIZE;
+  pageSizeOptions = [...PAGE_SIZE_OPTIONS];
 
   // Suppression / restauration
   showDeleteModal = false;
@@ -348,9 +351,9 @@ export class PieceManagementPageComponent implements OnInit {
   statutBadgeClass(v: string): string {
     return { brouillon: 'badge-warning', valide: 'badge-success', rejete: 'badge-secondary' }[v] || 'badge-secondary';
   }
-  formatDate(value: any): string {
-    if (!value) return '—';
-    return new Date(value).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  /** Format unifié (cf. `date-format.util`) — passer le champ pour les dates sans heure. */
+  formatDate(value: any, field?: string): string {
+    return formatFieldDate(value, field);
   }
 
   changeScope(piece: Piece, sessionId: string): void {
@@ -704,7 +707,8 @@ export class PieceManagementPageComponent implements OnInit {
       portee_label: 'Niveau de la pièce : SSDGPS (commune à toutes les sessions) ou Session (spécifique), modifiable librement',
       source_saisie: 'Origine des données de la pièce',
       statut: 'Statut de validation de la pièce',
-      commentaire: 'Note ou remarque libre associée à la pièce',
+      commentaire: 'Observations reprises dans la colonne « Observations » de la page de garde du SSDGPS',
+      notes_internes: "Notes de travail internes à l'application — jamais reprises dans le rapport PDF",
       created_at: "Date de création de l'enregistrement",
       updated_at: "Date de dernière modification de l'enregistrement",
       is_deleted: "Indique si l'enregistrement a été supprimé (logique)",

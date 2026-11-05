@@ -28,12 +28,39 @@ export class PieceAddPageComponent implements OnInit, OnDestroy {
   existingPieces: Piece[] = [];
   defaultSessionId: string | null = null;
 
+  /** Type en cours de création, remonté par l'assistant — sert à titrer la page. */
+  selectedType: PieceTypeDef | null = null;
+
   private projectId!: string;
   private ssdgpsId!: string;
   private proprieteId: string | null = null;
   private affaireId: string | null = null;
   private sessionId: string | null = null;
   private projet: Projet | null = null;
+
+  onTypeSelected(def: PieceTypeDef | null): void { this.selectedType = def; }
+
+  /**
+   * Chemin complet de la pièce en cours d'ajout :
+   * `propriété › affaire › SSDGPS › session`. La session n'apparaît que pour un SSDGPS
+   * multi-session dont la session de destination est connue. Mêmes identifiants et mêmes
+   * icônes que le fil d'Ariane, pour que les deux se relisent sans effort de traduction.
+   */
+  get pathSegments(): { icon: string; label: string }[] {
+    if (!this.ssdgps) return [];
+    const s = this.ssdgps as any;
+    const segs: { icon: string; label: string }[] = [];
+    // Propriété : TOUJOURS l'identifiant (titre foncier, sinon réquisition).
+    const propriete = s.propriete_id_titre || s.propriete_id_requisition || s.propriete_nom;
+    if (propriete) segs.push({ icon: 'fa-map-marker-alt', label: propriete });
+    if (s.affaire_numero != null) segs.push({ icon: 'fa-file-signature', label: `SD ${s.affaire_numero}` });
+    segs.push({ icon: 'fa-satellite-dish', label: `SSDGPS ${this.ssdgps.numero_ssdgps}` });
+    const session = this.sessionId ? this.sessions.find(x => x.id === this.sessionId) : undefined;
+    if (this.ssdgps.type_ssdgps === 'multi-session' && session) {
+      segs.push({ icon: 'fa-clock', label: `Session ${session.numero_session}` });
+    }
+    return segs;
+  }
 
   constructor(
     private projectsService: ProjectsService,

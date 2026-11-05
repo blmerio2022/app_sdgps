@@ -1,4 +1,4 @@
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { OrganismeListComponent } from './organisme-list.component';
 
 describe('OrganismeListComponent (helpers)', () => {
@@ -152,5 +152,146 @@ describe('OrganismeListComponent (config colonnes)', () => {
     cmp.openColumnConfigFromContext();
     expect(cmp.showColumnContextMenu).toBeFalse();
     expect(open).toHaveBeenCalled();
+  });
+});
+
+/**
+ * Colonne « Sigle premier niveau » : propre au tableau de DEUXIÈME niveau (le premier niveau
+ * n'a pas d'organisme de rattachement).
+ */
+describe('OrganismeListComponent (colonne sigle du premier niveau)', () => {
+  let cmp: OrganismeListComponent;
+
+  beforeEach(() => {
+    const svcStub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
+    const toast = { success: () => {}, error: () => {} } as any;
+    cmp = new OrganismeListComponent({} as any, {} as any, toast, {} as any, svcStub, svcStub);
+  });
+
+  it('le tableau de DEUXIÈME niveau expose la colonne, juste après le premier niveau', () => {
+    cmp.niveau = 2;
+    (cmp as any).initColumns();
+    const fields = cmp.columns.map(c => c.field);
+    expect(fields).toContain('niveau1_sigle');
+    expect(fields.indexOf('niveau1_sigle')).toBe(fields.indexOf('niveau1_nom') + 1);
+
+    const col = cmp.columns.find(c => c.field === 'niveau1_sigle')!;
+    expect(col.label).toBe('Sigle premier niveau');
+    expect(col.visible).toBeTrue();
+    expect(col.type).toBe('text');
+  });
+
+  it('le tableau de PREMIER niveau n’expose pas cette colonne', () => {
+    cmp.niveau = 1;
+    (cmp as any).initColumns();
+    expect(cmp.columns.map(c => c.field)).not.toContain('niveau1_sigle');
+  });
+
+  it('la colonne est triable et décrite (deuxième niveau)', () => {
+    cmp.niveau = 2;
+    (cmp as any).initColumns();
+    expect(cmp.sortableFields.map((f: any) => f.field)).toContain('niveau1_sigle');
+    expect(cmp.getFieldDescription('niveau1_sigle')).toContain('premier niveau');
+  });
+});
+
+/**
+ * Suppression DÉFINITIVE des organismes : outils réservés à la CORBEILLE, purge « bottom-up »
+ * (un premier niveau portant des organismes de deuxième niveau ne peut pas être purgé).
+ */
+describe('OrganismeListComponent (suppression définitive)', () => {
+  let cmp: OrganismeListComponent;
+  let service: any;
+  let toast: any;
+
+  beforeEach(() => {
+    service = {
+      permanentDeleteNiveau1: jasmine.createSpy('pd1').and.returnValue(of(null)),
+      permanentDeleteNiveau2: jasmine.createSpy('pd2').and.returnValue(of(null)),
+      bulkPermanentDeleteNiveau1: jasmine.createSpy('bpd1').and.returnValue(of({ deleted_count: 2, errors: [] })),
+      bulkPermanentDeleteNiveau2: jasmine.createSpy('bpd2').and.returnValue(of({ deleted_count: 2, errors: [] })),
+      getNiveau1: () => of([]), getNiveau2: () => of([]),
+    };
+    toast = jasmine.createSpyObj('ToastService', ['success', 'error', 'warning']);
+    const cfg = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
+    cmp = new OrganismeListComponent({} as any, service, toast, {} as any, cfg, cfg);
+    cmp.load = () => {};
+  });
+
+  it('refuse d’ouvrir la purge sur un élément ACTIF (corbeille uniquement)', () => {
+    cmp.askPermanentDelete({ id: '1', nom: 'Actif', is_deleted: false });
+    expect(cmp.showPermanentDeleteModal).toBeFalse();
+  });
+
+  it('ouvre la purge sur un élément en corbeille et le nomme', () => {
+    cmp.askPermanentDelete({ id: '1', nom: 'Direction', is_deleted: true });
+    expect(cmp.showPermanentDeleteModal).toBeTrue();
+    expect(cmp.isBulkPermanent).toBeFalse();
+    expect(cmp.permanentDeleteLabel).toBe('Direction');
+  });
+
+  it('purge en masse : indisponible hors corbeille ou sans sélection', () => {
+    cmp.showDeleted = false;
+    cmp.selectedIds = new Set(['1']);
+    cmp.openBulkPermanentDelete();
+    expect(cmp.showPermanentDeleteModal).toBeFalse();
+
+    cmp.showDeleted = true;
+    cmp.selectedIds = new Set();
+    cmp.openBulkPermanentDelete();
+    expect(cmp.showPermanentDeleteModal).toBeFalse();
+  });
+
+  it('appelle le bon service selon le niveau (unitaire)', () => {
+    cmp.niveau = 2;
+    cmp.askPermanentDelete({ id: 'a', nom: 'Service', is_deleted: true });
+    cmp.confirmPermanentDelete();
+    expect(service.permanentDeleteNiveau2).toHaveBeenCalledWith('a');
+
+    cmp.niveau = 1;
+    cmp.askPermanentDelete({ id: 'b', nom: 'Direction', is_deleted: true });
+    cmp.confirmPermanentDelete();
+    expect(service.permanentDeleteNiveau1).toHaveBeenCalledWith('b');
+  });
+
+  it('purge en masse : vide la sélection et referme la modale', () => {
+    cmp.niveau = 1;
+    cmp.showDeleted = true;
+    cmp.selectedIds = new Set(['a', 'b']);
+    cmp.openBulkPermanentDelete();
+    cmp.confirmPermanentDelete();
+    expect(service.bulkPermanentDeleteNiveau1).toHaveBeenCalledWith(['a', 'b']);
+    expect(cmp.selectedIds.size).toBe(0);
+    expect(cmp.showPermanentDeleteModal).toBeFalse();
+    expect(toast.success).toHaveBeenCalled();
+  });
+
+  it('signale les éléments CONSERVÉS par le serveur (sous-données rattachées)', () => {
+    service.bulkPermanentDeleteNiveau1.and.returnValue(
+      of({ deleted_count: 1, errors: [{ id: 'x', detail: '2 sous-élément(s) rattaché(s).' }] }));
+    cmp.niveau = 1;
+    cmp.showDeleted = true;
+    cmp.selectedIds = new Set(['a', 'x']);
+    cmp.openBulkPermanentDelete();
+    cmp.confirmPermanentDelete();
+    expect(toast.warning).toHaveBeenCalled();
+  });
+
+  it('avertit des sous-données bloquantes au premier niveau seulement', () => {
+    cmp.niveau = 1;
+    expect(cmp.permanentDeleteBlockedBy).toContain('deuxième niveau');
+    expect(cmp.permanentDeleteBlockedBy).toContain('corbeille');
+    cmp.niveau = 2;
+    expect(cmp.permanentDeleteBlockedBy).toBe('');
+  });
+
+  it('remonte le message d’erreur du serveur', () => {
+    service.permanentDeleteNiveau2.and.returnValue(
+      throwError(() => ({ error: { detail: 'Suppression définitive impossible : 2 sous-élément(s).' } })));
+    cmp.niveau = 2;
+    cmp.askPermanentDelete({ id: 'a', nom: 'S', is_deleted: true });
+    cmp.confirmPermanentDelete();
+    expect(toast.error).toHaveBeenCalledWith('Erreur', 'Suppression définitive impossible : 2 sous-élément(s).');
+    expect(cmp.permanentDeleting).toBeFalse();
   });
 });

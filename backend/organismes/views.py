@@ -2,10 +2,12 @@
 Vues API des organismes premier / deuxième niveau — CRUD admin-only (registre global).
 
 Réservé à `ROLE_SUPER_ADMIN` / `ROLE_ADMIN_SYSTEME`. Suppression = soft-delete, avec
-actions `restore`, `bulk-restore` et `bulk-delete`. Reprend le patron de
+actions `restore`, `bulk-restore`, `bulk-delete` et suppression DÉFINITIVE
+(`permanent` / `permanent-delete`, réservée à la corbeille). Reprend le patron de
 `projects.views.BaseOrgScopedViewSet` SANS le scoping par organisation (registre global).
 """
 from django.db.models import Count, Q
+from django.db.models.deletion import ProtectedError
 from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -80,6 +82,67 @@ class _BaseOrganismeViewSet(viewsets.ModelViewSet):
         qs.update(is_deleted=True, deleted_at=timezone.now(), deleted_by=request.user)
         return Response({'deleted_count': deleted_count}, status=status.HTTP_200_OK)
 
+    # ------------------------------------------------------------------ purge définitive
+    def _blocking_children(self, instance) -> int:
+        """Nombre de sous-éléments ENCORE ACTIFS empêchant la purge (0 par défaut).
+
+        Miroir de `projects.views.BaseOrgScopedViewSet._child_count` : purge « bottom-up ».
+        Les enfants déjà en corbeille n'empêchent pas la purge du parent (ils cascadent)."""
+        return 0
+
+    @action(detail=True, methods=['delete'], url_path='permanent')
+    def permanent_delete(self, request, pk=None):
+        """DELETE /…/{id}/permanent/ — suppression DÉFINITIVE (irréversible).
+
+        Autorisée UNIQUEMENT sur un élément en corbeille (`is_deleted=True`) et sans
+        sous-élément actif rattaché."""
+        instance = self.queryset.filter(pk=pk, is_deleted=True).first()
+        if instance is None:
+            return Response({'detail': 'Élément non trouvé ou non supprimé.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        blocking = self._blocking_children(instance)
+        if blocking:
+            return Response(
+                {'detail': f"Suppression définitive impossible : {blocking} sous-élément(s) "
+                           f"rattaché(s). Supprimez-les d'abord."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            instance.delete()
+        except ProtectedError:
+            # Filet de sécurité : une contrainte PROTECT ne doit jamais produire une 500.
+            return Response(
+                {'detail': "Suppression définitive impossible : des éléments rattachés "
+                           "l'empêchent. Supprimez-les d'abord."},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=['post'], url_path='permanent-delete')
+    def bulk_permanent_delete(self, request):
+        """POST /…/permanent-delete/ — {"ids": [...]} — purge en masse (corbeille uniquement).
+
+        Les éléments encore porteurs de sous-données sont conservés et signalés dans `errors`."""
+        ids = request.data.get('ids', [])
+        if not isinstance(ids, list) or not ids:
+            return Response({'detail': 'La liste ids est requise.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        deleted_count = 0
+        errors = []
+        for instance in self.queryset.filter(pk__in=ids, is_deleted=True):
+            blocking = self._blocking_children(instance)
+            if blocking:
+                errors.append({'id': str(instance.pk),
+                               'detail': f"{blocking} sous-élément(s) rattaché(s)."})
+                continue
+            try:
+                instance.delete()
+            except ProtectedError:
+                errors.append({'id': str(instance.pk),
+                               'detail': "Éléments rattachés : suppression impossible."})
+                continue
+            deleted_count += 1
+        return Response({'deleted_count': deleted_count, 'errors': errors},
+                        status=status.HTTP_200_OK)
+
 
 class OrganismeNiveau1ViewSet(_BaseOrganismeViewSet):
     queryset = OrganismeNiveau1.objects.all()
@@ -89,6 +152,16 @@ class OrganismeNiveau1ViewSet(_BaseOrganismeViewSet):
         return qs.annotate(
             nbr_niveaux2=Count('niveaux2', filter=Q(niveaux2__is_deleted=False), distinct=True),
         )
+
+    def _blocking_children(self, instance) -> int:
+        """Un organisme de premier niveau ne peut être purgé tant qu'il porte des organismes
+        de deuxième niveau — **y compris ceux en corbeille**.
+
+        La clé étrangère `OrganismeNiveau2.niveau1` est en `on_delete=PROTECT` : la base
+        refuse la suppression tant qu'une ligne enfant existe, supprimée logiquement ou non.
+        Il n'y a donc PAS de cascade ici (contrairement aux projets) : la purge est strictement
+        « bottom-up », on vide d'abord les organismes de deuxième niveau."""
+        return instance.niveaux2.count()
 
 
 class OrganismeNiveau2ViewSet(_BaseOrganismeViewSet):

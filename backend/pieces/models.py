@@ -95,7 +95,15 @@ class Piece(BaseModel):
         help_text="Rapports de détermination : afficher la version brute des données, la "
                   "version des écarts par rapport à la détermination définitive, ou les deux.",
     )
-    commentaire = models.TextField(blank=True, verbose_name="Commentaire")
+    commentaire = models.TextField(
+        blank=True, verbose_name="Observations",
+        help_text="Reprises dans la colonne « Observations » de la page de garde du SSDGPS.",
+    )
+    notes_internes = models.TextField(
+        blank=True, verbose_name="Notes internes",
+        help_text="Usage interne à l'application : jamais reprises dans le rapport PDF. "
+                  "Contrairement à `commentaire`, ce champ n'alimente aucune sortie imprimée.",
+    )
 
     class Meta:
         ordering = ['ordre', 'type_piece', 'numero']

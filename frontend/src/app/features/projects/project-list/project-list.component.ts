@@ -1,3 +1,5 @@
+import { formatDateTime } from '../../../shared/utils/date-format.util';
+import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from '../../../shared/components/table-pagination/table-pagination.component';
 import { Component, OnInit, OnDestroy, HostListener, ViewChild } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -127,8 +129,8 @@ export class ProjectListComponent implements OnInit, OnDestroy {
 
   // Pagination
   currentPage = 1;
-  pageSize = 10;
-  pageSizeOptions = [5, 10, 25, 50];
+  pageSize = DEFAULT_PAGE_SIZE;
+  pageSizeOptions = [...PAGE_SIZE_OPTIONS];
 
   // Organisation courante (création) / liste des organisations (admin)
   currentOrgId: string | null = null;
@@ -494,9 +496,9 @@ export class ProjectListComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** Format unifié de l'app : `jj/mm/aaaa hh:mm:ss` (cf. `date-format.util`). */
   formatDate(value: any): string {
-    if (!value) return '—';
-    return new Date(value).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return formatDateTime(value);
   }
 
   // ============================================

@@ -1,10 +1,34 @@
 <div class="piece-page" *ngIf="ssdgps">
-  <nav class="page-crumb">
-    <button class="crumb-back" (click)="backToList()">
-      <i class="fas fa-arrow-left"></i> Retour aux pièces
+  <!-- En-tête sur une ligne, identique à celui de la page pièce (retour, icône, titre,
+       contexte à droite) : passer de la création à la consultation ne doit pas donner
+       l'impression de changer d'application. -->
+  <header class="page-head">
+    <button class="head-back" (click)="backToList()" title="Retour aux pièces" aria-label="Retour aux pièces">
+      <i class="fas fa-arrow-left"></i>
     </button>
-    <span class="crumb-title"><i class="fas fa-plus-circle"></i> Ajouter une pièce</span>
-  </nav>
+
+    <span class="head-icon"><i class="fas fa-plus"></i></span>
+
+    <!-- Titre : rappelle le type dès qu'il est choisi — on sait toujours ce qu'on est en
+         train de créer, même après avoir défilé jusqu'au bas d'un long formulaire. -->
+    <h1 class="head-main">
+      Ajouter une nouvelle pièce<ng-container *ngIf="selectedType"> de type
+        <span class="head-type" [title]="selectedType.nom">{{ selectedType.code }}</span>
+      </ng-container>
+    </h1>
+
+    <div class="head-actions">
+      <!-- Chemin complet de destination : propriété › affaire › SSDGPS › session. -->
+      <nav class="head-path" aria-label="Emplacement de la pièce">
+        <ng-container *ngFor="let seg of pathSegments; let last = last">
+          <span class="path-seg" [class.current]="last" [title]="seg.label">
+            <i class="fas" [ngClass]="seg.icon" aria-hidden="true"></i>{{ seg.label }}
+          </span>
+          <i class="fas fa-chevron-right path-sep" *ngIf="!last" aria-hidden="true"></i>
+        </ng-container>
+      </nav>
+    </div>
+  </header>
 
   <div class="page-body">
     <app-piece-add-wizard
@@ -14,6 +38,7 @@
       [catalog]="catalog"
       [existingPieces]="existingPieces"
       [defaultSessionId]="defaultSessionId"
+      (typeSelected)="onTypeSelected($event)"
       (created)="onCreated()"
       (cancelled)="onCancelled()">
     </app-piece-add-wizard>

@@ -4,7 +4,7 @@ Vues API du domaine métier — CRUD avec scoping RBAC par organisation.
 Portée : Admin Système / Super Admin → tout ; Admin Org & Agent → entités de leur(s)
 organisation(s). Suppression = soft-delete. `created_by` renseigné automatiquement.
 """
-from django.db.models import Count, Q, QuerySet
+from django.db.models import Count, F, Q, QuerySet
 from django.utils import timezone
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
@@ -59,6 +59,56 @@ def is_scope_visible(user, org_id, creator_id):
     if ids is None:
         return True
     return org_id in ids or creator_id == user.id
+
+
+def cumul_pieces_annotations(prefix=''):
+    """Annotations du compteur de pièces CUMULÉ sur les sessions, pour un niveau donné.
+
+    Règle métier : le nombre de pièces d'un SSDGPS est le **cumul** des nombres de pièces de
+    toutes ses sessions ; les niveaux supérieurs (affaire, propriété, projet) somment ceux de
+    leurs SSDGPS. Comme une pièce de portée SSDGPS (`session` nulle, dite « commune ») figure
+    dans le rapport de CHAQUE session, elle est comptée une fois **par session** — c'est ce qui
+    fait du total une somme exacte des lignes Session affichées. Aucun filtre sur `statut` :
+    brouillon, validée et rejetée comptent toutes.
+
+    Décomposition (par SSDGPS) : `cumul = A + C × N` où
+      - `A` = pièces rattachées à une session active,
+      - `C` = pièces communes (session nulle),
+      - `N` = nombre de sessions actives.
+
+    `A` est un `COUNT(DISTINCT)` classique. `C × N` s'obtient en comptant **sans `distinct`**
+    les lignes du produit pièces × sessions : la jointure sur `sessions` (créée par la condition
+    du filtre) duplique chaque pièce commune une fois par session. Les autres compteurs du même
+    queryset restent justes car ils utilisent tous `distinct=True`.
+
+    `prefix` est le chemin de relation menant au SSDGPS depuis le modèle annoté
+    (ex. `'affaires__ssdgps_set__'` depuis une propriété ; `''` depuis le SSDGPS lui-même).
+    """
+    pieces, sessions = f'{prefix}pieces', f'{prefix}sessions'
+    # Exclut les niveaux intermédiaires supprimés (propriété / affaire / SSDGPS traversés) :
+    # 'proprietes__affaires__ssdgps_set__' → les 3 paliers doivent être actifs.
+    segments = [s for s in prefix.split('__') if s]
+    intermediaires = {
+        '__'.join(segments[:i + 1]) + '__is_deleted': False for i in range(len(segments))
+    }
+    return {
+        '_pieces_de_session': Count(pieces, distinct=True, filter=Q(**{
+            **intermediaires,
+            f'{pieces}__is_deleted': False,
+            # Implique `session` non nulle : une pièce commune n'a aucune ligne jointe ici.
+            f'{pieces}__session__is_deleted': False,
+        })),
+        '_pieces_communes_par_session': Count(pieces, distinct=False, filter=Q(**{
+            **intermediaires,
+            f'{pieces}__is_deleted': False,
+            f'{pieces}__session__isnull': True,
+            f'{sessions}__is_deleted': False,
+        })),
+    }
+
+
+#: Total exposé par les sérialiseurs, dérivé des deux annotations ci-dessus.
+CUMUL_PIECES_TOTAL = F('_pieces_de_session') + F('_pieces_communes_par_session')
 
 
 class BaseOrgScopedViewSet(viewsets.ModelViewSet):
@@ -250,16 +300,8 @@ class ProjetViewSet(BaseOrgScopedViewSet):
                     proprietes__affaires__ssdgps_set__type_ssdgps=Ssdgps.TypeSSDGPS.MULTI,
                 ),
                 distinct=True),
-            nbr_total_pieces=Count(
-                'proprietes__affaires__ssdgps_set__pieces',
-                filter=Q(
-                    proprietes__is_deleted=False,
-                    proprietes__affaires__is_deleted=False,
-                    proprietes__affaires__ssdgps_set__is_deleted=False,
-                    proprietes__affaires__ssdgps_set__pieces__is_deleted=False,
-                ),
-                distinct=True),
-        )
+            **cumul_pieces_annotations('proprietes__affaires__ssdgps_set__'),
+        ).annotate(nbr_total_pieces=CUMUL_PIECES_TOTAL)
 
 
 class ProprieteViewSet(BaseOrgScopedViewSet):
@@ -293,7 +335,8 @@ class ProprieteViewSet(BaseOrgScopedViewSet):
                     affaires__ssdgps_set__type_ssdgps=Ssdgps.TypeSSDGPS.MULTI,
                 ),
                 distinct=True),
-        )
+            **cumul_pieces_annotations('affaires__ssdgps_set__'),
+        ).annotate(nbr_total_pieces=CUMUL_PIECES_TOTAL)
 
 
 class AffaireViewSet(BaseOrgScopedViewSet):
@@ -321,7 +364,8 @@ class AffaireViewSet(BaseOrgScopedViewSet):
                     ssdgps_set__type_ssdgps=Ssdgps.TypeSSDGPS.MULTI,
                 ),
                 distinct=True),
-        )
+            **cumul_pieces_annotations('ssdgps_set__'),
+        ).annotate(nbr_total_pieces=CUMUL_PIECES_TOTAL)
 
 
 class SsdgpsViewSet(BaseOrgScopedViewSet):
@@ -367,9 +411,8 @@ class SsdgpsViewSet(BaseOrgScopedViewSet):
                 'sessions',
                 filter=Q(sessions__is_deleted=False, type_ssdgps=Ssdgps.TypeSSDGPS.MULTI),
                 distinct=True),
-            nbr_total_pieces=Count(
-                'pieces', filter=Q(pieces__is_deleted=False), distinct=True),
-        )
+            **cumul_pieces_annotations(),
+        ).annotate(nbr_total_pieces=CUMUL_PIECES_TOTAL)
 
 
 class SessionViewSet(BaseOrgScopedViewSet):
@@ -386,7 +429,25 @@ class SessionViewSet(BaseOrgScopedViewSet):
         return serializer.validated_data['ssdgps'].affaire.propriete.projet.created_by_id
 
     def _annotate_counts(self, qs):
+        """Pièces d'une session = ses pièces PROPRES + les pièces COMMUNES du SSDGPS parent.
+
+        Une pièce de portée SSDGPS (`session` nulle) a un contenu unique partagé par toutes
+        les sessions du rapport : elle appartient donc au rapport de CHAQUE session et doit
+        être comptée dans chacune. Même règle que la page des pièces côté front
+        (`scopeBySession` : `!p.session || p.session === currentSessionId`) — sans quoi la
+        colonne « Pièces » d'une session sous-compte son rapport.
+
+        Deux `Count(distinct=True)` séparés puis additionnés : chacun dédoublonne sur l'id de
+        la pièce, ce qui neutralise le produit cartésien des deux jointures.
+        """
         return qs.annotate(
-            nbr_total_pieces=Count(
+            _nbr_pieces_propres=Count(
                 'pieces', filter=Q(pieces__is_deleted=False), distinct=True),
+            _nbr_pieces_communes=Count(
+                'ssdgps__pieces',
+                filter=Q(ssdgps__pieces__is_deleted=False,
+                         ssdgps__pieces__session__isnull=True),
+                distinct=True),
+        ).annotate(
+            nbr_total_pieces=F('_nbr_pieces_propres') + F('_nbr_pieces_communes'),
         )

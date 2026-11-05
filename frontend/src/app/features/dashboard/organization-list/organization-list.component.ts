@@ -1,3 +1,5 @@
+import { formatDateTime } from '../../../shared/utils/date-format.util';
+import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from '../../../shared/components/table-pagination/table-pagination.component';
 import { Component, OnInit, ChangeDetectorRef, ViewChild } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { OrganizationService } from '../../../core/services/organization.service';
@@ -100,8 +102,8 @@ export class OrganizationListComponent implements OnInit {
 
   // Pagination
   currentPage: number = 1;
-  pageSize: number = 5;
-  pageSizeOptions: number[] = [5, 8, 10, 20, 50];
+  pageSize: number = DEFAULT_PAGE_SIZE;
+  pageSizeOptions: number[] = [...PAGE_SIZE_OPTIONS];
 
   // UI
   loading: boolean = false;
@@ -1086,15 +1088,7 @@ export class OrganizationListComponent implements OnInit {
   }
 
   formatDate(dateString: string): string {
-    if (!dateString) return '-';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('fr-FR', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    return formatDateTime(dateString, '-');
   }
 
   // --- Pagination ---

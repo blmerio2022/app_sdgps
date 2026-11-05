@@ -166,9 +166,6 @@
   padding-right: 4px;
   padding-bottom: 24px;
 
-  &::-webkit-scrollbar { width: 8px; }
-  &::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; &:hover { background: var(--accent-color); } }
-
   .item-card {
     display: flex; align-items: center; gap: 14px;
     padding: 14px 16px;
@@ -209,6 +206,12 @@
           text-transform: uppercase; font-size: 11px; font-weight: 600; letter-spacing: 0.3px;
           padding: 2px 8px; border-radius: 6px;
           background: rgba(52, 152, 219, 0.15); color: #3498db; border: 1px solid rgba(52, 152, 219, 0.28);
+        }
+        /* Identifiant de la propriété : accentué et monospace pour se distinguer des compteurs */
+        .id-tag {
+          font-family: 'Consolas', monospace; text-transform: none; letter-spacing: 0;
+          background: rgba(204, 88, 88, 0.1); color: var(--accent-color); border-color: rgba(204, 88, 88, 0.25);
+          i { font-size: 10px; opacity: 0.8; margin-right: 2px; }
         }
       }
     }
@@ -430,9 +433,6 @@ input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-colo
 
   .table-container {
     flex: 1; position: relative; overflow: auto;
-    &::-webkit-scrollbar { width: 8px; height: 8px; }
-    &::-webkit-scrollbar-track { background: var(--primary-color); }
-    &::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; &:hover { background: var(--accent-color); } }
   }
 
   .modern-table {
@@ -465,6 +465,27 @@ input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-colo
         padding: 12px 14px; font-size: 14px; color: var(--text-color); vertical-align: middle;
         &.checkbox-col { text-align: center; }
         &.actions-col { text-align: center; white-space: nowrap; }
+
+        /* Identifiant métier (ID propriété) — chip monospace, style unifié avec la liste des projets */
+        .code-chip {
+          display: inline-block; font-family: 'Consolas', monospace; font-size: 12.5px; font-weight: 600;
+          color: var(--accent-color); background: rgba(204, 88, 88, 0.1);
+          padding: 3px 9px; border-radius: 6px; border: 1px solid rgba(204, 88, 88, 0.22);
+          &.empty { color: var(--text-muted); background: transparent; border-color: var(--border-color); }
+        }
+
+        /* Compteurs — chiffres tabulaires (colonnes alignées), zéro estompé */
+        .num-value {
+          font-variant-numeric: tabular-nums; font-weight: 600;
+          &.zero { color: var(--text-muted); font-weight: 500; }
+        }
+
+        .badge {
+          display: inline-block; padding: 4px 11px; border-radius: 12px; font-size: 12px;
+          font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;
+          &.badge-success { background: rgba(46, 204, 113, 0.15); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.3); }
+          &.badge-secondary { background: rgba(149, 165, 166, 0.15); color: #95a5a6; border: 1px solid rgba(149, 165, 166, 0.3); }
+        }
       }
     }
 
@@ -566,38 +587,6 @@ input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-colo
     font-size: 11px; font-weight: 600; min-width: 20px; text-align: center; margin-left: auto;
   }
 
-  .pagination-size { display: flex; align-items: center; gap: 8px; }
-  .pagination-size-label { font-size: 13px; color: var(--text-muted); white-space: nowrap; }
-  .pagination-size-select-wrapper { position: relative; }
-
-  .pagination-size-select {
-    padding: 6px 28px 6px 12px; border: 1px solid var(--border-color); border-radius: 6px;
-    background: transparent; color: var(--text-color); font-size: 13px; outline: none;
-    appearance: none; cursor: pointer;
-    &:focus { border-color: var(--accent-color); }
-    option { background: var(--primary-color); color: var(--text-color); }
-  }
-  .pagination-size-arrow { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 10px; color: var(--text-muted); pointer-events: none; }
-
-  .pagination-nav { display: flex; align-items: center; gap: 2px; }
-
-  .pagination-nav-btn {
-    display: flex; align-items: center; justify-content: center; width: 30px; height: 30px;
-    border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text-muted);
-    cursor: pointer; transition: all 0.15s; font-size: 12px;
-    &:hover:not(:disabled) { background: var(--hover-bg); color: var(--accent-color); border-color: var(--border-color); }
-    &:disabled { opacity: 0.2; cursor: default; }
-  }
-
-  .pagination-nav-label { font-size: 13px; font-weight: 500; color: var(--text-muted); padding: 0 8px; white-space: nowrap; }
-
-  .pagination-page-btn {
-    display: flex; align-items: center; justify-content: center; width: 30px; height: 30px;
-    border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text-muted);
-    cursor: pointer; transition: all 0.15s; font-size: 12px;
-    &:hover:not(:disabled) { background: var(--hover-bg); color: var(--accent-color); border-color: var(--border-color); }
-    &.active { background: var(--accent-color); color: #fff; border-color: var(--accent-color); &:hover { background: #b84949; } }
-  }
 }
 
 /* ============================================ */

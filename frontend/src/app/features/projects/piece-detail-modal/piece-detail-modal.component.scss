@@ -15,7 +15,7 @@
     .close-btn { background: transparent; border: none; color: #95a5a6; cursor: pointer; width: 32px; height: 32px; border-radius: 6px; font-size: 16px; &:hover { background: rgba(255,255,255,0.1); color: #fff; } }
   }
 
-  .modal-body { padding: 22px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
+  .modal-body { padding: 16px 20px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
 
   .modal-footer { display: flex; justify-content: flex-end; padding: 14px 22px; border-top: 1px solid var(--border-color); background: var(--primary-color); }
 }
@@ -30,23 +30,112 @@
   }
 }
 
-.view-only {
-  display: flex; flex-direction: column; gap: 10px; align-items: flex-start;
-  .badge { padding: 4px 10px; border-radius: 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;
-    &.badge-success { background: rgba(46, 204, 113, 0.15); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.3); }
-    &.badge-warning { background: rgba(243, 156, 18, 0.15); color: #f39c12; border: 1px solid rgba(243, 156, 18, 0.3); }
-    &.badge-secondary { background: rgba(149, 165, 166, 0.15); color: #95a5a6; border: 1px solid rgba(149, 165, 166, 0.3); }
+/* ============================================================================
+   SECTION « STATUT & RAPPORT PDF »
+   Deux surfaces pour la même information : consultation (synthèse lisible) et
+   édition (saisie). Palette de statut UNIQUE, partagée par la pastille d'en-tête,
+   l'encart de synthèse et le sélecteur segmenté — et alignée sur `statutBadgeClass`
+   (donc sur les badges des tableaux) : brouillon = ambre, validée = vert,
+   rejetée = gris neutre.
+   ========================================================================== */
+
+/* Pastille de statut dans l'en-tête d'accordéon : reste visible section repliée. */
+.status-pill {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 20px;
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+  i { font-size: 10.5px; }
+  &.badge-success { background: rgba(46, 204, 113, 0.15); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.3); }
+  &.badge-warning { background: rgba(243, 156, 18, 0.15); color: #f39c12; border: 1px solid rgba(243, 156, 18, 0.3); }
+  &.badge-secondary { background: rgba(149, 165, 166, 0.15); color: #95a5a6; border: 1px solid rgba(149, 165, 166, 0.32); }
+}
+
+/* ---------- Consultation ---------- */
+.status-view { display: flex; flex-direction: column; gap: 12px; }
+
+/* Encart dominant : le statut est l'information principale de la section. */
+.status-hero {
+  display: flex; align-items: center; gap: 13px; padding: 12px 14px; border-radius: 10px;
+  background: var(--secondary-color); border: 1px solid var(--border-color);
+
+  .status-hero-icon {
+    width: 38px; height: 38px; flex-shrink: 0; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center; font-size: 16px;
   }
-  .readonly-text { margin: 0; font-size: 13px; color: var(--text-color); white-space: pre-wrap; &.muted { color: var(--text-muted); font-style: italic; } }
+  .status-hero-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .status-hero-label {
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.4px; color: var(--text-muted);
+  }
+  .status-hero-value { font-size: 15px; font-weight: 700; color: var(--text-color); }
+
+  &.badge-success { border-color: rgba(46, 204, 113, 0.35);
+    .status-hero-icon { background: rgba(46, 204, 113, 0.15); color: #2ecc71; }
+    .status-hero-value { color: #2ecc71; } }
+  &.badge-warning { border-color: rgba(243, 156, 18, 0.35);
+    .status-hero-icon { background: rgba(243, 156, 18, 0.15); color: #f39c12; }
+    .status-hero-value { color: #f39c12; } }
+  &.badge-secondary { border-color: rgba(149, 165, 166, 0.35);
+    .status-hero-icon { background: rgba(149, 165, 166, 0.15); color: #95a5a6; }
+    .status-hero-value { color: #95a5a6; } }
+}
+
+/* Options du rapport : cellules libellé / valeur, colonnes fluides selon la largeur. */
+.info-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px;
+
+  .info-cell {
+    display: flex; flex-direction: column; gap: 5px; min-width: 0;
+    padding: 10px 12px; border-radius: 8px;
+    background: var(--secondary-color); border: 1px solid var(--border-color);
+  }
+  .info-label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.4px; color: var(--text-muted);
+    i { color: var(--accent-color); font-size: 11px; }
+  }
+  .info-value { font-size: 13.5px; font-weight: 600; color: var(--text-color); }
+  /* Valeur réellement retenue quand l'option est « Automatique ». */
+  .info-resolved {
+    font-size: 12.5px; font-weight: 500; color: var(--text-muted); white-space: nowrap;
+    i { font-size: 10px; margin: 0 3px; opacity: 0.7; }
+  }
+}
+
+/* Textes libres : deux natures distinctes — les observations partent au rapport (liseré
+   accentué), les notes internes n'en sortent jamais (liseré neutre + cadenas). La
+   distinction doit être lisible SANS lire les libellés. */
+.notes-view { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+
+.note-block {
+  display: flex; flex-direction: column; gap: 7px; margin: 0; padding: 11px 13px;
+  min-width: 0; border-radius: 8px;
+  background: var(--secondary-color); border: 1px solid var(--border-color);
+
+  .note-head {
+    display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+    i { font-size: 11px; }
+  }
+  .note-tag {
+    padding: 1px 7px; border-radius: 20px; font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.3px; background: var(--primary-color); border: 1px solid var(--border-color);
+    color: var(--text-muted);
+  }
+  blockquote { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-color); white-space: pre-wrap; min-width: 0; }
+  .note-empty { margin: 0; font-size: 12.5px; color: var(--text-muted); font-style: italic; }
+
+  &.published { border-left: 3px solid var(--accent-color); .note-head { color: var(--accent-color); } }
+  &.private { border-left: 3px solid var(--text-muted); .note-head { color: var(--text-muted); } }
 }
 
 .detail-section {
-  padding: 16px; background: var(--primary-color); border: 1px solid var(--border-color); border-radius: 10px;
-  h4 { margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--text-color); display: flex; align-items: center; gap: 8px; i { color: var(--accent-color); } }
+  padding: 12px 14px; background: var(--primary-color); border: 1px solid var(--border-color); border-radius: 10px;
+  h4 { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--text-color); display: flex; align-items: center; gap: 8px; i { color: var(--accent-color); } }
 
   /* En-tête d'accordéon (remplace le <h4>) : cliquable, chevron animé, stats intégrées. */
   .section-header {
-    width: 100%; margin: 0 0 12px; padding: 0; background: none; border: none; cursor: pointer;
+    width: 100%; margin: 0 0 10px; padding: 0; background: none; border: none; cursor: pointer;
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
     font-size: 13px; font-weight: 600; color: var(--text-color); text-align: left;
     .section-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
@@ -100,10 +189,12 @@
 }
 .niveau-static { margin: 0; font-size: 13px; color: var(--text-color); }
 
+/* ---------- Édition ---------- */
 .meta-fields {
-  display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 12px;
+  display: flex; flex-direction: column; gap: 18px; margin-bottom: 12px;
+
   .field {
-    display: flex; flex-direction: column; gap: 5px; min-width: 140px;
+    display: flex; flex-direction: column; gap: 6px; min-width: 0;
     &.grow { flex: 1; }
     label { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
     select, textarea {
@@ -112,15 +203,54 @@
       &:focus { outline: none; border-color: var(--accent-color); }
     }
     textarea { resize: vertical; }
-    .field-hint { font-size: 11px; }
+    .field-hint {
+      font-size: 11px; line-height: 1.4;
+      i { margin-right: 5px; opacity: 0.85; }
+      /* Valeur retenue par le mode « Automatique » : accentuée, ce n'est pas une simple aide. */
+      &.resolved { color: var(--accent-color); font-weight: 600; }
+      /* Destination du texte saisi : au rapport (accent) ou strictement interne (neutre). */
+      &.published { color: var(--accent-color); font-weight: 500; }
+      &.private { color: var(--text-muted); font-weight: 500; }
+    }
   }
 
-  /* Sous-titre de groupe (pleine largeur) — sépare l'état de la pièce des options du rapport PDF. */
-  .field-group-label {
-    flex-basis: 100%; display: flex; align-items: center; gap: 8px; margin: 6px 0 0;
+  /* Groupe thématique : sépare l'état de la pièce des options du rapport PDF. */
+  .edit-block { display: flex; flex-direction: column; gap: 12px; }
+  .edit-block-head {
+    display: flex; align-items: center; gap: 8px;
     font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);
     i { color: var(--accent-color); }
     &::after { content: ''; flex: 1; height: 1px; background: var(--border-color); }
+  }
+
+  /* Champs du rapport : colonnes fluides, alignées en haut (hauteurs d'aide variables). */
+  .field-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 14px; align-items: start;
+  }
+
+  /* Sélecteur de statut segmenté — 3 valeurs exclusives, sélection en un clic. */
+  .statut-segmented {
+    display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; width: fit-content; max-width: 100%;
+    background: var(--secondary-color); border: 1px solid var(--border-color); border-radius: 10px;
+
+    .statut-seg {
+      position: relative; display: inline-flex; align-items: center; gap: 7px;
+      padding: 7px 14px; border: 1px solid transparent; border-radius: 7px;
+      font-size: 12.5px; font-weight: 600; color: var(--text-muted);
+      cursor: pointer; user-select: none; transition: all 0.15s;
+      i { font-size: 12px; }
+      /* Radio réel conservé (accessibilité clavier + lecteurs d'écran), rendu invisible. */
+      input { position: absolute; opacity: 0; width: 0; height: 0; margin: 0; pointer-events: none; }
+
+      &:hover:not(.active) { color: var(--text-color); background: var(--hover-bg); }
+      /* Focus clavier : l'anneau doit rester visible puisque le radio l'est pas. */
+      &:focus-within { box-shadow: 0 0 0 2px rgba(204, 88, 88, 0.35); }
+
+      &.seg-valide.active { background: rgba(46, 204, 113, 0.15); color: #2ecc71; border-color: rgba(46, 204, 113, 0.4); }
+      &.seg-brouillon.active { background: rgba(243, 156, 18, 0.15); color: #f39c12; border-color: rgba(243, 156, 18, 0.4); }
+      &.seg-rejete.active { background: rgba(149, 165, 166, 0.16); color: #95a5a6; border-color: rgba(149, 165, 166, 0.42); }
+    }
   }
 
   /* Champ « Position dans le rapport » : saisie + bouton Déplacer. */
@@ -218,8 +348,6 @@
       &:hover { background: rgba(231, 76, 60, 0.12); color: #e74c3c; }
     }
   }
-  .data-grid-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-  .data-grid-toolbar .toolbar-left { display: flex; align-items: center; gap: 8px; }
   .btn-add-row {
     display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 7px; cursor: pointer;
     background: transparent; border: 1px dashed var(--border-color); color: var(--text-muted); font-size: 12.5px; font-weight: 500;
@@ -384,7 +512,7 @@
    on réintroduit l'espacement inter-sections et on lève le scroll interne. */
 .embedded-content {
   width: 100%; display: flex; flex-direction: column;
-  .modal-body { padding: 0; overflow: visible; display: flex; flex-direction: column; gap: 18px; }
+  .modal-body { padding: 0; overflow: visible; display: flex; flex-direction: column; gap: 10px; }
 }
 
 /* ---------- Barre d'outils : groupe « Remplacer les données » (projeté dans le tableau) ---------- */
@@ -494,41 +622,16 @@
 }
 
 /* ---- Barre d'enregistrement automatique (haut de page) — style aligné sur « Champs par défaut ». ---- */
-.autosave-bar {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
-  margin: 0 0 16px; padding: 10px 14px; border-radius: 12px;
-  border: 1px solid var(--border-color, #e5e7eb); background: var(--secondary-color, #fff);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  .spacer { flex: 1 1 auto; }
-}
-/* Interrupteur « Enregistrement automatique » (switch élégant). */
-.autosave-switch {
-  display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none;
-  input { position: absolute; opacity: 0; width: 0; height: 0; }
-  .switch-track {
-    position: relative; flex: 0 0 auto; width: 38px; height: 22px; border-radius: 999px;
-    background: var(--border-color, #d1d5db); transition: background 0.2s ease;
-  }
-  .switch-thumb {
-    position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
-    background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); transition: transform 0.2s ease;
-  }
-  input:checked + .switch-track { background: var(--accent-color, #cc5858); }
-  input:checked + .switch-track .switch-thumb { transform: translateX(16px); }
-  input:focus-visible + .switch-track { box-shadow: 0 0 0 3px rgba(204, 88, 88, 0.25); }
-  .switch-label {
+/* Mention d'enregistrement automatique : information de confort, réduite à une ligne
+   discrète — plus de bascule ni de barre encadrée (l'enregistrement est toujours actif). */
+.autosave-note {
+  margin: 0; display: flex; align-items: center;
+  span {
     display: inline-flex; align-items: center; gap: 7px;
-    font-size: 13px; font-weight: 600; color: var(--text-color, #1f2937);
-    i { color: var(--accent-color, #cc5858); }
+    font-size: 12px; font-weight: 500; color: var(--text-muted);
+    i { font-size: 11px; }
   }
+  .idle i { color: var(--accent-color); opacity: 0.75; }
+  .saving { color: var(--accent-color); }
+  .saved { color: #2ecc71; }
 }
-/* Pastille d'état (identique à la page « Champs par défaut »). */
-.autosave-status span,
-.autosave-off-hint {
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 6px 12px; border-radius: 20px; font-size: 12.5px; font-weight: 500;
-  border: 1px solid var(--border-color, #e5e7eb); background: var(--hover-bg, rgba(0, 0, 0, 0.03));
-  color: var(--text-muted, #6b7280);
-}
-.autosave-status .saved { color: #16a34a; background: rgba(22, 163, 74, 0.08); border-color: rgba(22, 163, 74, 0.25); }
-.autosave-status .saving { color: var(--accent-color, #cc5858); background: rgba(204, 88, 88, 0.07); border-color: rgba(204, 88, 88, 0.25); }

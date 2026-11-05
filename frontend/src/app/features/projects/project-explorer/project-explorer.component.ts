@@ -1,3 +1,5 @@
+import { formatDateTime, formatFieldDate } from '../../../shared/utils/date-format.util';
+import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from '../../../shared/components/table-pagination/table-pagination.component';
 import { Component, OnInit, OnDestroy, HostListener, ViewChild } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Observable, forkJoin, Subscription } from 'rxjs';
@@ -36,11 +38,13 @@ const VIEW_MODE_KEY = 'sdgps_explorer_view_mode';
 const COLUMNS_BY_LEVEL: Record<Level, ColumnConfig[]> = {
   propriete: [
     { field: 'nom_propriete', label: 'Propriété-dite', visible: true, type: 'text' },
+    { field: 'id_propriete', label: 'ID propriété', visible: true, type: 'text' },
     { field: 'id_requisition', label: 'Réquisition', visible: true, type: 'text' },
     { field: 'id_titre', label: 'Titre foncier', visible: true, type: 'text' },
     { field: 'nbr_total_affaires', label: 'Affaires', visible: true, type: 'number' },
     { field: 'nbr_total_ssdgps', label: 'SSDGPS', visible: true, type: 'number' },
     { field: 'nbr_total_sessions', label: 'Sessions', visible: true, type: 'number' },
+    { field: 'nbr_total_pieces', label: 'Pièces', visible: true, type: 'number' },
     { field: 'created_at', label: 'Créé le', visible: false, type: 'date' },
     { field: 'updated_at', label: 'Modifié le', visible: false, type: 'date' },
     { field: 'is_deleted', label: 'Supprimé', visible: false, type: 'boolean' },
@@ -56,6 +60,7 @@ const COLUMNS_BY_LEVEL: Record<Level, ColumnConfig[]> = {
     { field: 'date_bornage', label: 'Date bornage', visible: true, type: 'date' },
     { field: 'nbr_total_ssdgps', label: 'SSDGPS', visible: true, type: 'number' },
     { field: 'nbr_total_sessions', label: 'Sessions', visible: true, type: 'number' },
+    { field: 'nbr_total_pieces', label: 'Pièces', visible: true, type: 'number' },
     { field: 'created_at', label: 'Créé le', visible: false, type: 'date' },
     { field: 'updated_at', label: 'Modifié le', visible: false, type: 'date' },
     { field: 'is_deleted', label: 'Supprimé', visible: false, type: 'boolean' },
@@ -113,6 +118,7 @@ const FIELD_DESCRIPTIONS: Record<string, string> = {
   nom_propriete: 'Nom de la propriété (propriété-dite)',
   id_requisition: 'Identifiant de réquisition (R<numéro>/<indice>)',
   id_titre: 'Identifiant du titre foncier (T<numéro>/<indice>)',
+  id_propriete: 'Identifiant de la propriété : le titre foncier s\'il est renseigné, sinon la réquisition',
   numero_sd_affaire: "Numéro d'ordre du SD d'affaire dans la propriété",
   nature_procedure_affaire: "Type de procédure d'immatriculation",
   nature_affaire: "Nature précise de l'affaire (dépend de la procédure)",
@@ -123,7 +129,7 @@ const FIELD_DESCRIPTIONS: Record<string, string> = {
   nbr_total_affaires: 'Nombre total d\'affaires (SD) rattachées',
   nbr_total_ssdgps: 'Nombre total de SSDGPS rattachés',
   nbr_total_sessions: 'Nombre total de sessions rattachées',
-  nbr_total_pieces: 'Nombre total de pièces rattachées au rapport',
+  nbr_total_pieces: 'Nombre total de pièces rattachées',
   numero_session: "Numéro d'ordre de la session",
   date_session: "Date de l'observation",
   created_at: "Date de création de l'enregistrement",
@@ -210,8 +216,8 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
 
   // Pagination (mode Tableau)
   currentPage = 1;
-  pageSize = 10;
-  pageSizeOptions = [5, 10, 25, 50];
+  pageSize = DEFAULT_PAGE_SIZE;
+  pageSizeOptions = [...PAGE_SIZE_OPTIONS];
 
   // Affichage des éléments supprimés
   showDeleted = false;
@@ -684,7 +690,7 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
     switch (level) {
       case 'propriete': {
         // Identifiant affiché : le titre foncier s'il existe, sinon la réquisition.
-        const idPropriete = item.id_titre || item.id_requisition;
+        const idPropriete = this.proprieteIdentifier(item);
         return item.nom_propriete + (idPropriete ? ` (${idPropriete})` : '');
       }
       // Note : le fil d'Ariane utilise `proprieteBreadcrumbLabel` (identifiant seul).
@@ -695,10 +701,19 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Identifiant d'une propriété : le titre foncier s'il est renseigné, sinon la réquisition
+   * (chaîne vide si aucun des deux). Le backend l'expose déjà sous `id_propriete` ; le repli
+   * sur les deux champs sources couvre les objets construits côté client (chaîne de navigation).
+   */
+  proprieteIdentifier(item: any): string {
+    return item?.id_propriete || item?.id_titre || item?.id_requisition || '';
+  }
+
   /** Libellé de propriété pour le fil d'Ariane : uniquement l'identifiant
    * (titre foncier s'il existe, sinon réquisition), sans le nom de la propriété. */
   proprieteBreadcrumbLabel(item: any): string {
-    return item?.id_titre || item?.id_requisition || item?.nom_propriete || '';
+    return this.proprieteIdentifier(item) || item?.nom_propriete || '';
   }
 
   natureLabel(v: string): string { return NATURE_AFFAIRE_LABELS[v as NatureAffaire] || v; }
@@ -712,23 +727,28 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
     return { propriete: 'propriété', affaire: 'affaire', ssdgps: 'SSDGPS', session: '' }[this.level];
   }
 
-  formatDate(value: any): string {
-    if (!value) return '—';
-    return new Date(value).toLocaleString('fr-FR', {
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-    });
+  /**
+   * Format unifié (cf. `date-format.util`) : `date_bornage` et `date_session` s'affichent SANS
+   * heure ; toutes les autres dates en `jj/mm/aaaa hh:mm:ss`. Passer le nom du champ quand il
+   * est connu pour que la règle s'applique.
+   */
+  formatDate(value: any, field?: string): string {
+    return formatFieldDate(value, field);
   }
 
-  /** Convertit une valeur ISO du backend vers le format attendu par un
-   * `<input type="datetime-local" step="1">` (« YYYY-MM-DDTHH:mm:ss », heure locale). */
-  private toDatetimeLocal(value: any): string | null {
+  /**
+   * Convertit une valeur du backend vers le format attendu par un `<input type="date">`
+   * (« YYYY-MM-DD », heure locale). Les seules dates saisies dans l'explorateur sont
+   * `date_bornage` et `date_session`, qui ne portent pas d'heure (cf. `date-format.util`).
+   */
+  private toDateInput(value: any): string | null {
     if (!value) return null;
     const d = new Date(value);
     if (isNaN(d.getTime())) return null;
     const p = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` +
-      `T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    // Composantes UTC (et non locales) : ces dates sont enregistrées à minuit UTC. Lire en heure
+    // locale décalerait le jour pré-rempli dans le formulaire pour les fuseaux négatifs.
+    return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
   }
 
   // --- Recherche, filtre, tri & sélection ---
@@ -939,10 +959,15 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
   }
   getFieldDescription(field: string): string { return FIELD_DESCRIPTIONS[field] || ''; }
 
+  /** Vrai pour les colonnes de comptage (rendu numérique aligné à droite, repli 0). */
+  isCountField(field: string): boolean { return field.startsWith('nbr_total_'); }
+
   getCellValue(item: any, field: string): string {
-    if (field === 'date_bornage' || field === 'date_session' || field === 'created_at' || field === 'updated_at' || field === 'deleted_at') return this.formatDate(item[field]);
+    if (field === 'date_bornage' || field === 'date_session' || field === 'created_at' || field === 'updated_at' || field === 'deleted_at') return this.formatDate(item[field], field);
     if (field === 'nature_affaire') return this.natureLabel(item[field]);
     if (field === 'is_deleted') return item[field] ? 'Oui' : 'Non';
+    if (field === 'id_propriete') return this.proprieteIdentifier(item) || '—';
+    if (this.isCountField(field)) return String(item[field] ?? 0);
     return String(item[field] ?? '—');
   }
 
@@ -990,7 +1015,7 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
           numero_sd_affaire: [item?.numero_sd_affaire ?? null, Validators.required],
           nature_procedure_affaire: [item?.nature_procedure_affaire || '', Validators.required],
           nature_affaire: [item?.nature_affaire || '', Validators.required],
-          date_bornage: [this.toDatetimeLocal(item?.date_bornage)],
+          date_bornage: [this.toDateInput(item?.date_bornage)],
         });
         this.onProcedureChange(item?.nature_procedure_affaire || '');
         this.form.get('nature_procedure_affaire')!.valueChanges.subscribe(v => this.onProcedureChange(v));
@@ -1005,7 +1030,7 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
       case 'session':
         this.form = this.fb.group({
           numero_session: [item?.numero_session ?? null, Validators.required],
-          date_session: [this.toDatetimeLocal(item?.date_session)],
+          date_session: [this.toDateInput(item?.date_session)],
         });
         break;
     }

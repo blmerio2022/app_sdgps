@@ -38,12 +38,51 @@ describe('PieceDetailPageComponent (logique)', () => {
     );
   });
 
-  it('goToEdit navigue vers la page de modification', () => {
-    cmp.goToEdit();
-    expect(router.navigate).toHaveBeenCalledWith(
-      ['/projets', 'p1', 'pieces', 's1', 'piece', 'pi1', 'modifier'],
-      jasmine.any(Object),
-    );
+  describe('bascule Consultation / Modification', () => {
+    it('goToEdit navigue vers la page de modification', () => {
+      cmp.mode = 'view';
+      cmp.goToEdit();
+      expect(router.navigate).toHaveBeenCalledWith(
+        ['/projets', 'p1', 'pieces', 's1', 'piece', 'pi1', 'modifier'],
+        jasmine.any(Object),
+      );
+    });
+
+    it('goToView revient à la page de consultation (route sœur, sans « modifier »)', () => {
+      cmp.mode = 'edit';
+      cmp.goToView();
+      expect(router.navigate).toHaveBeenCalledWith(
+        ['/projets', 'p1', 'pieces', 's1', 'piece', 'pi1'],
+        jasmine.any(Object),
+      );
+    });
+
+    it('conserve le contexte de navigation dans les query params', () => {
+      (cmp as any).proprieteId = 'prop1';
+      (cmp as any).affaireId = 'aff1';
+      (cmp as any).sessionId = 'se1';
+      cmp.mode = 'edit';
+      cmp.goToView();
+      expect(router.navigate).toHaveBeenCalledWith(jasmine.any(Array), {
+        queryParams: { proprieteId: 'prop1', affaireId: 'aff1', session: 'se1' },
+      });
+    });
+
+    it('basculer vers le mode courant ne navigue pas', () => {
+      cmp.mode = 'edit';
+      cmp.switchMode('edit');
+      cmp.mode = 'view';
+      cmp.switchMode('view');
+      expect(router.navigate).not.toHaveBeenCalled();
+    });
+  });
+
+  it('onAutoSaveState mémorise l’état remonté par le composant hébergé', () => {
+    expect(cmp.autoSaveState).toBe('idle');
+    cmp.onAutoSaveState('saving');
+    expect(cmp.autoSaveState).toBe('saving');
+    cmp.onAutoSaveState('saved');
+    expect(cmp.autoSaveState).toBe('saved');
   });
 
   it('ngOnDestroy efface le fil d’Ariane', () => {

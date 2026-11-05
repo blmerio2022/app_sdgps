@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from .models import Piece, PieceImage
 from .validators import validate_piece_coherence, points_without_photo
+from accounts.fields import AuthorDisplayField
 
 
 class PieceImageSerializer(serializers.ModelSerializer):
@@ -37,9 +38,9 @@ class PieceSerializer(serializers.ModelSerializer):
         source='session.numero_session', read_only=True, allow_null=True, default=None)
     niveau = serializers.SerializerMethodField()
     portee = serializers.SerializerMethodField()
-    created_by_email = serializers.EmailField(source='created_by.email', read_only=True)
-    updated_by_email = serializers.EmailField(source='updated_by.email', read_only=True)
-    deleted_by_email = serializers.EmailField(source='deleted_by.email', read_only=True)
+    created_by_email = AuthorDisplayField(source='created_by')
+    updated_by_email = AuthorDisplayField(source='updated_by')
+    deleted_by_email = AuthorDisplayField(source='deleted_by')
     images = PieceImageSerializer(many=True, read_only=True)
     orientation_effective = serializers.SerializerMethodField()
 
@@ -50,7 +51,7 @@ class PieceSerializer(serializers.ModelSerializer):
             'session_numero', 'niveau', 'portee', 'ordre',
             'fichier', 'fichier_url', 'taille_octets', 'images', 'payload', 'source_saisie', 'statut',
             'orientation', 'orientation_effective', 'versions_rapport',
-            'commentaire', 'organization_id', 'created_at', 'updated_at', 'is_deleted',
+            'commentaire', 'notes_internes', 'organization_id', 'created_at', 'updated_at', 'is_deleted',
             'deleted_at', 'created_by_email', 'updated_by_email', 'deleted_by_email',
         ]
         read_only_fields = ['id', 'ordre', 'taille_octets', 'created_at', 'updated_at', 'is_deleted', 'deleted_at']

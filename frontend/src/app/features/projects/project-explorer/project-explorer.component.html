@@ -199,23 +199,26 @@
           <span class="deleted-badge" *ngIf="it.is_deleted"><i class="fas fa-trash"></i> Supprimé</span>
         </span>
         <span class="item-meta" *ngIf="level==='propriete'">
+          <span class="tag id-tag" *ngIf="proprieteIdentifier(it)"><i class="fas fa-fingerprint"></i> {{ proprieteIdentifier(it) }}</span>
           <span class="tag">{{ it.nbr_total_affaires ?? 0 }} affaire(s)</span>
           <span class="tag">{{ it.nbr_total_ssdgps ?? 0 }} SSDGPS</span>
           <span class="tag">{{ it.nbr_total_sessions ?? 0 }} session(s)</span>
+          <span class="tag">{{ it.nbr_total_pieces ?? 0 }} pièce(s)</span>
         </span>
         <span class="item-meta" *ngIf="level==='affaire'">
           <span class="tag">{{ it.nature_procedure_affaire }}</span>
           {{ natureLabel(it.nature_affaire) }}
-          <ng-container *ngIf="it.date_bornage"> · bornage {{ formatDate(it.date_bornage) }}</ng-container>
+          <ng-container *ngIf="it.date_bornage"> · bornage {{ formatDate(it.date_bornage, 'date_bornage') }}</ng-container>
           <span class="tag">{{ it.nbr_total_ssdgps ?? 0 }} SSDGPS</span>
           <span class="tag">{{ it.nbr_total_sessions ?? 0 }} session(s)</span>
+          <span class="tag">{{ it.nbr_total_pieces ?? 0 }} pièce(s)</span>
         </span>
         <span class="item-meta" *ngIf="level==='ssdgps'">
           <span class="tag">{{ it.type_ssdgps }}</span> {{ it.nbr_total_sessions ?? 0 }} session(s)
           <span class="tag">{{ it.nbr_total_pieces ?? 0 }} pièce(s)</span>
         </span>
         <span class="item-meta" *ngIf="level==='session'">
-          <ng-container *ngIf="it.date_session">{{ formatDate(it.date_session) }} · </ng-container>{{ it.nbr_total_pieces ?? 0 }} pièce(s)
+          <ng-container *ngIf="it.date_session">{{ formatDate(it.date_session, 'date_session') }} · </ng-container>{{ it.nbr_total_pieces ?? 0 }} pièce(s)
         </span>
       </div>
       <div class="item-actions" (click)="$event.stopPropagation()">
@@ -291,10 +294,17 @@
               <input type="checkbox" [checked]="isSelected(it)" (change)="toggleSelect(it, $event)">
             </td>
             <td *ngFor="let col of getVisibleColumns()" (contextmenu)="onItemRightClick($event, it, col.field)" (click)="$event.stopPropagation()">
-              <span *ngIf="col.field === 'date_bornage' || col.field === 'date_session' || col.field === 'created_at' || col.field === 'updated_at' || col.field === 'deleted_at'">{{ formatDate(it[col.field]) }}</span>
-              <span *ngIf="col.field === 'nature_affaire'">{{ natureLabel(it[col.field]) }}</span>
-              <span *ngIf="col.field === 'is_deleted'">{{ it.is_deleted ? 'Oui' : 'Non' }}</span>
-              <span *ngIf="col.field !== 'date_bornage' && col.field !== 'date_session' && col.field !== 'created_at' && col.field !== 'updated_at' && col.field !== 'deleted_at' && col.field !== 'nature_affaire' && col.field !== 'is_deleted'">{{ it[col.field] ?? '—' }}</span>
+              <ng-container [ngSwitch]="col.field">
+                <!-- Identifiant de la propriété (titre foncier, sinon réquisition) — chip monospace -->
+                <span *ngSwitchCase="'id_propriete'" class="code-chip" [class.empty]="!proprieteIdentifier(it)">{{ getCellValue(it, col.field) }}</span>
+                <!-- Compteurs : chiffres tabulaires, valeur nulle grisée pour lire la densité d'un coup d'œil -->
+                <span *ngSwitchCase="'nbr_total_affaires'" class="num-value" [class.zero]="!it.nbr_total_affaires">{{ it.nbr_total_affaires ?? 0 }}</span>
+                <span *ngSwitchCase="'nbr_total_ssdgps'" class="num-value" [class.zero]="!it.nbr_total_ssdgps">{{ it.nbr_total_ssdgps ?? 0 }}</span>
+                <span *ngSwitchCase="'nbr_total_sessions'" class="num-value" [class.zero]="!it.nbr_total_sessions">{{ it.nbr_total_sessions ?? 0 }}</span>
+                <span *ngSwitchCase="'nbr_total_pieces'" class="num-value" [class.zero]="!it.nbr_total_pieces">{{ it.nbr_total_pieces ?? 0 }}</span>
+                <span *ngSwitchCase="'is_deleted'" class="badge" [class.badge-success]="!it.is_deleted" [class.badge-secondary]="it.is_deleted">{{ it.is_deleted ? 'Oui' : 'Non' }}</span>
+                <span *ngSwitchDefault>{{ getCellValue(it, col.field) }}</span>
+              </ng-container>
             </td>
             <td class="actions-col" (click)="$event.stopPropagation()">
               <button class="btn-icon" title="Ouvrir" *ngIf="!isLeaf() && !it.is_deleted" (click)="descend(it)"><i class="fas fa-folder-open"></i></button>
@@ -359,31 +369,17 @@
         </div>
       </div>
       <div class="table-footer-right">
-        <div class="pagination-size">
-          <span class="pagination-size-label">Éléments par page :</span>
-          <div class="pagination-size-select-wrapper">
-            <select class="pagination-size-select" [value]="pageSize" (change)="setPageSize(+$any($event.target).value)">
-              <option *ngFor="let opt of pageSizeOptions" [value]="opt">{{ opt }}</option>
-            </select>
-            <i class="fas fa-chevron-down pagination-size-arrow"></i>
-          </div>
-        </div>
-        <div class="pagination-nav">
-          <button class="pagination-nav-btn" [disabled]="currentPage <= 1" (click)="goToFirstPage()" title="Première page">
-            <i class="fas fa-angle-double-left"></i>
-          </button>
-          <button class="pagination-nav-btn" [disabled]="currentPage <= 1" (click)="prevPage()" title="Page précédente">
-            <i class="fas fa-chevron-left"></i>
-          </button>
-          <button *ngFor="let p of pageNumbers" class="pagination-page-btn" [class.active]="p === currentPage" (click)="goToPage(p)">{{ p }}</button>
-          <span class="pagination-nav-label">Page {{ currentPage }} sur {{ totalPages }}</span>
-          <button class="pagination-nav-btn" [disabled]="currentPage >= totalPages" (click)="nextPage()" title="Page suivante">
-            <i class="fas fa-chevron-right"></i>
-          </button>
-          <button class="pagination-nav-btn" [disabled]="currentPage >= totalPages" (click)="goToLastPage()" title="Dernière page">
-            <i class="fas fa-angle-double-right"></i>
-          </button>
-        </div>
+        <app-table-pagination
+          [page]="currentPage"
+          [pageSize]="pageSize"
+          [total]="filteredItems.length"
+          [pageSizeOptions]="pageSizeOptions"
+          (pageSizeChange)="setPageSize($event)"
+          (first)="goToFirstPage()"
+          (prev)="prevPage()"
+          (next)="nextPage()"
+          (last)="goToLastPage()">
+        </app-table-pagination>
       </div>
     </div>
   </div>
@@ -524,7 +520,7 @@
           </div>
           <div class="form-group" *ngIf="dateBornageRequired">
             <label>Date et heure de bornage / recollement <span class="req">*</span></label>
-            <input type="datetime-local" step="1" formControlName="date_bornage">
+            <input type="date" formControlName="date_bornage">
           </div>
           <p class="form-hint" *ngIf="!dateBornageRequired && form.value.nature_procedure_affaire">
             <i class="fas fa-info-circle"></i> Date de bornage non applicable (procédures IFE/IFR).
@@ -564,7 +560,7 @@
             </div>
             <div class="form-group">
               <label>Date et heure de la session</label>
-              <input type="datetime-local" step="1" formControlName="date_session">
+              <input type="date" formControlName="date_session">
             </div>
           </div>
         </ng-container>

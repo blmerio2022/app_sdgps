@@ -159,13 +159,85 @@ assistants de codage IA comme aux contributeurs humains (cf. `AGENTS.md`).
 - Ne jamais désactiver, ignorer (`skip`/`xit`) ou supprimer un test pour faire passer la CI
   sans justification explicite dans le message de commit.
 
+## Règles du dépôt (local et distant)
+
+> Règles reprises du dépôt frère `ancfcc/datacap-web` (section « Règles du dépôt » de son
+> `README.md`) et adaptées à ce projet. Elles sont mises à jour à chaque nouvelle règle adoptée.
+
+### Dépôts
+
+| Dépôt | Emplacement |
+|---|---|
+| Local | `D:\BOULMANE\PycharmProjects\perso\ancfcc\app-sdgps` |
+| Distant (`origin`, privé) | https://github.com/blmerio2022/app_sdgps |
+
+Identité Git configurée **pour ce dépôt uniquement** :
+`blmerio2022 <120096166+blmerio2022@users.noreply.github.com>`.
+
+### Branches
+
+| Branche | Rôle |
+|---|---|
+| `main` | Production : code stable et livré. Aucun commit direct. |
+| `develop` | Intégration (branche par défaut sur GitHub). Reçoit les `feature/vX.Y` via PR. |
+| `feature/vX.Y` | Branche de travail de la version en cours (`feature/v1.0`, puis `feature/v1.1`, …). Une seule version active à la fois. |
+
+Les branches historiques (`fix/*`, `release/*`, `chore/*`, `docs/*`, `feature/<sujet>`) restent
+dans l'historique mais le **modèle à suivre désormais est `feature/vX.Y`**.
+
+### Cycle de vie d'une version
+
+1. Créer `feature/vX.Y` à partir de `develop` à jour et la pousser
+   (`git push -u origin feature/vX.Y`).
+2. Développer : **un commit par fonctionnalité ou tâche terminée**, poussé immédiatement vers
+   `origin` (le dépôt distant est toujours synchronisé avec le local).
+3. Quand toutes les tâches de la version sont terminées et testées (cf. « Politique de tests ») :
+   ouvrir une **PR `feature/vX.Y` → `develop`**, puis la fusionner.
+4. Créer `feature/vX.(Y+1)` depuis `develop` et continuer.
+5. Quand `develop` atteint un jalon stable : PR `develop` → `main`
+   (**uniquement sur demande explicite**).
+
+### Pull Requests
+
+- **Toute PR cible et est fusionnée dans `develop`, sauf indication contraire explicite.**
+- Fusion par **commit de merge** (`gh pr merge <n> --merge`) pour conserver l'historique de la
+  version — jamais de squash ni de rebase à la fusion.
+- Après la fusion, `develop` est fusionnée dans la branche `feature/vX.Y` en cours pour rester à
+  jour.
+- La procédure détaillée (vérification de `mergeable`, attente de la CI) est la règle stricte
+  « Fusion vers `develop` / `main` : JAMAIS sans PR » ci-dessous : elle s'applique intégralement.
+
+### Conventions de commit
+
+- Format [Conventional Commits](https://www.conventionalcommits.org/) **en français** :
+  `type(portée): description` — types : `feat`, `fix`, `perf`, `refactor`, `docs`, `test`,
+  `chore`.
+- Description à l'**impératif**, en minuscule, sans point final ; la portée est le domaine
+  fonctionnel (`pieces`, `users`, `organisations`, `projets`, `ci`, `depot`…).
+- Exemple : `feat(pieces): extraire les métadonnées EXIF des images jointes`.
+- **Un commit par fonctionnalité ou tâche terminée**, poussé immédiatement.
+
+### Secrets et fichiers locaux
+
+- **Jamais de mot de passe ni de jeton dans le dépôt.** Les secrets vont dans
+  `backend/.env.<environnement>` (non suivis) ; seuls les templates `*.example` sont versionnés.
+- Non suivis (voir `.gitignore`) : `backend/.env.*`, `db.sqlite3`, `media/`, `logs/`, `*.log`,
+  données de travail volumineuses (`*.gpkg`, `docs/exemples-ssdgps/`) et configurations d'éditeur
+  locales (`*.code-workspace`).
+
+### Tenue de la documentation
+
+`CLAUDE.md` (et `AGENTS.md` quand il est concerné) est mis à jour **dans le même commit** que
+toute nouvelle règle de dépôt, nouvelle fonctionnalité transverse ou nouvelle commande.
+
 ## Conventions & notes de workflow
 
 - **Règles d'auto-commit** (`.opencode/instructions.md`) : ce dépôt est configuré pour un
   workflow OpenCode qui réinitialise l'espace de travail lors des changements de mode ; il
   impose de committer après chaque fonctionnalité/correction. Format des messages :
-  `type(scope): description` (ex. `feat(users): add ROLE_SUPER_ADMIN filter`). Les commits
-  `wip: auto-save` de l'historique proviennent de cet outillage.
+  `type(portée): description` — voir « Conventions de commit » ci-dessus, qui fait foi. Les
+  commits `wip: auto-save` de l'historique proviennent de cet outillage et ne sont **plus** un
+  format acceptable.
 
 - **Fusion vers `develop` / `main` : JAMAIS sans PR (règle stricte).** Ne **jamais** fusionner une
   branche dans `develop` ou `main` en local (pas de `git merge` depuis ces branches, même quand un
@@ -185,6 +257,24 @@ assistants de codage IA comme aux contributeurs humains (cf. `AGENTS.md`).
 - Le `.env` (backend) contient les clés SendGrid, les identifiants d'amorçage du super-admin
   et les flags `ENVIRONMENT` / `SHOW_TEST_DATA`. Il est gitignoré mais présent en local.
 - Les composants Angular utilisent **SCSS** par défaut (schematics de `angular.json`).
+
+- **Barres de défilement : style UNIQUE, défini une seule fois (règle stricte).** Tous les
+  défilements de l'app — **verticaux comme horizontaux** — partagent le même style, déclaré
+  **globalement** dans `frontend/src/styles.scss` (section « BARRES DE DÉFILEMENT »). La référence
+  est le défilement de la modale d'organisation des colonnes.
+  - **Ne JAMAIS redéfinir `::-webkit-scrollbar`, `scrollbar-width` ou `scrollbar-color` dans un
+    composant.** La règle globale (`*::-webkit-scrollbar…`) s'applique automatiquement à tout
+    conteneur défilant, existant ou futur : un nouveau composant n'a **rien** à styler.
+  - Style de référence : rail **transparent**, pouce **fin et arrondi** en `--border-color`,
+    détaché des bords (`border: 2px solid transparent` + `background-clip: padding-box`), accentué
+    en `--accent-color` au survol ; `8px` en largeur (vertical) **et** en hauteur (horizontal) ;
+    `scrollbar-width: thin` + `scrollbar-color` pour Firefox ; coin (`-corner`) transparent.
+  - Côté composant, ne poser que ce qui relève de la **mise en page** : `overflow`, `max-height`,
+    `min-height: 0` (indispensable dans un conteneur flex pour que l'enfant défile), et
+    éventuellement une gouttière (`padding-right` + `margin-right` négatif) pour éviter que la
+    barre ne décale le contenu.
+  - Vérification : `grep -rn "webkit-scrollbar\|scrollbar-width\|scrollbar-color" frontend/src/app`
+    ne doit **rien** renvoyer (toutes les définitions vivent dans `styles.scss`).
 - Référence de design : `docs/ui-design-spec.md` ; notes de travail dans `docs/notes/`,
   plans dans `docs/plans/PLAN_DEV.md`.
 - **Tri multi-niveaux (parité obligatoire entre toutes les pages).** La fonctionnalité de tri
@@ -247,9 +337,15 @@ assistants de codage IA comme aux contributeurs humains (cf. `AGENTS.md`).
     cellules suit le patron générique (cf. `project-list`) : dates via `formatDate()`, `is_deleted`
     en badge Oui/Non, `*_by_email` avec repli `—`.
   - **Backend** : déclarer les 7 champs dans `TABLE_COLUMN_FIELDS[<clé>]` (`accounts/views.py`) et
-    dans l'allowlist de tri du tableau, et les exposer dans le serializer. ⚠️ Les champs
-    `*_by_email` dérivés d'une FK **doivent** porter `allow_null=True` : sans lui DRF **omet** le
-    champ quand la FK est nulle (`SkipField`) et la colonne disparaît du payload.
+    dans l'allowlist de tri du tableau, et les exposer dans le serializer.
+  - **Auteurs : toujours `AuthorDisplayField`** (`accounts/fields.py`), branché sur la **clé
+    étrangère** (`source='created_by'`, `'updated_by'`, `'modified_by'`, `'deleted_by'`) et non sur
+    `…​.email`. Il rend le **nom complet** de l'utilisateur (repli sur l'email si le compte n'a ni
+    prénom ni nom) et garantit que le champ vaut `null` au lieu d'être **omis** quand la FK est
+    nulle — un `EmailField(source='x.email')` sans `allow_null=True` déclenche `SkipField` et la
+    colonne disparaît alors du payload. ⚠️ Le **nom** des champs exposés reste `*_by_email` : il
+    est figé dans les allowlists et dans les configurations de colonnes déjà enregistrées par les
+    opérateurs ; seule la **valeur** est un nom complet.
   - **Capture des auteurs** : renseigner `created_by`/`updated_by` dans `perform_create` /
     `perform_update` et `deleted_by` (+ `deleted_at`) sur **tous** les chemins de suppression
     logique, y compris les suppressions **en masse**.

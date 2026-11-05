@@ -16,10 +16,11 @@ génération effective). Seules les pièces `statut == 'valide'` et non supprim�
 sont incluses, dans l'ordre `ordre` du rapport.
 """
 import re
-from datetime import datetime
+from datetime import datetime, timezone as dt_timezone
 from pathlib import Path
 
 from django.template.loader import render_to_string
+from django.utils import timezone
 
 from .catalog import get_piece_def, catalog_orientation, effective_champs, import_effective_champs
 
@@ -90,14 +91,23 @@ def resolve_orientation(piece, ssdgps) -> str:
 
 
 def _fmt_date(value) -> str:
-    """Formate un horodatage complet : jj/mm/aaaa hh:mm:ss.
+    """Formate une date SANS heure : ``jj/mm/aaaa``.
 
-    Accepte un `datetime` (date_bornage / date_session, désormais horodatés) ou un
-    simple `date` (repli : l'heure est alors omise)."""
+    N'est utilisée que pour `date_bornage` (affaires) et `date_session` (sessions), les deux
+    seules dates de l'app dépourvues d'heure — le rapport doit afficher le même format que
+    l'interface (cf. `frontend/src/app/shared/utils/date-format.util.ts`).
+
+    Ces dates sont enregistrées à **minuit UTC** (`TIME_ZONE = 'UTC'`, saisie via
+    ``<input type="date">``). On formate donc les composantes **UTC** : passer par l'heure
+    locale ferait basculer l'affichage au jour précédent sur un fuseau à décalage négatif.
+    Accepte aussi un simple `date` (sans fuseau).
+    """
     if not value:
         return ''
     if hasattr(value, 'hour'):
-        return value.strftime('%d/%m/%Y %H:%M:%S')
+        if timezone.is_aware(value):
+            value = value.astimezone(dt_timezone.utc)
+        return value.strftime('%d/%m/%Y')
     return value.strftime('%d/%m/%Y')
 
 

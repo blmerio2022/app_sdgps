@@ -1,3 +1,4 @@
+import { formatDateTime } from '../../shared/utils/date-format.util';
 import { Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { forkJoin, of } from 'rxjs';
@@ -145,10 +146,7 @@ export class HomeComponent implements OnInit {
 
   /** Date « humaine » (JJ/MM/AAAA HH:mm) ou tiret. */
   formatDate(value?: string | null): string {
-    if (!value) return '—';
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return '—';
-    return d.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return formatDateTime(value);
   }
 
   openProjets(): void {
