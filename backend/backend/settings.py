@@ -277,6 +277,23 @@ else:
 PIECE_MAX_FILE_SIZE_MB = 20
 PIECE_IMPORT_MAX_ROWS = 5000
 
+# --- Photos de profil ---------------------------------------------------------
+# Plafond du fichier REÇU (avant redimensionnement). Il reste large : la photo est de
+# toute façon réduite à `PROFILE_PICTURE_MAX_DIMENSIONS` puis ré-encodée côté serveur,
+# ce plafond ne sert qu'à rejeter tôt un envoi manifestement abusif.
+PROFILE_PICTURE_MAX_UPLOAD_MB = config('PROFILE_PICTURE_MAX_UPLOAD_MB', default=5, cast=int)
+# Dimensions maximales conservées après redimensionnement (l'image garde ses proportions).
+PROFILE_PICTURE_MAX_DIMENSIONS = (512, 512)
+# Qualité JPEG du ré-encodage des photos sans transparence.
+PROFILE_PICTURE_JPEG_QUALITY = 85
+
+# --- Quotas de stockage par organisation --------------------------------------
+# Plafond appliqué à une organisation dont `storage_quota_bytes` est NULL (non configuré).
+# `0` signifie « illimité » — c'est le défaut, pour ne rien bloquer tant que le super
+# admin n'a pas arbitré les quotas organisation par organisation.
+DEFAULT_ORGANIZATION_STORAGE_QUOTA_BYTES = config(
+    'DEFAULT_ORGANIZATION_STORAGE_QUOTA_BYTES', default=0, cast=int)
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 

@@ -96,6 +96,25 @@ class Organization(models.Model):
         help_text="Image du logo de l'organisation (formats: PNG, JPG)"
     )
 
+    # Quota de stockage (configuré par le SUPER ADMIN uniquement — cf.
+    # organizations/views.py::OrganizationViewSet.storage_quota).
+    #
+    # Sémantique des trois états, à ne pas confondre :
+    #   - NULL  → aucun arbitrage pour cette organisation : on applique le défaut global
+    #             `settings.DEFAULT_ORGANIZATION_STORAGE_QUOTA_BYTES` ;
+    #   - 0     → illimité explicitement (décision prise, pas d'oubli) ;
+    #   - N > 0 → plafond de N octets.
+    # Le quota porte sur la volumétrie attribuée à l'organisation par
+    # `analytics.quotas.organization_usage_bytes`, c'est-à-dire les fichiers dont le
+    # propriétaire appartient à l'organisation — les projets « suivant » leur créateur.
+    storage_quota_bytes = models.BigIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Quota de stockage (octets)",
+        help_text="Plafond de stockage de l'organisation en octets. Vide = défaut global, "
+                  "0 = illimité. Configurable par le super administrateur uniquement."
+    )
+
     # Gestion Hiérarchique (Pour les entités publiques : Direction > Division > Service)
     parent = models.ForeignKey(
         'self', 

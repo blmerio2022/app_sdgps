@@ -10,6 +10,7 @@ import { RolesPermissionsComponent } from './features/admin/users/roles-permissi
 import { OrganismeListComponent } from './features/admin/organismes/organisme-list/organisme-list.component';
 import { PieceFieldDescriptionsComponent } from './features/admin/piece-field-descriptions/piece-field-descriptions.component';
 import { StorageDashboardComponent } from './features/admin/storage/storage-dashboard.component';
+import { StorageQuotasComponent } from './features/admin/storage-quotas/storage-quotas.component';
 
 // Composant placeholder temporaire (à remplacer par vos vrais composants)
 @Component({
@@ -154,8 +155,8 @@ const routes: Routes = [
       },
       {
         path: 'quotas/limites',
-        component: PlaceholderComponent,
-        data: { title: 'Limites projets' }
+        component: StorageQuotasComponent,
+        data: { title: 'Quotas de stockage' }
       },
       {
         path: 'maintenance',

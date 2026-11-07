@@ -20,6 +20,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
+from analytics.quotas import ensure_within_quota, organization_of_user
 from projects.models import Session, Ssdgps
 from projects.views import scope_queryset, is_scope_visible
 from .catalog import (serialize_catalog, get_piece_def, champs_with_meta, valid_field_names,
@@ -589,6 +590,20 @@ class PieceViewSet(viewsets.ModelViewSet):
         if not files:
             return Response({'detail': 'Aucun fichier fourni (champ « fichiers »).'}, status=400)
         last_modified = request.data.getlist('last_modified')
+
+        # Quota de l'organisation : vérifié sur le LOT ENTIER avant d'écrire quoi que ce
+        # soit. Fichier par fichier, un lot pourrait franchir le plafond à mi-parcours et
+        # laisser la pièce à moitié constituée. L'imputation suit le créateur du projet
+        # (cf. analytics.quotas), pas l'utilisateur qui téléverse.
+        try:
+            ensure_within_quota(
+                organization_of_user(piece.ssdgps.affaire.propriete.projet.created_by),
+                sum(f.size for f in files),
+            )
+        except DjangoValidationError as e:
+            return Response({'detail': e.messages[0] if e.messages else str(e)},
+                            status=status.HTTP_400_BAD_REQUEST)
+
         # Rattachement optionnel à un point (PPA/PPN) : appliqué à tout le lot.
         point_ref = (request.data.get('point_ref') or '').strip()
         max_ordre = piece.images.aggregate(m=Max('ordre'))['m']

@@ -1,0 +1,98 @@
+<div class="quotas-page">
+
+  <header class="page-head">
+    <div>
+      <h1>Quotas de stockage</h1>
+      <p class="subtitle">
+        Plafond d'espace accordé à chaque organisation. La consommation suit le créateur
+        des projets : déplacer un utilisateur d'organisation réattribue son volume.
+      </p>
+    </div>
+    <button type="button" class="btn-refresh" (click)="load()" [disabled]="loading">
+      <i class="fas fa-rotate" [class.fa-spin]="loading"></i> Actualiser
+    </button>
+  </header>
+
+  <p class="default-note">
+    Défaut global appliqué aux organisations non arbitrées :
+    <strong>{{ defaultQuotaBytes ? humanBytes(defaultQuotaBytes) : 'illimité' }}</strong>.
+    Laisser le champ vide pour retomber sur ce défaut, saisir <strong>0</strong> pour
+    un accès illimité explicite.
+  </p>
+
+  <div class="state state-error" *ngIf="error">
+    <i class="fas fa-triangle-exclamation"></i> {{ error }}
+  </div>
+
+  <div class="state" *ngIf="loading && !quotas.length">
+    <i class="fas fa-spinner fa-spin"></i> Chargement des quotas…
+  </div>
+
+  <div class="state" *ngIf="!loading && !error && !quotas.length">
+    Aucune organisation à afficher.
+  </div>
+
+  <table class="quota-table" *ngIf="quotas.length">
+    <thead>
+      <tr>
+        <th>Organisation</th>
+        <th>Consommation</th>
+        <th class="col-quota">Plafond appliqué</th>
+        <th class="col-input">Quota (Go)</th>
+        <th class="col-actions">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let q of quotas; trackBy: trackById"
+          [class.row-exceeded]="q.is_exceeded">
+        <td class="cell-org">
+          <span class="org-name">{{ q.organization_name }}</span>
+          <span class="badge badge-exceeded" *ngIf="q.is_exceeded">Dépassé</span>
+        </td>
+
+        <td class="cell-usage">
+          <div class="usage-bar" [class]="usageClass(q)">
+            <div class="usage-fill" [style.width.%]="usageWidth(q)"></div>
+          </div>
+          <span class="usage-text">
+            {{ humanBytes(q.used_bytes) }}
+            <ng-container *ngIf="!q.is_unlimited">
+              / {{ humanBytes(q.effective_quota_bytes) }}
+              <span class="percent">({{ q.usage_percent }} %)</span>
+            </ng-container>
+          </span>
+        </td>
+
+        <td class="col-quota">
+          <span class="quota-label" [class.unlimited]="q.is_unlimited">
+            {{ quotaLabel(q) }}
+          </span>
+          <span class="hint" *ngIf="q.quota_bytes === null">(défaut global)</span>
+        </td>
+
+        <td class="col-input">
+          <input type="number" min="0" step="0.5" placeholder="défaut"
+                 [(ngModel)]="draft[q.organization_id]"
+                 [disabled]="saving[q.organization_id]"
+                 (keyup.enter)="save(q)"
+                 [attr.aria-label]="'Quota en Go pour ' + q.organization_name">
+        </td>
+
+        <td class="col-actions">
+          <button type="button" class="btn-save" (click)="save(q)"
+                  [disabled]="saving[q.organization_id]">
+            <i class="fas" [class.fa-spinner]="saving[q.organization_id]"
+               [class.fa-spin]="saving[q.organization_id]"
+               [class.fa-check]="!saving[q.organization_id]"></i>
+            Enregistrer
+          </button>
+          <button type="button" class="btn-reset" (click)="resetToDefault(q)"
+                  [disabled]="saving[q.organization_id] || q.quota_bytes === null"
+                  title="Repasser au défaut global">
+            <i class="fas fa-rotate-left"></i>
+          </button>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>

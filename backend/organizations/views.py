@@ -1,6 +1,7 @@
 """
 Vues API pour la gestion des organisations
 """
+from django.conf import settings
 from django.db.models import ProtectedError
 from django.utils import timezone
 from rest_framework import generics, status, permissions
@@ -541,3 +542,106 @@ class OrganizationMetadataView(APIView):
         metadata.update(computed_fields)
         
         return Response(metadata, status=status.HTTP_200_OK)
+
+
+# ======================================================================
+# Quotas de stockage par organisation (SUPER ADMIN uniquement)
+# ======================================================================
+# Le quota lui-même est un champ de `Organization` ; sa consommation est calculée par
+# `analytics.quotas`. Ces vues sont volontairement SÉPARÉES du CRUD d'organisation :
+# modifier le quota est une décision de niveau plateforme, réservée au super admin,
+# alors que la fiche d'organisation est modifiable par un Admin Système.
+
+
+def is_super_admin(user):
+    """Vrai pour le SEUL super administrateur de la plateforme.
+
+    Volontairement plus strict que `is_app_admin` : un Admin Système administre les
+    organisations, mais il n'arbitre pas leur plafond de stockage."""
+    return bool(user and user.is_authenticated and user.is_superuser)
+
+
+class OrganizationStorageQuotaListView(APIView):
+    """GET /api/v1/organizations/storage-quotas/ — quota et consommation de CHAQUE
+    organisation. Alimente l'écran super admin « Limites projets / quotas »."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if not is_super_admin(request.user):
+            return Response(
+                {'detail': "Seul le super administrateur peut consulter les quotas."},
+                status=status.HTTP_403_FORBIDDEN)
+
+        from analytics.quotas import quota_state
+        organizations = Organization.objects.filter(is_deleted=False).order_by('name')
+        return Response({
+            'default_quota_bytes': getattr(
+                settings, 'DEFAULT_ORGANIZATION_STORAGE_QUOTA_BYTES', 0),
+            'results': [quota_state(org) for org in organizations],
+        })
+
+
+class OrganizationStorageQuotaView(APIView):
+    """GET / PUT /api/v1/organizations/<uuid>/storage-quota/ — consulte ou fixe le quota
+    d'une organisation.
+
+    Corps du PUT : `{"storage_quota_bytes": <entier|null>}`
+        null  → retour au défaut global
+        0     → illimité
+        N > 0 → plafond de N octets
+    Un quota INFÉRIEUR à la consommation actuelle est accepté (le super admin peut
+    vouloir geler une organisation qui a déjà débordé) mais la réponse le signale via
+    `is_exceeded`."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _get_org(self, pk):
+        return Organization.objects.filter(pk=pk, is_deleted=False).first()
+
+    def get(self, request, pk):
+        if not is_super_admin(request.user):
+            return Response({'detail': "Seul le super administrateur peut consulter les quotas."},
+                            status=status.HTTP_403_FORBIDDEN)
+        org = self._get_org(pk)
+        if org is None:
+            return Response({'detail': 'Organisation introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        from analytics.quotas import quota_state
+        return Response(quota_state(org))
+
+    def put(self, request, pk):
+        if not is_super_admin(request.user):
+            return Response({'detail': "Seul le super administrateur peut modifier les quotas."},
+                            status=status.HTTP_403_FORBIDDEN)
+        org = self._get_org(pk)
+        if org is None:
+            return Response({'detail': 'Organisation introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        if 'storage_quota_bytes' not in request.data:
+            return Response({'detail': 'Champ « storage_quota_bytes » requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        raw = request.data.get('storage_quota_bytes')
+
+        if raw in (None, '', 'null'):
+            valeur = None                      # retour au défaut global
+        else:
+            try:
+                valeur = int(raw)
+            except (TypeError, ValueError):
+                return Response(
+                    {'detail': 'Le quota doit être un entier d’octets, 0 (illimité) ou vide.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if valeur < 0:
+                return Response({'detail': 'Le quota ne peut pas être négatif.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+        org.storage_quota_bytes = valeur
+        org.modified_by = request.user
+        org.save(update_fields=['storage_quota_bytes', 'modified_by', 'updated_at'])
+        logger.info("Quota de stockage de « %s » fixé à %s par %s",
+                    org.name, valeur, request.user.email)
+
+        from analytics.quotas import quota_state
+        return Response(quota_state(org))

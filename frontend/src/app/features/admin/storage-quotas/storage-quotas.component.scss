@@ -1,0 +1,172 @@
+/* Quotas de stockage par organisation (super admin).
+   Aucune règle de barre de défilement ici : le style unique est global
+   (`styles.scss`, section « BARRES DE DÉFILEMENT ») — cf. CLAUDE.md. */
+
+.quotas-page {
+  padding: 1.5rem;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+
+  h1 {
+    margin: 0 0 .25rem;
+    font-size: 1.35rem;
+  }
+
+  .subtitle {
+    margin: 0;
+    max-width: 62ch;
+    color: var(--text-secondary);
+    font-size: .875rem;
+  }
+}
+
+.btn-refresh {
+  flex: none;
+  padding: .45rem .9rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+
+  &:hover:not(:disabled) { border-color: var(--accent-color); }
+  &:disabled { opacity: .6; cursor: default; }
+}
+
+.default-note {
+  margin: 0 0 1rem;
+  padding: .6rem .85rem;
+  border-left: 3px solid var(--accent-color);
+  background: var(--surface-2, rgba(127, 127, 127, .08));
+  border-radius: 4px;
+  font-size: .85rem;
+  color: var(--text-secondary);
+}
+
+.state {
+  padding: 1rem;
+  color: var(--text-secondary);
+
+  &.state-error {
+    color: var(--danger-color, #c0392b);
+  }
+}
+
+.quota-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .9rem;
+
+  th, td {
+    padding: .6rem .7rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: middle;
+  }
+
+  th {
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+
+  .col-quota { width: 11rem; }
+  .col-input { width: 8rem; }
+  .col-actions { width: 12rem; white-space: nowrap; }
+
+  tr.row-exceeded { background: rgba(192, 57, 43, .06); }
+}
+
+.cell-org {
+  .org-name { font-weight: 600; }
+}
+
+.badge {
+  display: inline-block;
+  margin-left: .5rem;
+  padding: .1rem .45rem;
+  border-radius: 10px;
+  font-size: .72rem;
+  font-weight: 600;
+
+  &.badge-exceeded {
+    background: var(--danger-color, #c0392b);
+    color: #fff;
+  }
+}
+
+.cell-usage {
+  min-width: 15rem;
+}
+
+.usage-bar {
+  height: 7px;
+  border-radius: 4px;
+  background: var(--border-color);
+  overflow: hidden;
+
+  .usage-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width .2s ease;
+  }
+
+  &.is-ok       .usage-fill { background: var(--success-color, #2e9e5b); }
+  &.is-warning  .usage-fill { background: var(--warning-color, #e08a1e); }
+  &.is-exceeded .usage-fill { background: var(--danger-color, #c0392b); }
+  &.is-unlimited { background: transparent; }
+}
+
+.usage-text {
+  display: inline-block;
+  margin-top: .3rem;
+  color: var(--text-secondary);
+  font-size: .82rem;
+
+  .percent { opacity: .8; }
+}
+
+.quota-label {
+  font-weight: 600;
+
+  &.unlimited { color: var(--text-secondary); font-weight: 500; }
+}
+
+.hint {
+  display: block;
+  color: var(--text-secondary);
+  font-size: .75rem;
+}
+
+.col-input input {
+  width: 100%;
+  padding: .35rem .5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-primary);
+
+  &:focus { outline: none; border-color: var(--accent-color); }
+  &:disabled { opacity: .6; }
+}
+
+.btn-save,
+.btn-reset {
+  padding: .35rem .7rem;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+
+  &:hover:not(:disabled) { border-color: var(--accent-color); }
+  &:disabled { opacity: .5; cursor: default; }
+}
+
+.btn-reset { margin-left: .35rem; }

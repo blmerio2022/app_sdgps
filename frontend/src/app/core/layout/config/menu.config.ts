@@ -55,6 +55,8 @@ export const USER_MENU: MenuItem[] = [
  */
 const ALL_ADMIN_ROLES = ['ROLE_SUPER_ADMIN', 'ROLE_ADMIN_SYSTEME', 'ROLE_ORGANISATION_ADMIN'];
 const SUPER_OR_SYSTEME = ['ROLE_SUPER_ADMIN', 'ROLE_ADMIN_SYSTEME'];
+/** Entrées que seul le propriétaire de la plateforme voit (arbitrages de niveau global). */
+const SUPER_ONLY = ['ROLE_SUPER_ADMIN'];
 
 export const ADMIN_MENU: MenuItem[] = [
   {
@@ -204,5 +206,16 @@ export const ADMIN_MENU: MenuItem[] = [
     type: 'link',
     description: 'Gestion du stockage',
     roles: SUPER_OR_SYSTEME,
+  },
+  {
+    // Arbitrage des plafonds : réservé au SUPER ADMIN (le backend renvoie 403 à un
+    // Admin Système), d'où `SUPER_ONLY` et non `SUPER_OR_SYSTEME`.
+    id: 'quotas-stockage',
+    title: 'Quotas de stockage',
+    icon: 'fas fa-gauge-high',
+    route: '/admin/quotas/limites',
+    type: 'link',
+    description: 'Plafond de stockage par organisation',
+    roles: SUPER_ONLY,
   }
 ];

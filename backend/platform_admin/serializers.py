@@ -6,6 +6,9 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 import re
 
+from accounts.avatars import normalize_avatar, validate_avatar
+from analytics.quotas import ensure_within_quota, organization_of_user
+
 User = get_user_model()
 
 
@@ -94,6 +97,35 @@ class SuperAdminProfileSerializer(serializers.ModelSerializer):
         
         return value
     
+    def validate_profile_picture(self, value):
+        """Contrôle la photo reçue puis la RÉDUIT avant enregistrement.
+
+        Sans cela, le fichier d'origine était stocké tel quel : des captures d'écran de
+        plusieurs Mo pour une image affichée en vignette. La normalisation ramène toute
+        photo à `PROFILE_PICTURE_MAX_DIMENSIONS` (cf. `accounts.avatars`).
+
+        `value` vaut `None` quand le front demande la suppression de la photo
+        (`PATCH {profile_picture: null}`) : on laisse passer tel quel."""
+        if not value:
+            return value
+
+        validate_avatar(value)
+
+        # Imputation du poids à l'organisation AVANT écriture — sur la taille réduite,
+        # seule réellement stockée.
+        normalise = normalize_avatar(value)
+        if normalise is None:
+            return value                      # image non ré-encodable : on garde l'originale
+
+        contenu, nom = normalise
+        organisation = organization_of_user(self.context['request'].user)
+        ensure_within_quota(organisation, contenu.size)
+
+        value.file = contenu.file
+        value.name = nom
+        value.size = contenu.size
+        return value
+
     def validate_nom_societe(self, value):
         """Validation nom de société"""
         if value and len(value.strip()) < 2:

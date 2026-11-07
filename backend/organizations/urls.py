@@ -18,6 +18,13 @@ urlpatterns = [
     # Métadonnées des champs (descriptions, types, etc.)
     path('metadata/', views.OrganizationMetadataView.as_view(), name='organization-metadata'),
 
+    # Quotas de stockage (super admin uniquement) — liste puis unitaire. La route
+    # littérale précède la route à UUID : sinon « storage-quotas » ne matcherait rien.
+    path('storage-quotas/', views.OrganizationStorageQuotaListView.as_view(),
+         name='organization-storage-quota-list'),
+    path('<uuid:pk>/storage-quota/', views.OrganizationStorageQuotaView.as_view(),
+         name='organization-storage-quota'),
+
     # Corbeille : restauration et suppression définitive (unitaire)
     path('<uuid:pk>/restore/', views.OrganizationRestoreView.as_view(), name='organization-restore'),
     path('<uuid:pk>/permanent/', views.OrganizationPermanentDeleteView.as_view(), name='organization-permanent-delete'),

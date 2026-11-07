@@ -1,8 +1,10 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from .models import Piece, PieceImage
 from .validators import validate_piece_coherence, points_without_photo
 from accounts.fields import AuthorDisplayField
+from analytics.quotas import ensure_within_quota, organization_of_user
 
 
 class PieceImageSerializer(serializers.ModelSerializer):
@@ -132,4 +134,17 @@ class PieceSerializer(serializers.ModelSerializer):
                     f"Validation impossible : {len(missing)} point(s) sans photo ({shown}). "
                     "Chaque point doit avoir au moins une photo."
                 )})
+
+        # Quota de stockage de l'organisation — uniquement quand un FICHIER est joint
+        # (une pièce purement tabulaire ne pèse rien côté stockage). L'imputation suit
+        # le créateur du projet, comme la ventilation du tableau de bord.
+        fichier = attrs.get('fichier')
+        if fichier is not None and ssdgps is not None:
+            projet = ssdgps.affaire.propriete.projet
+            try:
+                ensure_within_quota(organization_of_user(projet.created_by),
+                                    getattr(fichier, 'size', 0) or 0)
+            except DjangoValidationError as e:
+                raise serializers.ValidationError(
+                    {'fichier': e.messages[0] if e.messages else str(e)})
         return attrs
