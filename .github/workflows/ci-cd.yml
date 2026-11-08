@@ -40,7 +40,10 @@ jobs:
         with:
           python-version: "3.11"
       - name: Installer les dépendances
-        run: pip install -r requirements.txt Pillow
+        # `requirements-dev.txt` ajoute les outils de TEST (serveur S3 moto) : sans eux,
+        # `analytics/tests_object_storage.py` se contenterait de s'auto-ignorer et la
+        # bascule vers le stockage objet ne serait plus vérifiée en CI.
+        run: pip install -r requirements.txt -r requirements-dev.txt
       - name: Appliquer les migrations
         # Seed désactivé : les tests tournent sur la base de test (TESTING=True → seed déjà
         # neutralisé) ; inutile d'amorcer la base de dev jetable de la CI.
