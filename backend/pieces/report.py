@@ -700,6 +700,52 @@ def _piece_content(piece, landscape=False, sort_config=None, fields_config=None)
     return content
 
 
+def resolve_report_session(ssdgps, session=None):
+    """Session à identifier dans l'en-tête et le pied de page du rapport, ou `None`.
+
+    Deux chemins mènent à un rapport « de session unique », et tous deux doivent
+    afficher le numéro et la date de la session :
+
+    - génération **portée sur une session** (vue session d'un SSDGPS multi-session) :
+      `session` est fourni, c'est elle ;
+    - génération d'un SSDGPS qui ne compte **qu'une seule** session (cas mono-session,
+      où l'appelant ne passe aucune session) : elle est déduite.
+
+    Avec plusieurs sessions et aucune portée, le rapport couvre l'ensemble du SSDGPS :
+    il n'y a pas UNE session à nommer, et la fonction renvoie `None` — mieux vaut ne
+    rien afficher que d'afficher arbitrairement la première.
+    """
+    if session is not None:
+        return session
+    # `is_deleted` n'est filtré par aucun manager sur ce modèle : l'exclusion est
+    # explicite, sinon une session supprimée compterait — et pourrait même être la
+    # « seule » session retenue.
+    sessions = list(ssdgps.sessions.filter(is_deleted=False)[:2])
+    return sessions[0] if len(sessions) == 1 else None
+
+
+def report_foot_prefix(ssdgps, session_numero=None) -> str:
+    """Préfixe d'identification du pied de page, commun à toutes les pages :
+
+        « <titre|réquisition> SD<n> SDGPS N°<i> [SESSION N°<k>] »
+
+    La mention de session vient juste **après** « SDGPS N°i », et seulement pour un
+    rapport de session unique (`session_numero` non nul). Le segment « PIÈCE N°k » est
+    concaténé ensuite par `render_report_pdf` pour les unités « pièce », et la
+    pagination « PAGE N°x/y » est ajoutée par le CSS du template.
+
+    Les pages blanches de calage recto-verso ne portent aucun pied (convention
+    d'impression) : elles sont donc les seules sans cette mention."""
+    propriete = ssdgps.affaire.propriete
+    ident = (propriete.id_titre or propriete.id_requisition or '').strip()
+    return ' '.join(p for p in (
+        ident,
+        f'SD{ssdgps.affaire.numero_sd_affaire}',
+        f'SDGPS N°{ssdgps.numero_ssdgps}',
+        f'SESSION N°{session_numero}' if session_numero is not None else '',
+    ) if p)
+
+
 def build_report_context(ssdgps, session, pieces, sort_config=None, fields_config=None):
     """Assemble le contexte de rendu du template `pieces/report.html`. `sort_config` =
     préférences de tri de l'opérateur ({ type_piece: {field, dir} }). `fields_config` =
@@ -719,6 +765,13 @@ def build_report_context(ssdgps, session, pieces, sort_config=None, fields_confi
     organisme_niveau1 = n1.nom if n1 else ''
     organisme_niveau2 = n2.nom if n2 else ''
 
+    # Session à nommer dans l'en-tête ET le pied de page. Déduite quand le SSDGPS ne
+    # compte qu'une session, même si l'appelant n'en a passé aucune (cf.
+    # `resolve_report_session`).
+    session_affichee = resolve_report_session(ssdgps, session)
+    session_numero = session_affichee.numero_session if session_affichee else None
+    session_date = _fmt_date(session_affichee.date_session) if session_affichee else ''
+
     header = {
         'organization': (organization.name if organization else '').upper(),
         'organisme_niveau1': (organisme_niveau1 or '').upper(),
@@ -729,8 +782,14 @@ def build_report_context(ssdgps, session, pieces, sort_config=None, fields_confi
         'nature_affaire': nature_affaire,
         'nature_ssdgps': ssdgps.nature_ssdgps or '',
         'numero_ssdgps': ssdgps.numero_ssdgps,
-        'session_numero': session.numero_session if session else None,
-        'session_date': _fmt_date(session.date_session) if session else '',
+        'session_numero': session_numero,
+        'session_date': session_date,
+        # Libellé prêt à l'affichage, placé juste après la nature du SDGPS dans les
+        # trois en-têtes (page de garde, séparateur de pièce, en-tête courant des pages
+        # de contenu) : « N°2 du 15/03/2026 », ou « N°2 » si la date est absente.
+        'session_label': (
+            f"N°{session_numero}" + (f" du {session_date}" if session_date else '')
+        ) if session_numero is not None else '',
         'projet': f"{projet.code_projet} — {projet.nom_projet}",
     }
 
@@ -785,12 +844,7 @@ def render_report_pdf(ssdgps, session, pieces, sort_config=None, fields_config=N
     context = build_report_context(ssdgps, session, pieces, sort_config, fields_config)
     base = {'header': context['header']}
 
-    # Préfixe commun du pied de page : « <titre|réquisition> SD<n> SDGPS N°<i> ».
-    propriete = ssdgps.affaire.propriete
-    ident = (propriete.id_titre or propriete.id_requisition or '').strip()
-    foot_base = ' '.join(p for p in (
-        ident, f'SD{ssdgps.affaire.numero_sd_affaire}', f'SDGPS N°{ssdgps.numero_ssdgps}',
-    ) if p)
+    foot_base = report_foot_prefix(ssdgps, context['header']['session_numero'])
 
     def _render(mode, foot_prefix, extra):
         html = render_to_string('pieces/report.html',
