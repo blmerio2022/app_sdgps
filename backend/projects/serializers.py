@@ -164,6 +164,29 @@ class SsdgpsSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     'numero_ssdgps': "Un SSDGPS portant ce numéro existe déjà pour cette affaire."
                 })
+
+        # Bascule vers « mono-session » : interdite s'il reste plus d'une session active.
+        #
+        # Un SSDGPS mono-session n'a qu'UNE session, implicite et structurelle : l'app ne
+        # descend jamais au niveau session pour lui (le front va droit aux pièces) et
+        # `nbr_total_sessions` l'expose à 0. Basculer un multi-session qui compte
+        # plusieurs sessions produit donc des sessions ORPHELINES — invisibles et
+        # inatteignables — et, plus grave, fait fusionner les pièces de toutes ces
+        # sessions dans un seul rapport PDF, sans avertissement : la génération sans
+        # portée de session retient toutes les pièces du SSDGPS.
+        #
+        # Observé en base : 2 SSDGPS sur 445 dans cet état, faute de ce contrôle.
+        type_cible = attrs.get('type_ssdgps', getattr(self.instance, 'type_ssdgps', None))
+        if (self.instance is not None
+                and type_cible == Ssdgps.TypeSSDGPS.MONO
+                and self.instance.type_ssdgps != Ssdgps.TypeSSDGPS.MONO):
+            actives = self.instance.sessions.filter(is_deleted=False).count()
+            if actives > 1:
+                raise serializers.ValidationError({'type_ssdgps': (
+                    f"Ce SSDGPS compte {actives} sessions actives : il ne peut pas devenir "
+                    "mono-session, qui n'en admet qu'une (implicite). Supprimez d'abord "
+                    f"les {actives - 1} sessions excédentaires."
+                )})
         return attrs
 
 
@@ -181,3 +204,28 @@ class SessionSerializer(serializers.ModelSerializer):
             'created_by_email', 'updated_by_email', 'deleted_by_email',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'is_deleted', 'deleted_at']
+
+    def validate(self, attrs):
+        """Interdit d'AJOUTER une session à un SSDGPS mono-session.
+
+        Un mono-session possède déjà sa session n°1, créée automatiquement par
+        `projects.signals.autocreate_mono_session`. Elle est structurelle : le front ne
+        descend jamais au niveau session pour ce type, et `nbr_total_sessions` l'expose
+        à 0. Toute session ajoutée est donc invisible et inatteignable — c'est ainsi que
+        le SSDGPS n°4 s'est retrouvé avec 3 sessions, deux jours après sa création.
+
+        Seule la CRÉATION est bloquée : modifier une session existante reste permis, ne
+        serait-ce que pour renseigner la `date_session` de la session implicite (souvent
+        nulle à l'auto-création), y compris sur les SSDGPS déjà incohérents.
+
+        Le signal passe par l'ORM et non par ce sérialiseur : il n'est pas affecté.
+        """
+        if self.instance is None:
+            ssdgps = attrs.get('ssdgps')
+            if ssdgps is not None and ssdgps.type_ssdgps == Ssdgps.TypeSSDGPS.MONO:
+                raise serializers.ValidationError({'ssdgps': (
+                    "Ce SSDGPS est mono-session : il ne comporte qu'une seule session, "
+                    "implicite, créée automatiquement. Pour gérer plusieurs sessions, "
+                    "passez-le en multi-session."
+                )})
+        return attrs
