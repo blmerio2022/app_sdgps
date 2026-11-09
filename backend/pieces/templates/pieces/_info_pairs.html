@@ -1,9 +1,15 @@
-{% comment %}Couples « clé : valeur » de l'en-tête d'une PIÈCE, répartis en DEUX colonnes.
+{% comment %}Couples « clé : valeur » de l'EN-TÊTE COURANT des pages de contenu,
+répartis en DEUX colonnes.
+
+Réservé à cet en-tête-là : c'est le seul dont la place soit contrainte, puisqu'il doit
+tenir dans la marge haute de 43 mm réservée par `@page contenu`. La page-séparateur et
+la page de garde gardent leur liste en UNE colonne (couples les uns sous les autres) —
+elles disposent de toute la hauteur de la page.
 
 Les 3 premiers couples (identification de la propriété) occupent la colonne de gauche,
 les 3 suivants (natures et session) celle de droite. L'en-tête est ainsi deux fois moins
-haut qu'en liste simple — c'est ce qui lui évite d'empiéter sur le tableau de données
-des pièces à long intitulé (RDL, RDI N°k…), dont l'encadré était le plus serré.
+haut qu'en liste simple, ce qui lui évite d'empiéter sur le tableau de données des
+pièces à long intitulé (RDL, RDI N°k…).
 
 Aucune séparation visible : le tableau d'agencement et ses cellules ne portent ni
 bordure ni fond (cf. `.info-split` dans `report.html`). Seuls les couples se voient.

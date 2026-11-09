@@ -123,7 +123,9 @@ class RepartitionDesCouplesTests(EnteteDeuxColonnesBaseTest):
         self.assertIn('Nature SDGPS', compact)
         self.assertNotIn('Nature du Sous Dossier GPS', compact)
 
-    def test_libelles_complets_hors_mode_compact(self):
+    def test_libelles_complets_disponibles_hors_mode_compact(self):
+        """Le partiel reste utilisable en libellés longs (il n'est aujourd'hui branché
+        qu'en mode compact, sur l'en-tête courant)."""
         normal = self._rendu_partiel(self._ssdgps())
         self.assertIn('Nature du Sous Dossier GPS', normal)
 
@@ -157,9 +159,15 @@ class UtilisationParLesEntetesTests(EnteteDeuxColonnesBaseTest):
         self.assertIn('info-split', html)
         self.assertIn('info-split-compact', html)
 
-    def test_separateur_de_piece_utilise_l_agencement(self):
+    def test_separateur_de_piece_garde_une_seule_colonne(self):
+        """La page-séparateur liste ses couples les uns SOUS les autres, comme à
+        l'origine : elle dispose de toute la hauteur de la page et n'a jamais
+        chevauché quoi que ce soit. Seul l'en-tête courant est en deux colonnes."""
         html = self._rendu_gabarit('piece', self._ssdgps())
-        self.assertIn('info-split', html)
+        separateur = html.split('class="sep-title"')[1].split('</section>')[0]
+        self.assertNotIn('info-split', separateur)
+        self.assertIn('<table class="info">', separateur)
+        self.assertIn('Nature du Sous Dossier GPS', separateur)
 
     def test_agencement_applique_a_toutes_les_pieces(self):
         """« sur toutes les pièces, et non pas seulement celles qui chevauchaient » :
