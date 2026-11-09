@@ -44,6 +44,39 @@ textes d'interface). Respecter cette convention lors de l'ajout de code.
 - Installation initiale (idempotente) : `.\backend\scripts\setup\run.ps1`
 - Redémarrer les deux serveurs : `.\backend\scripts\setup\restart_servers.ps1`
 
+### Toute modification du backend ⇒ REDÉMARRER LES DEUX SERVEURS (règle stricte)
+
+**Dès qu'un fichier du backend est modifié** — code Python, gabarit, `settings.py`,
+migration — **arrêter les DEUX serveurs puis les relancer**, afin que l'application
+« live » serve bien le code courant.
+
+Pourquoi ce n'est pas automatique : le serveur de dev est lancé avec **`--noreload`**
+(indispensable pour qu'il tourne en tâche de fond sans se dédoubler). Il **ne recharge
+donc jamais le code Python** modifié — vues, sérialiseurs, modèles, `settings.py` : il
+continue de servir celui qu'il avait au démarrage, silencieusement. Un correctif backend
+semble alors « sans effet » dans l'application, alors que le code sur disque est juste.
+
+La règle couvre volontairement **tout** le backend, y compris les gabarits
+(`pieces/templates/`) : en développement ceux-ci sont bien relus à chaque rendu
+(`APP_DIRS` sans loader « cached » tant que `DEBUG=True`), mais distinguer au cas par cas
+ce qui recharge de ce qui ne recharge pas est une source d'erreur — et la distinction
+tombe dès que `DEBUG=False`. Redémarrer systématiquement coûte une minute et supprime
+la question.
+
+Le frontend, lui, se reconstruit tout seul (HMR) ; on le relance avec pour repartir d'un
+état propre et cohérent.
+
+Procédure :
+1. arrêter le serveur Django **et** le serveur Angular ;
+2. relancer le backend : `ENVIRONMENT=development python manage.py runserver 8085 --noreload`
+   (depuis `backend/`) ;
+3. relancer le frontend (`ng serve`, port 4205) ;
+4. **vérifier** que les deux répondent avant d'annoncer que la correction est en ligne —
+   un `curl` sur `/api/auth/login/` (405 ou 400 attendus, pas 000) et sur `http://localhost:4205/`.
+
+Cette règle vaut aussi après un **changement de branche** ou un `git merge` qui touche
+le backend : le serveur en cours tourne alors sur l'ancien code.
+
 ## Architecture
 
 ### RBAC / multi-locataire (modèle de domaine central)
