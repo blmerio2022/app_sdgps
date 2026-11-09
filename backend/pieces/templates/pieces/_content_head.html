@@ -13,7 +13,10 @@ que chaque version ne tire QUE sa propre mention dans la marge haute (isolation 
     </td>
     <td class="ch-mid">
       <div class="ptitle">PIÈCE N°{{ piece.index }} : {{ piece.title }}{% if mention %}<br>({{ mention }}){% endif %}</div>
-      {% include 'pieces/_info_pairs.html' with compact=1 %}
+      {% comment %}Deux colonnes en PAYSAGE seulement : l'encadré y fait 287 mm de large
+      et la hauteur est la ressource rare. En portrait il n'en fait que 200 mm — scindé,
+      chaque colonne serait trop étroite et les valeurs passeraient à la ligne.{% endcomment %}
+      {% include 'pieces/_info_pairs.html' with compact=1 split=piece.content_landscape %}
     </td>
     <td class="ch-right">
       <div class="circle">

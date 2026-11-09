@@ -1,0 +1,6 @@
+{% comment %}Couples « natures » + session. Colonne de DROITE en agencement paysage,
+lignes suivantes de la liste en portrait. `compact` abrège les libellés. Inclus dans un
+`<table class="info">` par l'appelant.{% endcomment %}
+<tr><td class="lbl">{% if compact %}Nature Affaire{% else %}Nature de l'affaire{% endif %}</td><td class="sep">:</td><td class="val">{{ header.nature_affaire }}</td></tr>
+<tr><td class="lbl">{% if compact %}Nature SDGPS{% else %}Nature du Sous Dossier GPS{% endif %}</td><td class="sep">:</td><td class="val"><span class="guill">«&nbsp;{{ header.nature_ssdgps }}&nbsp;»</span></td></tr>
+{% if header.session_label %}<tr><td class="lbl">Session</td><td class="sep">:</td><td class="val">{{ header.session_label }}</td></tr>{% endif %}

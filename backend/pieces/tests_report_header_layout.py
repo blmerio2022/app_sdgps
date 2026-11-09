@@ -67,9 +67,18 @@ class EnteteDeuxColonnesBaseTest(TestCase):
     def _contexte(self, ssdgps, session=None):
         return build_report_context(ssdgps, session, [self._piece(ssdgps)])
 
-    def _rendu_partiel(self, ssdgps, session=None, compact=False):
+    def _rendu_partiel(self, ssdgps, session=None, compact=False, split=True):
+        """`split` reflète `piece.content_landscape` : deux colonnes en paysage,
+        liste simple en portrait."""
         ctx = self._contexte(ssdgps, session)
-        return render_to_string(PARTIEL, {'header': ctx['header'], 'compact': compact})
+        return render_to_string(
+            PARTIEL, {'header': ctx['header'], 'compact': compact, 'split': split})
+
+    def _entete_courant(self, ssdgps, type_piece='RDL', session=None):
+        """Rendu de l'en-tête courant réel, orientation comprise."""
+        ctx = build_report_context(ssdgps, session, [self._piece(ssdgps, type_piece)])
+        return render_to_string('pieces/_content_head.html',
+                                {'header': ctx['header'], 'piece': ctx['pieces'][0]})
 
     def _rendu_gabarit(self, mode, ssdgps, session=None):
         ctx = self._contexte(ssdgps, session)
@@ -150,14 +159,23 @@ class AbsenceDeSeparationVisibleTests(EnteteDeuxColonnesBaseTest):
 
 class UtilisationParLesEntetesTests(EnteteDeuxColonnesBaseTest):
 
-    def test_entete_courant_des_pages_de_contenu_utilise_l_agencement(self):
-        """C'est l'en-tête répété sur toutes les pages de tableaux, images et photos —
-        celui qui chevauchait le tableau de données."""
-        ctx = self._contexte(self._ssdgps())
-        html = render_to_string('pieces/_content_head.html',
-                                {'header': ctx['header'], 'piece': ctx['pieces'][0]})
+    def test_entete_courant_en_deux_colonnes_SEULEMENT_en_paysage(self):
+        """RDL est en paysage automatique : l'encadré fait 287 mm, la hauteur est la
+        ressource rare → deux colonnes."""
+        html = self._entete_courant(self._ssdgps(), 'RDL')
         self.assertIn('info-split', html)
         self.assertIn('info-split-compact', html)
+
+    def test_entete_courant_en_une_colonne_en_portrait(self):
+        """RDC est en portrait : l'encadré n'y fait que 200 mm. Scindé, chaque colonne
+        serait trop étroite et les valeurs passeraient à la ligne."""
+        html = self._entete_courant(self._ssdgps(), 'RDC')
+        self.assertNotIn('info-split', html)
+        self.assertIn('info-compact', html)
+        # Les couples sont bien là, simplement empilés.
+        for libelle in ('Propriété Dite', 'Réquisition', 'Titre',
+                        'Nature Affaire', 'Nature SDGPS'):
+            self.assertIn(libelle, html)
 
     def test_separateur_de_piece_garde_une_seule_colonne(self):
         """La page-séparateur liste ses couples les uns SOUS les autres, comme à
@@ -169,17 +187,25 @@ class UtilisationParLesEntetesTests(EnteteDeuxColonnesBaseTest):
         self.assertIn('<table class="info">', separateur)
         self.assertIn('Nature du Sous Dossier GPS', separateur)
 
-    def test_agencement_applique_a_toutes_les_pieces(self):
+    def test_agencement_pilote_par_l_orientation_et_non_par_le_type(self):
         """« sur toutes les pièces, et non pas seulement celles qui chevauchaient » :
-        l'agencement ne dépend d'aucun type de pièce."""
-        for type_piece in ('RDL', 'RDI', 'LPA', 'ROB', 'RDD', 'RC'):
+        le critère est l'ORIENTATION du contenu, identique pour tous les types qui la
+        partagent — aucun type n'est traité à part."""
+        from pieces.report import resolve_orientation
+        for numero, type_piece in enumerate(('RDL', 'RDI', 'LPA', 'ROB', 'RDD', 'RC',
+                                             'RDC'), start=100):
             ssdgps = Ssdgps.objects.create(
-                nature_ssdgps='PDC/GPS', numero_ssdgps=100 + ord(type_piece[-1]),
+                nature_ssdgps='PDC/GPS', numero_ssdgps=numero,
                 type_ssdgps='multi-session', affaire=self.affaire)
-            ctx = build_report_context(ssdgps, None, [self._piece(ssdgps, type_piece)])
+            piece = self._piece(ssdgps, type_piece)
+            paysage = resolve_orientation(piece, ssdgps) == 'paysage'
+            ctx = build_report_context(ssdgps, None, [piece])
             html = render_to_string('pieces/_content_head.html',
                                     {'header': ctx['header'], 'piece': ctx['pieces'][0]})
-            self.assertIn('info-split', html, f'manquant pour {type_piece}')
+            if paysage:
+                self.assertIn('info-split', html, f'deux colonnes attendues : {type_piece}')
+            else:
+                self.assertNotIn('info-split', html, f'une colonne attendue : {type_piece}')
 
 
 class LargeurBoiteDeMargeTests(EnteteDeuxColonnesBaseTest):
