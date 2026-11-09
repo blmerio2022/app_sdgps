@@ -13,14 +13,7 @@ que chaque version ne tire QUE sa propre mention dans la marge haute (isolation 
     </td>
     <td class="ch-mid">
       <div class="ptitle">PIÈCE N°{{ piece.index }} : {{ piece.title }}{% if mention %}<br>({{ mention }}){% endif %}</div>
-      <table class="info">
-        <tr><td class="lbl">Propriété Dite</td><td class="sep">:</td><td class="val"><span class="guill">«&nbsp;{{ header.propriete }}&nbsp;»</span></td></tr>
-        <tr><td class="lbl">Réquisition</td><td class="sep">:</td><td class="val">{{ header.requisition }}</td></tr>
-        <tr><td class="lbl">Titre</td><td class="sep">:</td><td class="val">{{ header.titre }}</td></tr>
-        <tr><td class="lbl">Nature Affaire</td><td class="sep">:</td><td class="val">{{ header.nature_affaire }}</td></tr>
-        <tr><td class="lbl">Nature SDGPS</td><td class="sep">:</td><td class="val"><span class="guill">«&nbsp;{{ header.nature_ssdgps }}&nbsp;»</span></td></tr>
-        {% if header.session_label %}<tr><td class="lbl">Session</td><td class="sep">:</td><td class="val">{{ header.session_label }}</td></tr>{% endif %}
-      </table>
+      {% include 'pieces/_info_pairs.html' with compact=1 %}
     </td>
     <td class="ch-right">
       <div class="circle">

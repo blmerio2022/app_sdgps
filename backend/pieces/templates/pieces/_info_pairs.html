@@ -1,0 +1,34 @@
+{% comment %}Couples « clé : valeur » de l'en-tête d'une PIÈCE, répartis en DEUX colonnes.
+
+Les 3 premiers couples (identification de la propriété) occupent la colonne de gauche,
+les 3 suivants (natures et session) celle de droite. L'en-tête est ainsi deux fois moins
+haut qu'en liste simple — c'est ce qui lui évite d'empiéter sur le tableau de données
+des pièces à long intitulé (RDL, RDI N°k…), dont l'encadré était le plus serré.
+
+Aucune séparation visible : le tableau d'agencement et ses cellules ne portent ni
+bordure ni fond (cf. `.info-split` dans `report.html`). Seuls les couples se voient.
+
+`compact` (optionnel) : passé par l'en-tête courant des pages de contenu, où la police
+est plus petite et la place plus contrainte que sur la page-séparateur.
+
+La ligne « Session » n'apparaît que pour un rapport de session unique
+(cf. `report.resolve_report_session`) : la colonne de droite compte alors 3 couples,
+sinon 2.{% endcomment %}
+<table class="info-split{% if compact %} info-split-compact{% endif %}">
+  <tr>
+    <td class="ip-col">
+      <table class="info">
+        <tr><td class="lbl">Propriété Dite</td><td class="sep">:</td><td class="val"><span class="guill">«&nbsp;{{ header.propriete }}&nbsp;»</span></td></tr>
+        <tr><td class="lbl">Réquisition</td><td class="sep">:</td><td class="val">{{ header.requisition }}</td></tr>
+        <tr><td class="lbl">Titre</td><td class="sep">:</td><td class="val">{{ header.titre }}</td></tr>
+      </table>
+    </td>
+    <td class="ip-col">
+      <table class="info">
+        <tr><td class="lbl">{% if compact %}Nature Affaire{% else %}Nature de l'affaire{% endif %}</td><td class="sep">:</td><td class="val">{{ header.nature_affaire }}</td></tr>
+        <tr><td class="lbl">{% if compact %}Nature SDGPS{% else %}Nature du Sous Dossier GPS{% endif %}</td><td class="sep">:</td><td class="val"><span class="guill">«&nbsp;{{ header.nature_ssdgps }}&nbsp;»</span></td></tr>
+        {% if header.session_label %}<tr><td class="lbl">Session</td><td class="sep">:</td><td class="val">{{ header.session_label }}</td></tr>{% endif %}
+      </table>
+    </td>
+  </tr>
+</table>

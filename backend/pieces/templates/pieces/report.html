@@ -33,7 +33,11 @@
        page de garde restent en portrait). En paysage, la largeur utile passe à 287 mm. */
     size: A4{% if piece.content_landscape %} landscape{% endif %};
     margin: 43mm 5mm 10mm 5mm;   /* contenu : 0,5 cm côtés, 1 cm bas, en-tête répété en haut */
-    @top-center { content: element(chead); vertical-align: top; padding-top: 5mm; }
+    /* `width` EXPLICITE, comme pour @bottom-center : sans elle, WeasyPrint résout
+       la largeur de cette boîte de marge à ZÉRO et l'encadré d'en-tête (200/287 mm)
+       y débord, centré sur un point — il empiétait alors sur le tableau de données. */
+    @top-center { content: element(chead); vertical-align: top; padding-top: 5mm;
+                  width: {% if piece.content_landscape %}287mm{% else %}200mm{% endif %}; }
     @bottom-center { width: {% if piece.content_landscape %}287mm{% else %}200mm{% endif %}; }
   }
   @page contenu2 {
@@ -44,7 +48,8 @@
        reste une page `contenu` qui ne tire QUE `element(chead)`. Isolation stricte. */
     size: A4{% if piece.content_landscape %} landscape{% endif %};
     margin: 43mm 5mm 10mm 5mm;
-    @top-center { content: element(chead2); vertical-align: top; padding-top: 5mm; }
+    @top-center { content: element(chead2); vertical-align: top; padding-top: 5mm;
+                  width: {% if piece.content_landscape %}287mm{% else %}200mm{% endif %}; }
     @bottom-center { width: {% if piece.content_landscape %}287mm{% else %}200mm{% endif %}; }
   }
 {% if duplex %}
@@ -97,6 +102,31 @@
   .info .lbl { font-weight: bold; white-space: nowrap; width: 235px; }
   .info .sep { width: 14px; }
   .info .val { font-weight: bold; }
+
+  /* Couples « clé : valeur » des en-têtes de PIÈCE répartis en DEUX colonnes
+     (`_info_pairs.html`) : 3 à gauche, 3 à droite — moitié moins haut qu'en liste,
+     ce qui évite que l'encadré n'empiète sur le tableau de données.
+     AUCUNE séparation visible : ni bordure ni fond sur l'agencement, seuls les
+     couples se voient. La largeur des libellés repasse en `auto` : figée à 235 px,
+     elle ne laisserait presque rien à la valeur dans une demi-largeur. */
+  table.info-split { width: 100%; border-collapse: collapse; margin: 6px 0 0; }
+  /* Largeur LAISSÉE LIBRE (pas de 50 % imposé) : les deux colonnes n'ont pas des
+     libellés de même longueur — « Nature du Sous Dossier GPS » est bien plus large que
+     « Titre ». À 50/50, la colonne de droite n'avait plus de place pour sa valeur et
+     « BC du 01/02/2024 » passait à la ligne. En largeur automatique, chaque colonne
+     prend ce qu'il lui faut et les valeurs tiennent sur une ligne. */
+  table.info-split > tr > td.ip-col,
+  table.info-split > tbody > tr > td.ip-col {
+    vertical-align: top; border: 0; background: none;
+    padding: 0 10px 0 0;
+  }
+  table.info-split .info { margin: 0; }
+  table.info-split .info .lbl { width: auto; padding-right: 2px; }
+  /* Variante des pages de contenu : police et interlignes resserrés. */
+  table.info-split-compact { font-size: 9pt; }
+  table.info-split-compact > tr > td.ip-col,
+  table.info-split-compact > tbody > tr > td.ip-col { padding: 0 6px 0 0; }
+  table.info-split-compact .info td { padding: 1.5px 3px; }
   .guill { font-weight: bold; }
 
   /* ---------- Page de garde : titre + tableau des pièces ---------- */
@@ -340,16 +370,7 @@ N° Ordre / Désignation) → clic = saut vers cette page-séparateur.{% endcomm
 
   <div class="sep-title">PIÈCE N°{{ piece.index }} : {{ piece.title }}</div>
 
-  <table class="info">
-    <tr><td class="lbl">Propriété Dite</td><td class="sep">:</td><td class="val"><span class="guill">«&nbsp;{{ header.propriete }}&nbsp;»</span></td></tr>
-    <tr><td class="lbl">Réquisition</td><td class="sep">:</td><td class="val">{{ header.requisition }}</td></tr>
-    <tr><td class="lbl">Titre</td><td class="sep">:</td><td class="val">{{ header.titre }}</td></tr>
-    <tr><td class="lbl">Nature de l'affaire</td><td class="sep">:</td><td class="val">{{ header.nature_affaire }}</td></tr>
-    <tr><td class="lbl">Nature du Sous Dossier GPS</td><td class="sep">:</td><td class="val"><span class="guill">«&nbsp;{{ header.nature_ssdgps }}&nbsp;»</span></td></tr>
-    {% comment %}Session affichée juste APRÈS la nature du SDGPS, uniquement pour un
-    rapport de session unique (cf. `report.resolve_report_session`).{% endcomment %}
-    {% if header.session_label %}<tr><td class="lbl">Session</td><td class="sep">:</td><td class="val">{{ header.session_label }}</td></tr>{% endif %}
-  </table>
+  {% include 'pieces/_info_pairs.html' %}
 </section>
 
 {# ===================== CONTENU DE PIÈCE ===================== #}
