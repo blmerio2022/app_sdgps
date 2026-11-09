@@ -915,14 +915,22 @@ def render_report_pdf(ssdgps, session, pieces, sort_config=None, fields_config=N
 
     for page in documents[0].pages:          # unité 0 : page de garde du SDGPS
         _add(page)
-    for doc in documents[1:]:                 # unités « pièce »
+
+    # Index (0-based) de la page-séparateur de chaque pièce dans le document FINAL.
+    # Il sert à rendre cliquables les liens de la page de garde : ceux-ci visent une
+    # destination NOMMÉE (`piece-k`) que WeasyPrint ne peut pas résoudre, la cible vivant
+    # dans un AUTRE document (une pièce = un document). Cf. `_resolve_piece_links`.
+    pages_pieces = {}
+    for index, doc in enumerate(documents[1:], start=1):   # unités « pièce »
         if duplex and len(final_pages) % 2 == 1:
             _add(_blank_page(), blank=True)
+        pages_pieces[index] = len(final_pages)             # 1re page de l'unité = séparateur
         for page in doc.pages:
             _add(page)
 
     pdf_bytes = documents[0].copy(final_pages).write_pdf()
-    return _overlay_global_pagination(pdf_bytes, pages_meta, duplex)
+    return _overlay_global_pagination(pdf_bytes, pages_meta, duplex,
+                                      pages_pieces=pages_pieces)
 
 
 # Conversion pixels CSS (96 dpi, unité des boîtes WeasyPrint) → points PDF (72 dpi).
@@ -961,14 +969,64 @@ def _pagination_font():
     return _PAGINATION_FONT
 
 
-def _overlay_global_pagination(pdf_bytes, pages_meta, duplex):
+def _resolve_piece_links(writer, pages_pieces):
+    """Rend CLIQUABLES les liens de la page de garde vers chaque pièce.
+
+    Le gabarit pose déjà, sur le n° d'ordre et la désignation de chaque ligne, un lien
+    `href="#piece-k"` dont la cible est l'`id` de la page-séparateur correspondante.
+    WeasyPrint émet donc bien une annotation `/Link` avec une destination **nommée**
+    (`/Dest: piece-k`) et la bonne zone cliquable — mais cette destination reste
+    introuvable dans le PDF final : chaque pièce est rendue comme un document SÉPARÉ
+    (indispensable pour que « PAGE N°k » reparte de 1 à chaque pièce), si bien que la
+    cible ne se trouve jamais dans le même document que le lien. Résultat : des liens
+    présents mais inertes, et une table de destinations nommées vide.
+
+    On remplace donc chaque destination nommée par une destination EXPLICITE, pointant
+    la page réelle du séparateur dans le document assemblé (`pages_pieces`). Le format
+    `[page /XYZ null null null]` conserve le zoom courant du lecteur et cadre en haut de
+    page — comportement attendu d'un « aller à la pièce ».
+
+    Opère sur les pages du `writer`, donc APRÈS l'assemblage et la pagination globale.
+    """
+    import re
+    from pypdf.generic import ArrayObject, NameObject, NullObject
+
+    if not pages_pieces:
+        return 0
+
+    resolus = 0
+    for page in writer.pages:
+        for annot in page.get('/Annots') or []:
+            objet = annot.get_object()
+            if objet.get('/Subtype') != '/Link':
+                continue
+            cible = objet.get('/Dest')
+            correspondance = re.fullmatch(r'piece-(\d+)', str(cible or ''))
+            if not correspondance:
+                continue
+            index_page = pages_pieces.get(int(correspondance.group(1)))
+            if index_page is None or index_page >= len(writer.pages):
+                continue
+            objet[NameObject('/Dest')] = ArrayObject([
+                writer.pages[index_page].indirect_reference,
+                NameObject('/XYZ'), NullObject(), NullObject(), NullObject(),
+            ])
+            resolus += 1
+    return resolus
+
+
+def _overlay_global_pagination(pdf_bytes, pages_meta, duplex, pages_pieces=None):
     """Superpose « Page i/n » (pagination GLOBALE du rapport) au bas de chaque page non
     blanche, du côté OPPOSÉ à l'identification :
     - recto seul   : identification à droite → pagination à GAUCHE ;
     - recto-verso  : identification côté extérieur → pagination côté intérieur, soit à
       DROITE sur une page gauche (i pair) et à GAUCHE sur une page droite (i impair).
     `n` = nombre total de pages finales (blanches comprises) ; sur une page blanche de
-    calage, aucun numéro n'est imprimé (convention d'impression recto-verso)."""
+    calage, aucun numéro n'est imprimé (convention d'impression recto-verso).
+
+    `pages_pieces` ({n° de pièce: index de sa page-séparateur}) sert à résoudre les liens
+    cliquables de la page de garde (cf. `_resolve_piece_links`) — c'est ici qu'on le fait,
+    une fois toutes les pages présentes dans le `writer`."""
     from io import BytesIO
     from pypdf import PdfReader, PdfWriter
     from reportlab.pdfgen import canvas
@@ -1015,6 +1073,10 @@ def _overlay_global_pagination(pdf_bytes, pages_meta, duplex):
         stamp = PdfReader(buf).pages[0]
         stamp.merge_page(page)
         writer.add_page(stamp)
+
+    # Toutes les pages sont en place : les destinations des liens de la page de garde
+    # peuvent enfin être pointées sur les bonnes pages.
+    _resolve_piece_links(writer, pages_pieces or {})
 
     out = BytesIO()
     writer.write(out)
