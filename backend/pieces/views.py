@@ -25,7 +25,8 @@ from projects.models import Session, Ssdgps
 from projects.views import scope_queryset, is_scope_visible
 from .catalog import (serialize_catalog, get_piece_def, champs_with_meta, valid_field_names,
                       import_visible_names)
-from .report import (EXCLUDED_TYPES, PHOTO_TYPES, render_report_pdf, report_filename,
+from .report import (EXCLUDED_TYPES, PHOTO_TYPES, order_pieces_for_synthesis,
+                     render_report_pdf, report_filename,
                      _sorted_only, _sorted_renumbered, sort_versions)
 from .imaging import extract_image_metadata, make_png_preview, NON_WEB_FORMATS
 from .models import Piece, PieceImage
@@ -1198,11 +1199,21 @@ class PieceViewSet(viewsets.ModelViewSet):
     def report(self, request):
         """
         GET /api/v1/pieces/report/?ssdgps=<uuid>[&session=<uuid>]
+        GET /api/v1/pieces/report/?ssdgps=<uuid>&session_from=<uuid>&session_to=<uuid>
+
         Génère le rapport PDF du SSDGPS : page de garde (liste des pièces valides) +
         contenu de chaque pièce valide (tableaux / images / photos), dans l'ordre du
-        rapport (`ordre`). En vue « session » (multi-session), inclut les pièces de
-        cette session PLUS les pièces communes (session nulle). Seules les pièces
-        `statut == 'valide'` non supprimées sont retenues.
+        rapport (`ordre`). Seules les pièces `statut == 'valide'` non supprimées sont
+        retenues.
+
+        Trois portées :
+        - sans paramètre de session : tout le SSDGPS ;
+        - `session` : les pièces de CETTE session plus les pièces communes (session nulle) ;
+        - `session_from` / `session_to` : rapport de **synthèse** sur une plage de
+          sessions. Les pièces communes n'y figurent qu'UNE fois ; les pièces spécifiques
+          sont regroupées par pièce puis déclinées session par session
+          (cf. `report.order_pieces_for_synthesis`). Les deux bornes sont incluses et
+          peuvent être données dans n'importe quel ordre.
         """
         ssdgps_id = request.query_params.get('ssdgps')
         if not ssdgps_id:
@@ -1225,12 +1236,46 @@ class PieceViewSet(viewsets.ModelViewSet):
             if session is None:
                 return Response({'detail': 'Session introuvable pour ce SSDGPS.'}, status=400)
 
+        # Plage de sessions (rapport de synthèse). Les deux bornes sont requises ensemble
+        # et peuvent être fournies dans n'importe quel ordre : on les remet d'aplomb.
+        sessions_plage = None
+        from_id = request.query_params.get('session_from') or None
+        to_id = request.query_params.get('session_to') or None
+        if from_id or to_id:
+            if session_id:
+                return Response({'detail': "Choisissez soit une session unique, soit une "
+                                           "plage de sessions, pas les deux."}, status=400)
+            if not (from_id and to_id):
+                return Response({'detail': "Une plage de sessions exige « session_from » "
+                                           "ET « session_to »."}, status=400)
+            bornes = {str(s.pk): s for s in Session.objects.filter(
+                pk__in=[from_id, to_id], ssdgps_id=ssdgps_id, is_deleted=False)}
+            debut, fin = bornes.get(str(from_id)), bornes.get(str(to_id))
+            if debut is None or fin is None:
+                return Response(
+                    {'detail': 'Session de début ou de fin introuvable pour ce SSDGPS.'},
+                    status=400)
+            bas, haut = sorted((debut.numero_session, fin.numero_session))
+            sessions_plage = list(Session.objects.filter(
+                ssdgps_id=ssdgps_id, is_deleted=False,
+                numero_session__gte=bas, numero_session__lte=haut,
+            ).order_by('numero_session'))
+
         qs = self._scope(self.queryset.filter(
             ssdgps_id=ssdgps_id, is_deleted=False, statut=Piece.Statut.VALIDE,
         )).exclude(type_piece__in=EXCLUDED_TYPES)
         if session_id:
             qs = qs.filter(Q(session_id=session_id) | Q(session__isnull=True))
-        pieces = list(qs.order_by('ordre', 'type_piece', 'numero'))
+        elif sessions_plage is not None:
+            # Pièces des sessions de la plage + pièces communes (une seule fois).
+            qs = qs.filter(Q(session__in=sessions_plage) | Q(session__isnull=True))
+
+        if sessions_plage is not None:
+            # Regroupement « une pièce, puis ses sessions » (cf. report.py).
+            pieces = order_pieces_for_synthesis(
+                list(qs.select_related('session').order_by('ordre', 'type_piece', 'numero')))
+        else:
+            pieces = list(qs.order_by('ordre', 'type_piece', 'numero'))
 
         if not pieces:
             return Response(
@@ -1263,7 +1308,7 @@ class PieceViewSet(viewsets.ModelViewSet):
                            'Le détail complet figure dans les journaux du serveur.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        filename = report_filename(ssdgps, session)
+        filename = report_filename(ssdgps, session, sessions=sessions_plage)
 
         # Réponse JSON base64 (par défaut pour le front) : le PDF est transporté encodé
         # dans un JSON, puis reconstruit en Blob côté client. On évite ainsi qu'un

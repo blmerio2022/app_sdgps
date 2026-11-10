@@ -72,4 +72,39 @@ describe('PiecesService', () => {
     expect(req.request.body).toEqual({ ids: ['a', 'b'] });
     req.flush({ deleted_count: 2, errors: [] });
   });
+
+  describe('downloadReport()', () => {
+    it('porte sur une session unique quand elle est fournie', () => {
+      service.downloadReport('s1', 'sess-2', false).subscribe();
+      const req = httpMock.expectOne(r => r.url === `${BASE}report/`);
+      expect(req.request.params.get('ssdgps')).toBe('s1');
+      expect(req.request.params.get('session')).toBe('sess-2');
+      expect(req.request.params.get('session_from')).toBeNull();
+      req.flush({});
+    });
+
+    it('envoie les deux bornes en mode synthèse', () => {
+      service.downloadReport('s1', null, true, { from: 'sess-1', to: 'sess-3' }).subscribe();
+      const req = httpMock.expectOne(r => r.url === `${BASE}report/`);
+      expect(req.request.params.get('session_from')).toBe('sess-1');
+      expect(req.request.params.get('session_to')).toBe('sess-3');
+      expect(req.request.params.get('duplex')).toBe('1');
+      req.flush({});
+    });
+
+    it('n’envoie jamais session ET une plage : le backend les refuse ensemble', () => {
+      service.downloadReport('s1', 'sess-2', false, { from: 'sess-1', to: 'sess-3' }).subscribe();
+      const req = httpMock.expectOne(r => r.url === `${BASE}report/`);
+      expect(req.request.params.get('session')).toBeNull();
+      expect(req.request.params.get('session_from')).toBe('sess-1');
+      req.flush({});
+    });
+
+    it('omet duplex quand il est faux', () => {
+      service.downloadReport('s1').subscribe();
+      const req = httpMock.expectOne(r => r.url === `${BASE}report/`);
+      expect(req.request.params.get('duplex')).toBeNull();
+      req.flush({});
+    });
+  });
 });

@@ -384,10 +384,24 @@ export class PiecesService {
    * En vue session (multi-session), passer `sessionId` pour cibler cette session.
    * `duplex` = true : mise en page recto-verso (pages de garde calées sur page droite,
    * identification du pied en miroir, pagination globale côté reliure). */
-  downloadReport(ssdgpsId: string, sessionId?: string | null, duplex = false):
+  /**
+   * Rapport PDF d'un SSDGPS.
+   *
+   * `sessionRange` déclenche le rapport de **synthèse** sur une plage de sessions : les
+   * pièces communes n'y figurent qu'une fois, les pièces spécifiques sont regroupées par
+   * pièce puis déclinées session par session. Il est exclusif de `sessionId` — le backend
+   * refuse les deux ensemble.
+   */
+  downloadReport(ssdgpsId: string, sessionId?: string | null, duplex = false,
+                 sessionRange?: { from: string; to: string } | null):
       Observable<{ filename: string; content_type: string; data: string }> {
     let params = new HttpParams().set('ssdgps', ssdgpsId);
-    if (sessionId) params = params.set('session', sessionId);
+    if (sessionRange) {
+      params = params.set('session_from', sessionRange.from)
+                     .set('session_to', sessionRange.to);
+    } else if (sessionId) {
+      params = params.set('session', sessionId);
+    }
     if (duplex) params = params.set('duplex', '1');
     return this.http.get<{ filename: string; content_type: string; data: string }>(
       `${this.base}report/`, { params });

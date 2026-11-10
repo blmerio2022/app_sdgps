@@ -755,6 +755,15 @@ export class PieceManagementPageComponent implements OnInit {
   reportFilename = '';
   /** Mode d'impression choisi dans la modale : recto-verso (défaut) ou recto seul. */
   reportDuplex = true;
+  /**
+   * Portée du rapport :
+   *  - `courant`  : le SSDGPS, ou la session en cours si l'on est dans une session ;
+   *  - `synthese` : plage de sessions (début → fin). Les pièces communes n'y figurent
+   *    qu'une fois, les pièces spécifiques sont déclinées pour chaque session.
+   */
+  reportScope: 'courant' | 'synthese' = 'courant';
+  reportSessionFrom: string | null = null;
+  reportSessionTo: string | null = null;
   /** false = écran de configuration (choix du mode) ; true = génération lancée. */
   reportStarted = false;
   private reportBlob: Blob | null = null;
@@ -763,6 +772,28 @@ export class PieceManagementPageComponent implements OnInit {
   /** Nombre de pièces valides incluables dans le rapport (portée session comprise). */
   get validCount(): number {
     return this.scopeBySession(this.activePieces).filter(p => p.statut === 'valide').length;
+  }
+
+  /** Sessions sélectionnables pour une synthèse, dans l'ordre de leur numéro. */
+  get reportSessions(): Session[] {
+    return [...this.sessions].sort((a, b) => a.numero_session - b.numero_session);
+  }
+
+  /** La synthèse n'a de sens qu'avec au moins deux sessions à couvrir. */
+  get canSynthesize(): boolean {
+    return this.isMultiSession && this.reportSessions.length >= 2;
+  }
+
+  /** Plage à transmettre, ou `null` hors mode synthèse / si elle est incomplète. */
+  get reportRange(): { from: string; to: string } | null {
+    if (this.reportScope !== 'synthese') return null;
+    if (!this.reportSessionFrom || !this.reportSessionTo) return null;
+    return { from: this.reportSessionFrom, to: this.reportSessionTo };
+  }
+
+  /** Le bouton « Générer » reste inactif tant que la plage est incomplète. */
+  get canGenerateReport(): boolean {
+    return this.reportScope !== 'synthese' || this.reportRange !== null;
   }
 
   /** Ouvre la modale en état « configuration » (choix du mode d'impression), sans générer. */
@@ -774,6 +805,11 @@ export class PieceManagementPageComponent implements OnInit {
     this.reportBlob = null;
     this.reportFilename = '';
     this.reportProgress = 0;
+    this.reportScope = 'courant';
+    // Pré-remplissage naturel : de la première à la dernière session.
+    const sessions = this.reportSessions;
+    this.reportSessionFrom = sessions.length ? sessions[0].id : null;
+    this.reportSessionTo = sessions.length ? sessions[sessions.length - 1].id : null;
   }
 
   /** Revient à l'écran de configuration (pour changer de mode et régénérer). */
@@ -804,7 +840,15 @@ export class PieceManagementPageComponent implements OnInit {
       }
     }, 200);
 
-    this.piecesService.downloadReport(this.ssdgps.id, this.currentSessionId || undefined, this.reportDuplex).subscribe({
+    const range = this.reportRange;
+    this.piecesService.downloadReport(
+      this.ssdgps.id,
+      // En synthèse, la session courante ne doit PAS être transmise : le backend refuse
+      // une session unique et une plage ensemble.
+      range ? null : (this.currentSessionId || undefined),
+      this.reportDuplex,
+      range,
+    ).subscribe({
       next: (res) => {
         this.stopReportTimer();
         this.reportBlob = this.base64ToBlob(res.data, res.content_type || 'application/pdf');

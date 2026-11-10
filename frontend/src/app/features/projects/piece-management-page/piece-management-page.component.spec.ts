@@ -417,3 +417,113 @@ describe('PieceManagementPageComponent.reportErrorMessage', () => {
     expect(message(undefined)).toBe('Erreur lors de la génération du rapport.');
   });
 });
+
+/**
+ * Rapport de SYNTHÈSE sur une plage de sessions.
+ *
+ * L'opérateur choisit une session de début et une session de fin ; le backend regroupe
+ * alors les pièces par pièce puis par session, et n'inclut qu'une fois les pièces
+ * communes. Côté composant, l'essentiel est : proposer la synthèse seulement quand elle
+ * a du sens, pré-remplir la plage, et ne JAMAIS transmettre une session unique en même
+ * temps qu'une plage (le backend refuse les deux ensemble).
+ */
+describe('PieceManagementPageComponent — rapport de synthèse', () => {
+  let cmp: PieceManagementPageComponent;
+  let piecesSvc: jasmine.SpyObj<{ downloadReport: any }>;
+
+  const sessions = [
+    { id: 'sess-3', numero_session: 3 },
+    { id: 'sess-1', numero_session: 1 },
+    { id: 'sess-2', numero_session: 2 },
+  ] as any[];
+
+  beforeEach(() => {
+    piecesSvc = jasmine.createSpyObj('PiecesService', ['downloadReport']);
+    piecesSvc.downloadReport.and.returnValue(of({ data: '', content_type: 'application/pdf', filename: 'r.pdf' }));
+    const router = jasmine.createSpyObj('Router', ['navigate']);
+    (router as any).url = '/projets/p1/pieces/s1';
+    const stub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
+    // Ordre réel du constructeur : projects, pieces, toast, router, route, breadcrumb, …
+    cmp = new PieceManagementPageComponent(
+      {} as any, piecesSvc as any, {} as any, router as any, {} as any, {} as any, stub, stub,
+    );
+    cmp.ssdgps = { id: 's1', numero_ssdgps: 2, type_ssdgps: 'multi-session' } as any;
+    cmp.sessions = sessions;
+  });
+
+  afterEach(() => localStorage.clear());
+
+  it('ordonne les sessions proposées par numéro', () => {
+    expect(cmp.reportSessions.map(s => s.numero_session)).toEqual([1, 2, 3]);
+  });
+
+  it('propose la synthèse en multi-session avec au moins deux sessions', () => {
+    expect(cmp.canSynthesize).toBeTrue();
+  });
+
+  it('ne propose pas la synthèse en mono-session', () => {
+    cmp.ssdgps = { ...cmp.ssdgps, type_ssdgps: 'mono-session' } as any;
+    expect(cmp.canSynthesize).toBeFalse();
+  });
+
+  it('ne propose pas la synthèse avec une seule session', () => {
+    cmp.sessions = [sessions[1]];
+    expect(cmp.canSynthesize).toBeFalse();
+  });
+
+  it('pré-remplit la plage de la première à la dernière session', () => {
+    cmp.openReportModal();
+    expect(cmp.reportScope).toBe('courant');
+    expect(cmp.reportSessionFrom).toBe('sess-1');
+    expect(cmp.reportSessionTo).toBe('sess-3');
+  });
+
+  it('ne transmet aucune plage hors mode synthèse', () => {
+    cmp.openReportModal();
+    expect(cmp.reportRange).toBeNull();
+  });
+
+  it('transmet la plage et aucune session unique en mode synthèse', () => {
+    cmp.openReportModal();
+    cmp.reportScope = 'synthese';
+    (cmp as any).currentSessionId = 'sess-2';
+    cmp.generateReport();
+
+    const [, session, , range] = piecesSvc.downloadReport.calls.mostRecent().args;
+    expect(session).toBeNull();
+    expect(range).toEqual({ from: 'sess-1', to: 'sess-3' });
+  });
+
+  it('transmet la session courante hors mode synthèse', () => {
+    cmp.openReportModal();
+    (cmp as any).currentSessionId = 'sess-2';
+    cmp.generateReport();
+
+    const [, session, , range] = piecesSvc.downloadReport.calls.mostRecent().args;
+    expect(session).toBe('sess-2');
+    expect(range).toBeNull();
+  });
+
+  it('bloque la génération tant que la plage est incomplète', () => {
+    cmp.openReportModal();
+    cmp.reportScope = 'synthese';
+    cmp.reportSessionTo = null;
+    expect(cmp.reportRange).toBeNull();
+    expect(cmp.canGenerateReport).toBeFalse();
+  });
+
+  it('autorise toujours la génération hors mode synthèse', () => {
+    cmp.openReportModal();
+    cmp.reportSessionFrom = null;
+    expect(cmp.canGenerateReport).toBeTrue();
+  });
+
+  it('accepte une plage dont les bornes sont inversées (le backend les remet d’aplomb)', () => {
+    cmp.openReportModal();
+    cmp.reportScope = 'synthese';
+    cmp.reportSessionFrom = 'sess-3';
+    cmp.reportSessionTo = 'sess-1';
+    expect(cmp.reportRange).toEqual({ from: 'sess-3', to: 'sess-1' });
+    expect(cmp.canGenerateReport).toBeTrue();
+  });
+});

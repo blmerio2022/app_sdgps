@@ -468,6 +468,55 @@
     <div class="modal-body">
       <!-- Étape 1 : configuration (choix du mode d'impression) -->
       <ng-container *ngIf="!reportStarted">
+        <!-- Portée : rapport courant, ou synthèse sur une plage de sessions -->
+        <ng-container *ngIf="canSynthesize">
+          <p class="report-mode-hint">Quelles sessions le rapport doit-il couvrir ?</p>
+          <div class="report-mode-choice" role="radiogroup" aria-label="Portée du rapport">
+            <button type="button" class="mode-card" [class.selected]="reportScope === 'courant'"
+                    role="radio" [attr.aria-checked]="reportScope === 'courant'"
+                    (click)="reportScope = 'courant'">
+              <i class="fas fa-file-alt mode-icon"></i>
+              <span class="mode-title">{{ currentSession ? 'Session courante' : 'Tout le SDGPS' }}</span>
+              <span class="mode-desc">
+                {{ currentSession ? 'Les pièces de cette session et les pièces communes.'
+                                  : 'Toutes les pièces du SDGPS.' }}
+              </span>
+            </button>
+            <button type="button" class="mode-card" [class.selected]="reportScope === 'synthese'"
+                    role="radio" [attr.aria-checked]="reportScope === 'synthese'"
+                    (click)="reportScope = 'synthese'">
+              <i class="fas fa-layer-group mode-icon"></i>
+              <span class="mode-title">Synthèse multi-sessions</span>
+              <span class="mode-desc">
+                Chaque pièce est déclinée session par session ; les pièces communes
+                n'apparaissent qu'une fois.
+              </span>
+            </button>
+          </div>
+
+          <div class="report-range" *ngIf="reportScope === 'synthese'">
+            <label class="range-field">
+              <span class="range-label">Session de début</span>
+              <select [(ngModel)]="reportSessionFrom" aria-label="Session de début">
+                <option *ngFor="let s of reportSessions" [value]="s.id">
+                  Session n°{{ s.numero_session }}
+                </option>
+              </select>
+            </label>
+            <label class="range-field">
+              <span class="range-label">Session de fin</span>
+              <select [(ngModel)]="reportSessionTo" aria-label="Session de fin">
+                <option *ngFor="let s of reportSessions" [value]="s.id">
+                  Session n°{{ s.numero_session }}
+                </option>
+              </select>
+            </label>
+            <p class="range-hint">
+              Les deux bornes sont incluses. Leur ordre n'a pas d'importance.
+            </p>
+          </div>
+        </ng-container>
+
         <p class="report-mode-hint">Choisissez le mode d'impression avant de générer le rapport :</p>
         <div class="report-mode-choice" role="radiogroup" aria-label="Mode d'impression">
           <button type="button" class="mode-card" [class.selected]="reportDuplex" role="radio" [attr.aria-checked]="reportDuplex" (click)="reportDuplex = true">
@@ -500,7 +549,9 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" (click)="closeReportModal()" [disabled]="reportGenerating">Fermer</button>
       <!-- Config : lancer la génération -->
-      <button class="btn btn-report" *ngIf="!reportStarted" (click)="generateReport()">
+      <button class="btn btn-report" *ngIf="!reportStarted" (click)="generateReport()"
+              [disabled]="!canGenerateReport"
+              [title]="canGenerateReport ? '' : 'Choisissez une session de début et une session de fin.'">
         <i class="fas fa-file-pdf"></i> Générer le rapport
       </button>
       <!-- Résultat : revenir au choix du mode / télécharger -->

@@ -173,13 +173,17 @@ def _slug(value) -> str:
     return re.sub(r'[^0-9A-Za-z._-]+', '-', str(value or '').strip()).strip('-')
 
 
-def report_filename(ssdgps, session=None) -> str:
+def report_filename(ssdgps, session=None, sessions=None) -> str:
     """Nom du fichier PDF du rapport, au format :
     ``RAPPORT_SDGPS_<titre|réquisition>_SD<n>_SDGPS-N<i>_<nature>[_SESSION-N<j>]_<horodatage>.pdf``.
     Le titre foncier prime sur la réquisition ; le suffixe SESSION n'est ajouté que
     pour un rapport ciblant une session précise. L'horodatage de génération
     (`_AAAA-MM-JJ-hh-mm-ss-ffff`, heure locale) est ajouté à la fin pour que chaque
-    génération produise un fichier unique."""
+    génération produise un fichier unique.
+
+    `sessions` (rapport de synthèse sur une plage) remplace le suffixe par
+    ``SESSIONS-N<début>-A-N<fin>`` — ou par ``SESSION-N<j>`` si la plage se réduit à une
+    seule session, pour ne pas produire un nom trompeur."""
     affaire = ssdgps.affaire
     propriete = affaire.propriete
     parts = ['RAPPORT_SDGPS']
@@ -189,7 +193,11 @@ def report_filename(ssdgps, session=None) -> str:
     parts.append(f'SD{affaire.numero_sd_affaire}')
     parts.append(f'SDGPS-N{ssdgps.numero_ssdgps}')
     parts.append(_slug(ssdgps.nature_ssdgps))
-    if session is not None:
+    if sessions:
+        numeros = sorted(s.numero_session for s in sessions)
+        parts.append(f'SESSION-N{numeros[0]}' if len(numeros) == 1
+                     else f'SESSIONS-N{numeros[0]}-A-N{numeros[-1]}')
+    elif session is not None:
         parts.append(f'SESSION-N{session.numero_session}')
     # Horodatage AAAA-MM-JJ-hh-mm-ss-ffff (heure locale) ; `ffff` = 4 premiers chiffres des
     # microsecondes (résolution 100 µs), pour garantir l'unicité du nom de fichier.
@@ -724,6 +732,46 @@ def resolve_report_session(ssdgps, session=None):
     return sessions[0] if len(sessions) == 1 else None
 
 
+def order_pieces_for_synthesis(pieces) -> list:
+    """Ordonne les pièces d'un rapport de SYNTHÈSE couvrant plusieurs sessions.
+
+    Règle métier : le rapport suit la liste des pièces, et pour chaque pièce il décline
+    les sessions. Autrement dit on regroupe par **pièce logique** — le couple
+    `(type_piece, numero)`, qui distingue « Rapport de la détermination N°1 » de
+    « … N°2 » — puis, à l'intérieur d'un groupe, on parcourt les sessions dans l'ordre :
+
+        Rapport de traitement — session 1
+        Rapport de traitement — session 2
+        Rapport de traitement — session 3
+        Fermeture de boucle   — session 1
+        Fermeture de boucle   — session 2
+        …
+
+    Une pièce **commune** (`session` nulle) vaut pour toutes les sessions : son groupe ne
+    compte qu'un élément, elle n'apparaît donc **qu'une fois** — jamais dupliquée.
+
+    Position d'un groupe : le plus petit `ordre` qu'il contient, de sorte que l'ordre du
+    rapport choisi par l'opérateur soit préservé. `type_piece` et `numero` départagent
+    deux groupes de même `ordre` (ordre stable et reproductible).
+    """
+    groupes = {}
+    for piece in pieces:
+        groupes.setdefault((piece.type_piece, piece.numero or 0), []).append(piece)
+
+    def rang_groupe(item):
+        (type_piece, numero), membres = item
+        return (min(p.ordre for p in membres), type_piece, numero)
+
+    def rang_dans_groupe(piece):
+        # Commune (session nulle) en tête, puis les sessions par numéro croissant.
+        return (0, 0) if piece.session_id is None else (1, piece.session.numero_session)
+
+    ordonnees = []
+    for _cle, membres in sorted(groupes.items(), key=rang_groupe):
+        ordonnees.extend(sorted(membres, key=rang_dans_groupe))
+    return ordonnees
+
+
 def report_foot_prefix(ssdgps, session_numero=None) -> str:
     """Préfixe d'identification du pied de page, commun à toutes les pages :
 
@@ -793,12 +841,33 @@ def build_report_context(ssdgps, session, pieces, sort_config=None, fields_confi
         'projet': f"{projet.code_projet} — {projet.nom_projet}",
     }
 
+    # Rapport de SYNTHÈSE : plusieurs sessions sont représentées parmi les pièces. Chaque
+    # pièce spécifique porte alors SA session dans l'en-tête, le pied et la page de garde
+    # — sans quoi quatre « Rapport de traitement » successifs seraient indiscernables.
+    # En rapport mono-session, cette annotation serait redondante : on l'omet.
+    sessions_presentes = {p.session_id for p in pieces if p.session_id}
+    synthese = len(sessions_presentes) > 1
+
     cover_rows, rendered = [], []
     for index, piece in enumerate(pieces, start=1):
         designation = piece_designation(piece)
+
+        # Session propre à CETTE pièce (nulle pour une pièce commune à toutes les sessions).
+        piece_session = piece.session if piece.session_id else None
+        piece_session_numero = piece_session.numero_session if piece_session else None
+        piece_session_date = _fmt_date(piece_session.date_session) if piece_session else ''
+        piece_session_label = (
+            f"N°{piece_session_numero}"
+            + (f" du {piece_session_date}" if piece_session_date else '')
+        ) if piece_session_numero is not None else ''
+
         cover_rows.append({
             'ordre': index,
-            'designation': designation,
+            # En synthèse, la session distingue les occurrences d'une même pièce ; les
+            # pièces communes restent sans mention, puisqu'elles valent pour toutes.
+            'designation': (f"{designation} — Session n°{piece_session_numero}"
+                            if synthese and piece_session_numero is not None
+                            else designation),
             'nombre': 1,
             'observations': (piece.commentaire or '').strip(),
         })
@@ -809,6 +878,10 @@ def build_report_context(ssdgps, session, pieces, sort_config=None, fields_confi
             'code': piece.type_piece,
             'content': _piece_content(piece, landscape, sort_config, fields_config),
             'content_landscape': landscape,
+            # Vides hors synthèse : les gabarits retombent alors sur `header.session_label`
+            # (la session unique du rapport), et le pied sur `header.session_numero`.
+            'session_numero': piece_session_numero if synthese else None,
+            'session_label': piece_session_label if synthese else '',
         })
 
     return {
@@ -894,8 +967,13 @@ def render_report_pdf(ssdgps, session, pieces, sort_config=None, fields_config=N
     documents = [_render('cover', foot_base,
                          {'cover_rows': context['cover_rows'], 'total': context['total']})]
     # (2) Une pièce = un document (séparateur + contenu) → PAGE N°k/n numérote la pièce.
+    # En rapport de SYNTHÈSE, chaque pièce spécifique porte SA session dans le pied : le
+    # préfixe est donc recalculé par pièce. Hors synthèse, `session_numero` est nul et
+    # l'on retombe sur le préfixe commun (session unique du rapport, ou aucune).
     for piece in context['pieces']:
-        foot_prefix = f"{foot_base} PIÈCE N°{piece['index']}"
+        prefixe = (report_foot_prefix(ssdgps, piece['session_numero'])
+                   if piece.get('session_numero') is not None else foot_base)
+        foot_prefix = f"{prefixe} PIÈCE N°{piece['index']}"
         documents.append(_piece_doc(piece, foot_prefix))
 
     # Assemblage final. En recto-verso, on cale chaque UNITÉ « pièce » (séparateur + contenu)

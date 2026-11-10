@@ -322,7 +322,7 @@
     <tr><td class="lbl">Nature du Sous Dossier GPS</td><td class="sep">:</td><td class="val"><span class="guill">«&nbsp;{{ header.nature_ssdgps }}&nbsp;»</span></td></tr>
     {% comment %}Session affichée juste APRÈS la nature du SDGPS, uniquement pour un
     rapport de session unique (cf. `report.resolve_report_session`).{% endcomment %}
-    {% if header.session_label %}<tr><td class="lbl">Session</td><td class="sep">:</td><td class="val">{{ header.session_label }}</td></tr>{% endif %}
+    {% firstof piece.session_label header.session_label as session_affichee %}{% if session_affichee %}<tr><td class="lbl">Session</td><td class="sep">:</td><td class="val">{{ session_affichee }}</td></tr>{% endif %}
   </table>
 
   <table class="pieces-list">
@@ -388,7 +388,7 @@ N° Ordre / Désignation) → clic = saut vers cette page-séparateur.{% endcomm
     <tr><td class="lbl">Nature du Sous Dossier GPS</td><td class="sep">:</td><td class="val"><span class="guill">«&nbsp;{{ header.nature_ssdgps }}&nbsp;»</span></td></tr>
     {% comment %}Session affichée juste APRÈS la nature du SDGPS, uniquement pour un
     rapport de session unique (cf. `report.resolve_report_session`).{% endcomment %}
-    {% if header.session_label %}<tr><td class="lbl">Session</td><td class="sep">:</td><td class="val">{{ header.session_label }}</td></tr>{% endif %}
+    {% firstof piece.session_label header.session_label as session_affichee %}{% if session_affichee %}<tr><td class="lbl">Session</td><td class="sep">:</td><td class="val">{{ session_affichee }}</td></tr>{% endif %}
   </table>
 </section>
 
