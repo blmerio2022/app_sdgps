@@ -165,3 +165,68 @@ class VueRapportEchecsTests(TestCase):
         resp = self.client.get('/api/v1/pieces/report/', {'ssdgps': str(self.ssdgps.pk)})
         self.assertEqual(resp.status_code, 400)
         self.assertIn('Aucune pièce valide', resp.data['detail'])
+
+
+class PolicePaginationTests(SimpleTestCase):
+    """Police du numéro global « Page i/n », imprimé par reportlab en surimpression.
+
+    Défaut corrigé : la résolution ne connaissait que des chemins Linux (URW Bookman
+    Type1). Partout ailleurs — les postes de développement Windows, où le rapport est
+    pourtant rendu en Bookman Old Style — elle retombait sur Times-Bold, et la
+    pagination s'affichait dans une autre typographie que l'identification qui lui fait
+    face sur la même ligne.
+    """
+
+    def setUp(self):
+        self._precedent = report_module._PAGINATION_FONT
+        report_module._PAGINATION_FONT = None       # la résolution est mise en cache
+
+    def tearDown(self):
+        report_module._PAGINATION_FONT = self._precedent
+
+    def test_les_deux_familles_de_chemins_sont_couvertes(self):
+        """Image Docker (Linux/URW) ET postes de développement (Windows/Bookman)."""
+        chemins = [f for f, _afm in report_module._PAGINATION_FONT_FILES]
+        self.assertTrue(any('urw-base35' in c for c in chemins))
+        self.assertTrue(any('BOOKOSB' in c.upper() for c in chemins))
+
+    def test_bookman_est_cherche_avant_times(self):
+        """L'ordre reproduit la pile CSS du gabarit : Bookman d'abord, Times en repli."""
+        chemins = [f.upper() for f, _afm in report_module._PAGINATION_FONT_FILES]
+        premier_times = next(i for i, c in enumerate(chemins) if 'TIMES' in c
+                             or 'LIBERATIONSERIF' in c)
+        dernier_bookman = max(i for i, c in enumerate(chemins) if 'BOOKMAN' in c
+                              or 'BOOKOS' in c)
+        self.assertLess(dernier_bookman, premier_times)
+
+    def test_la_police_resolue_est_enregistree(self):
+        from reportlab.pdfbase import pdfmetrics
+        nom = report_module._pagination_font()
+        self.assertIsNotNone(pdfmetrics.getFont(nom))
+
+    def test_le_premier_fichier_present_l_emporte(self):
+        """Un candidat prioritaire présent évite de descendre jusqu'au repli."""
+        import os
+        presents = [f for f, afm in report_module._PAGINATION_FONT_FILES
+                    if os.path.exists(f) and (not afm or os.path.exists(afm))]
+        if not presents:
+            self.skipTest('aucune police candidate sur cet environnement')
+        self.assertEqual(report_module._pagination_font(), 'ReportBookman')
+
+    def test_repli_sur_la_police_integree_sans_aucun_fichier(self):
+        """Sans le moindre fichier, la génération ne doit pas échouer : Times-Bold est
+        intégrée à tout lecteur PDF et ne demande rien au système."""
+        with patch.object(report_module, '_PAGINATION_FONT_FILES', ()):
+            self.assertEqual(report_module._pagination_font(), 'Times-Bold')
+
+    def test_un_fichier_illisible_n_interrompt_pas_la_generation(self):
+        """Une variante que reportlab ne sait pas lire fait passer au candidat suivant."""
+        with patch.object(report_module, '_PAGINATION_FONT_FILES',
+                          (('C:/Windows/Fonts/BOOKOSB.TTF', None),)), \
+             patch('reportlab.pdfbase.ttfonts.TTFont', side_effect=ValueError('illisible')):
+            self.assertEqual(report_module._pagination_font(), 'Times-Bold')
+
+    def test_resolution_mise_en_cache(self):
+        premier = report_module._pagination_font()
+        with patch.object(report_module, '_PAGINATION_FONT_FILES', ()):
+            self.assertEqual(report_module._pagination_font(), premier)

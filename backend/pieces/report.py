@@ -1107,30 +1107,76 @@ _MM_TO_PT = 72.0 / 25.4
 _PAGINATION_FONT = None
 
 
+# Fichiers de police candidats pour la pagination globale, du plus proche du rapport au
+# plus éloigné. L'ordre reproduit celui de la pile CSS du gabarit — « URW Bookman »,
+# « Bookman Old Style », « Bookman », puis Times — afin que le tampon reportlab emploie
+# la police que WeasyPrint a RÉELLEMENT retenue pour le reste de la page.
+#
+# Deux familles de chemins, car les deux environnements d'exécution diffèrent :
+# l'image Docker installe `fonts-urw-base35` (Linux), les postes de développement sont
+# sous Windows, où « Bookman Old Style » est livrée avec Office. Un chemin absent est
+# simplement ignoré : la liste couvre les deux sans configuration.
+#
+# Variante GRASSE à chaque fois (Demi / Bold) : le pied de page et son identification
+# sont en gras, la pagination doit leur répondre.
+_PAGINATION_FONT_FILES = (
+    # Linux — URW Bookman (équivalent libre, métriquement compatible), OpenType puis Type1.
+    ('/usr/share/fonts/opentype/urw-base35/URWBookman-Demi.otf', None),
+    ('/usr/share/fonts/truetype/urw-base35/URWBookman-Demi.ttf', None),
+    ('/usr/share/fonts/type1/urw-base35/URWBookman-Demi.t1',
+     '/usr/share/fonts/type1/urw-base35/URWBookman-Demi.afm'),
+    ('/usr/share/fonts/X11/Type1/URWBookman-Demi.pfb',
+     '/usr/share/fonts/type1/urw-base35/URWBookman-Demi.afm'),
+    # Windows — Bookman Old Style Bold.
+    ('C:/Windows/Fonts/BOOKOSB.TTF', None),
+    # macOS / divers.
+    ('/Library/Fonts/Bookman Old Style Bold.ttf', None),
+    # Dernier recours AVANT la police intégrée : Times gras, le repli de la pile CSS.
+    ('C:/Windows/Fonts/timesbd.ttf', None),
+    ('/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf', None),
+)
+
+
 def _pagination_font():
-    """Nom de police reportlab pour le numéro global « Page i/n ». Embarque URW Bookman
-    Demi (le « gras » de Bookman, exactement la police du reste du rapport PDF) depuis les
-    fichiers Type1 du système, afin d'harmoniser la pagination avec l'identification du pied
-    de page. Repli sur Times-Bold si les fichiers de police sont introuvables. Enregistrement
-    effectué une seule fois (cache module)."""
+    """Nom de police reportlab pour le numéro global « Page i/n ».
+
+    La pagination est imprimée par reportlab en surimpression, APRÈS le rendu WeasyPrint :
+    elle ne profite donc pas de la pile de polices du gabarit et doit retrouver seule la
+    police du rapport, sans quoi « Page 3/31 » s'affiche dans une autre typographie que
+    l'identification qui lui fait face sur la même ligne — l'écart se voit immédiatement.
+
+    On parcourt donc `_PAGINATION_FONT_FILES` et on embarque le PREMIER fichier présent :
+    URW Bookman Demi (image Docker), Bookman Old Style Bold (postes Windows), Times gras
+    à défaut. Repli ultime sur la Times-Bold intégrée à tout lecteur PDF, qui ne demande
+    aucun fichier. Résolution faite une seule fois (cache module).
+    """
     global _PAGINATION_FONT
     if _PAGINATION_FONT is not None:
         return _PAGINATION_FONT
     import os
     from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.pdfbase.pdfmetrics import EmbeddedType1Face, registerTypeFace, Font
-    afm = '/usr/share/fonts/type1/urw-base35/URWBookman-Demi.afm'
-    for pfb in ('/usr/share/fonts/X11/Type1/URWBookman-Demi.pfb',
-                '/usr/share/fonts/type1/urw-base35/URWBookman-Demi.t1'):
-        if os.path.exists(afm) and os.path.exists(pfb):
-            try:
-                face = EmbeddedType1Face(afm, pfb)
+
+    nom = 'ReportBookman'
+    for fichier, afm in _PAGINATION_FONT_FILES:
+        if not os.path.exists(fichier) or (afm and not os.path.exists(afm)):
+            continue
+        try:
+            if afm:                                   # Type1 : métriques dans un .afm séparé
+                face = EmbeddedType1Face(afm, fichier)
                 registerTypeFace(face)
-                pdfmetrics.registerFont(Font('ReportBookman', face.name, 'WinAnsiEncoding'))
-                _PAGINATION_FONT = 'ReportBookman'
-                return _PAGINATION_FONT
-            except Exception:
-                break
+                pdfmetrics.registerFont(Font(nom, face.name, 'WinAnsiEncoding'))
+            else:                                     # TrueType / OpenType
+                pdfmetrics.registerFont(TTFont(nom, fichier))
+        except Exception:
+            # Fichier illisible ou variante CFF que reportlab ne sait pas lire : on
+            # passe au candidat suivant plutôt que de faire échouer la génération pour
+            # un simple détail typographique.
+            continue
+        _PAGINATION_FONT = nom
+        return _PAGINATION_FONT
+
     _PAGINATION_FONT = 'Times-Bold'
     return _PAGINATION_FONT
 
