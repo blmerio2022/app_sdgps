@@ -3,91 +3,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.contrib.auth import authenticate, get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
-from .serializers import RegisterSerializer, LoginSerializer
+from .serializers import LoginSerializer
 import random
 import string
 from django.core.cache import cache
 from .email_service import EmailService
-from django.db import IntegrityError
 from rest_framework.permissions import IsAuthenticated
 
 User = get_user_model()
-
-
-class RegisterView(APIView):
-    """
-    Vue pour l'inscription des utilisateurs.
-    POST /api/auth/register/
-    """
-    def post(self, request):
-        serializer = RegisterSerializer(data=request.data)
-        
-        if serializer.is_valid():
-            try:
-                user = serializer.save()
-                
-                # Générer un token JWT
-                refresh = RefreshToken.for_user(user)
-                # Ajouter les claims personnalisés au token
-                refresh['platform_role'] = user.platform_role or ''
-                refresh['role'] = user.get_primary_role()
-                refresh['is_superuser'] = user.is_superuser
-                access_token = str(refresh.access_token)
-
-                return Response({
-                    'token': access_token,
-                    'refresh_token': str(refresh),
-                    'user': {
-                        'id': user.id,
-                        'email': user.email,
-                        'first_name': user.first_name,
-                        'last_name': user.last_name,
-                        'nom_societe': user.nom_societe
-                    }
-                }, status=status.HTTP_201_CREATED)
-            
-            except IntegrityError as e:
-                # Gérer les erreurs de contrainte unique (email déjà utilisé)
-                error_message = str(e)
-                
-                if 'username' in error_message or 'email' in error_message:
-                    return Response({
-                        'detail': 'Cet email est déjà utilisé. Veuillez utiliser un autre email ou vous connecter.',
-                        'code': 'EMAIL_ALREADY_EXISTS',
-                        'field': 'email'
-                    }, status=status.HTTP_400_BAD_REQUEST)
-                else:
-                    return Response({
-                        'detail': 'Une erreur de base de données est survenue. Veuillez réessayer.',
-                        'code': 'DATABASE_ERROR'
-                    }, status=status.HTTP_400_BAD_REQUEST)
-            
-            except Exception as e:
-                # Gérer les autres erreurs inattendues
-                print(f"Erreur lors de l'inscription: {str(e)}")
-                return Response({
-                    'detail': 'Une erreur inattendue est survenue. Veuillez réessayer plus tard.',
-                    'code': 'UNEXPECTED_ERROR'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-        # Erreurs de validation du sérialiseur
-        errors = serializer.errors
-        
-        # Formater les erreurs pour le frontend
-        formatted_errors = {}
-        
-        if 'email' in errors:
-            formatted_errors['email'] = 'Cet email est déjà utilisé ou invalide.'
-        elif 'password' in errors:
-            formatted_errors['password'] = 'Le mot de passe ne respecte pas les critères de sécurité.'
-        elif 'non_field_errors' in errors:
-            formatted_errors['general'] = errors['non_field_errors'][0]
-        else:
-            # Prendre la première erreur disponible
-            first_field = list(errors.keys())[0]
-            formatted_errors['general'] = f"Erreur dans le champ {first_field}: {errors[first_field][0]}"
-        
-        return Response(formatted_errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class LoginView(APIView):

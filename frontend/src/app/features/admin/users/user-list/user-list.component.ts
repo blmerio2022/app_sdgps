@@ -941,17 +941,18 @@ export class UserListComponent implements OnInit, OnDestroy {
   }
 
   openAddModal(): void {
+    // La création de comptes est réservée à l'administration de l'application.
+    if (!this.canCreateUser) {
+      this.toastService.error(
+        'Action non autorisée',
+        "La création de comptes est réservée à l'administrateur de l'application.",
+      );
+      return;
+    }
     this.addForm.reset({
       role: 'ROLE_ORGANISATION_AGENT',
       must_change_password: true,
     });
-    // Un Admin Organisation ne crée que des agents, et uniquement dans sa propre organisation.
-    if (this.isOrgAdmin && this.currentUserOrgId) {
-      this.addForm.patchValue({
-        role: 'ROLE_ORGANISATION_AGENT',
-        organization_id: this.currentUserOrgId,
-      });
-    }
     this.showAddPassword = true;
     this.generatedPassword = this.generatePassword();
     this.addForm.patchValue({ password: this.generatedPassword });
@@ -1393,6 +1394,16 @@ export class UserListComponent implements OnInit, OnDestroy {
   /** L'utilisateur connecté est un Admin Organisation (ne gère que les agents de son org). */
   get isOrgAdmin(): boolean {
     return this.currentUserRole === 'ROLE_ORGANISATION_ADMIN';
+  }
+
+  /**
+   * Seule l'administration de l'APPLICATION crée des comptes : Super Admin ou Admin
+   * Système. Un Admin Organisation gère ses agents mais ne les crée pas. Garde
+   * cosmétique — la vraie barrière est `IsApplicationAdmin` côté backend.
+   */
+  get canCreateUser(): boolean {
+    return this.currentUserRole === 'ROLE_SUPER_ADMIN'
+      || this.currentUserRole === 'ROLE_ADMIN_SYSTEME';
   }
 
   /** Récupère l'organisation de l'org admin connecté (via /auth/me/) pour verrouiller le formulaire d'ajout. */

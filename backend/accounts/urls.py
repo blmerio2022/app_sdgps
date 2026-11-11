@@ -1,9 +1,10 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
-from .views import RegisterView, LoginView, ForgotPasswordView, VerifyCodeView, ResetPasswordView, ChangePasswordView, UserProfileView, PieceSortConfigView, PieceSortConfigResetView, PieceFieldsConfigView, PieceFieldsConfigResetView, SsdgpsSortConfigView, SsdgpsSortConfigResetView, OrgSortConfigView, OrgSortConfigResetView, OrganismeSortConfigView, OrganismeSortConfigResetView, TableSortConfigView, TableSortConfigResetView, TableColumnsConfigView, TableColumnsConfigResetView
+from .views import LoginView, ForgotPasswordView, VerifyCodeView, ResetPasswordView, ChangePasswordView, UserProfileView, PieceSortConfigView, PieceSortConfigResetView, PieceFieldsConfigView, PieceFieldsConfigResetView, SsdgpsSortConfigView, SsdgpsSortConfigResetView, OrgSortConfigView, OrgSortConfigResetView, OrganismeSortConfigView, OrganismeSortConfigResetView, TableSortConfigView, TableSortConfigResetView, TableColumnsConfigView, TableColumnsConfigResetView
 
+# Aucune route d'inscription publique : un compte ne peut être créé que par un
+# administrateur de l'application via POST /api/v1/users/ (cf. `IsApplicationAdmin`).
 urlpatterns = [
-    path('register/', RegisterView.as_view(), name='register'),
     path('login/', LoginView.as_view(), name='login'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
     path('forgot-password/', ForgotPasswordView.as_view(), name='forgot-password'),

@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import Membership, Organization
 from .rbac import count_other_active_org_admins, MIN_ACTIVE_ORG_ADMINS
+from .permissions import is_application_admin
 import secrets
 import string
 from accounts.fields import AuthorDisplayField
@@ -140,18 +141,25 @@ class UserCreateSerializer(serializers.ModelSerializer):
         return value
 
     def validate_role(self, value):
+        """Seule l'administration de l'application crée des comptes.
+
+        Garde-fou en profondeur : la vue réserve déjà `POST` à `IsApplicationAdmin`.
+        Un Admin Système peut créer un Admin Organisation ou un Agent ; seul un Super
+        Admin peut créer un autre Admin Système.
+        """
         request = self.context.get('request')
-        if request and hasattr(request, 'user'):
-            if request.user.is_superuser:
-                return value
-            if value == 'ROLE_ADMIN_SYSTEME':
-                raise serializers.ValidationError(
-                    "Seul un Super Admin peut créer un compte Admin Système."
-                )
-            if value == 'ROLE_ORGANISATION_ADMIN':
-                raise serializers.ValidationError(
-                    "Seuls les Super Admins et Admins Système peuvent créer un compte Admin Organisation."
-                )
+        author = getattr(request, 'user', None)
+        if author is None:
+            return value
+        if not is_application_admin(author):
+            raise serializers.ValidationError(
+                "La création de comptes est réservée au Super Admin et à l'Admin Système "
+                "de l'application."
+            )
+        if value == 'ROLE_ADMIN_SYSTEME' and not author.is_superuser:
+            raise serializers.ValidationError(
+                "Seul un Super Admin peut créer un compte Admin Système."
+            )
         return value
 
     def validate_organization_id(self, value):
@@ -162,27 +170,19 @@ class UserCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Ce champ est obligatoire.")
         if not Organization.objects.filter(id=value, is_active=True, is_deleted=False).exists():
             raise serializers.ValidationError("L'organisation spécifiée n'existe pas.")
-
-        # Un Admin Organisation ne peut créer un utilisateur que dans SA propre organisation.
-        request = self.context.get('request')
-        author = getattr(request, 'user', None)
-        if author and not author.is_superuser and not author.is_platform_admin():
-            admin_org_ids = {
-                str(oid) for oid in author.memberships.filter(
-                    is_active=True,
-                    role='ROLE_ORGANISATION_ADMIN',
-                ).values_list('organization_id', flat=True)
-            }
-            if str(value) not in admin_org_ids:
-                raise serializers.ValidationError(
-                    "Vous ne pouvez créer un utilisateur que dans votre organisation."
-                )
+        # L'auteur est nécessairement un administrateur de l'application (cf.
+        # `validate_role`) : il peut rattacher le compte à n'importe quelle organisation.
         return value
 
     def create(self, validated_data):
         role = validated_data.pop('role')
         organization_id = validated_data.pop('organization_id', None)
         must_change_password = validated_data.pop('must_change_password', True)
+        # Colonnes d'audit (cf. CLAUDE.md) : la vue les passe à `save()`, mais
+        # `create_user()` ne les accepte pas — on les applique après coup, sinon
+        # « Créé par » resterait vide pour tout compte créé via l'API.
+        created_by = validated_data.pop('created_by', None)
+        updated_by = validated_data.pop('updated_by', None)
 
         is_app_admin = role == 'ROLE_ADMIN_SYSTEME'
 
@@ -197,6 +197,11 @@ class UserCreateSerializer(serializers.ModelSerializer):
             platform_role='ROLE_ADMIN_SYSTEME' if is_app_admin else None,
             must_change_password=must_change_password,
         )
+
+        if created_by or updated_by:
+            user.created_by = created_by
+            user.updated_by = updated_by or created_by
+            user.save(update_fields=['created_by', 'updated_by'])
 
         if organization_id and not is_app_admin:
             organization = Organization.objects.get(id=organization_id)

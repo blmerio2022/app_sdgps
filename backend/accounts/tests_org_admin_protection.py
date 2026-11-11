@@ -158,7 +158,7 @@ class OrgAdminScopingTests(TestCase):
     """
     Vérifie le scoping de la page utilisateurs pour un Admin Organisation :
     - /auth/me/ expose son organisation ;
-    - il ne peut créer un agent que dans SA propre organisation.
+    - il ne peut créer AUCUN compte (réservé au Super Admin / Admin Système).
     """
 
     def setUp(self):
@@ -180,7 +180,10 @@ class OrgAdminScopingTests(TestCase):
         self.assertEqual(data['organization_id'], str(self.org.id))
         self.assertEqual(data['organization_name'], self.org.name)
 
-    def test_create_agent_in_own_org_is_allowed(self):
+    def test_create_agent_in_own_org_is_blocked(self):
+        """Nouvelle règle : la création de comptes est réservée à l'administration de
+        l'application (cf. `tests_account_creation.py`). Un Admin Organisation gère ses
+        agents mais ne les crée plus, même dans sa propre organisation."""
         resp = self.client.post('/api/v1/users/', {
             'email': 'agent-a@example.com',
             'first_name': 'Agent', 'last_name': 'A',
@@ -189,7 +192,8 @@ class OrgAdminScopingTests(TestCase):
             'organization_id': str(self.org.id),
         }, format='json')
 
-        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.status_code, 403, resp.content)
+        self.assertFalse(User.objects.filter(email='agent-a@example.com').exists())
 
     def test_create_agent_in_foreign_org_is_blocked(self):
         resp = self.client.post('/api/v1/users/', {
@@ -200,7 +204,7 @@ class OrgAdminScopingTests(TestCase):
             'organization_id': str(self.other_org.id),
         }, format='json')
 
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 403)
         self.assertFalse(User.objects.filter(email='agent-b@example.com').exists())
 
     def test_cannot_move_agent_to_another_org(self):

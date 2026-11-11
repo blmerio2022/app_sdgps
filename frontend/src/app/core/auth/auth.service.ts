@@ -2,7 +2,7 @@ import {Injectable} from '@angular/core';
 import {HttpClient, HttpErrorResponse} from '@angular/common/http';
 import {BehaviorSubject, Observable, throwError} from 'rxjs';
 import {catchError, map, tap} from 'rxjs/operators';
-import {AuthResponse, RegisterPayload, UserRole} from '../../features/auth/models/user.model'; // Assurez-vous que le chemin est correct
+import {AuthResponse, UserRole} from '../../features/auth/models/user.model'; // Assurez-vous que le chemin est correct
 import {environment} from '../../../environments/environment';
 
 /**
@@ -38,31 +38,9 @@ export class AuthService {
         this.checkAuthStatus();
     }
 
-    /**
-     * @method register
-     * @param payload Les données d'inscription de l'utilisateur.
-     * @returns Observable<AuthResponse> La réponse du backend après l'inscription.
-     * @description Envoie les données d'inscription au backend Django.
-     *              Gère les erreurs potentielles de l'API et stocke le token si l'inscription connecte directement.
-     *              Supporte l'inscription avec code d'organisation pour RBAC multi-organisations.
-     */
-    register(payload: RegisterPayload): Observable<AuthResponse> {
-        // Pourquoi: Appel HTTP POST pour envoyer les données d'inscription au backend.
-        return this.http.post<AuthResponse>(`${API_URL}/register/`, payload).pipe(
-            tap(response => {
-                if (response && response.token) {
-                    this.storeAuthToken(response.token);
-                    if (response.refresh_token) {
-                        localStorage.setItem('refreshToken', response.refresh_token);
-                    }
-                    this.extractOrganizationInfo(response.token);
-                    this.isAuthenticatedSubject.next(true);
-                }
-            }),
-            // Pourquoi: Gestion centralisée des erreurs HTTP pour une meilleure robustesse.
-            catchError(this.handleError)
-        );
-    }
+    // Aucune méthode d'inscription : il n'existe pas d'endpoint public de création de
+    // compte. Un compte est créé par le Super Admin ou l'Admin Système via
+    // `UserService.createUser()` (POST /api/v1/users/).
 
     /**
      * @method login

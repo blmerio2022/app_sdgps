@@ -115,7 +115,8 @@ change-password/logout.
 - `platform_admin/` — profil self-service du super-admin + mot de passe (pas de modèles,
   uniquement des vues).
 - Racines des URL (`backend/urls.py`) :
-  - `/api/auth/` → accounts (register, login, forgot/verify/reset/change password, `me/`)
+  - `/api/auth/` → accounts (login, forgot/verify/reset/change password, `me/`) — **pas de
+    `register/`** : voir « Création de comptes » ci-dessous
   - `/api/v1/users/` → gestion des utilisateurs
   - `/api/v1/organizations/` → organisations
   - `/api/v1/platform-admin/` → profil super-admin
@@ -126,9 +127,31 @@ l'objet (`get_queryset` renvoie `none()` pour un non-admin ; `can_manage_user()`
 `check_object_permissions` dans `users_views.py`). Toujours vérifier la vue quand on
 raisonne sur les droits.
 
+**Création de comptes : AUCUNE inscription publique (règle stricte).** Il n'existe pas
+d'endpoint d'inscription — `/api/auth/register/`, `RegisterView` et `RegisterSerializer`
+ont été **supprimés** (ils créaient un compte *et* une organisation dont l'inscrit devenait
+l'admin, sans aucune authentification). Un compte — **Admin Système, Admin Organisation ou
+Agent Organisation** — ne peut être créé que par le **Super Admin** ou l'**Admin Système**
+de l'application :
+- unique point d'entrée : `POST /api/v1/users/` (`UserListView`), dont `get_permissions()`
+  exige `IsApplicationAdmin` sur `POST` — la **lecture** reste ouverte à un Admin
+  Organisation (filtrée par `get_queryset`) ;
+- prédicat partagé : `accounts/permissions.py` → `is_application_admin(user)` /
+  `IsApplicationAdmin` (Super Admin **ou** `platform_role == ROLE_ADMIN_SYSTEME` ; un Admin
+  Organisation n'en relève **pas**). Réutiliser ce module pour toute nouvelle vue réservée
+  à l'administration de l'application plutôt que de refaire le test à la main ;
+- hiérarchie des rôles créables (`UserCreateSerializer.validate_role`, garde-fou en
+  profondeur) : seul un Super Admin crée un **Admin Système** ; un Admin Système crée des
+  Admins Organisation et des Agents, dans n'importe quelle organisation ;
+- côté front : plus de route `/auth/register`, plus de composant d'inscription, plus de
+  `AuthService.register()` ; le bouton « Ajouter » de la liste des utilisateurs est
+  conditionné par `canCreateUser` (garde **cosmétique**) ;
+- tests garde-fous : `backend/accounts/tests_account_creation.py` (24 cas),
+  `auth-routing.module.spec.ts`, `user-list.component.spec.ts`.
+
 ### Structure du frontend (`frontend/src/app/`)
 - `core/` — singletons transverses :
-  - `auth/auth.service.ts` — login/register/reset, stocke le JWT dans `localStorage`
+  - `auth/auth.service.ts` — login/reset (**pas d'inscription**), stocke le JWT dans `localStorage`
     (`authToken`), décode le JWT côté client pour extraire le rôle.
   - `interceptors/auth.interceptor.ts` — ajoute le token `Bearer` ; en cas de 401, purge le
     token et redirige vers `/auth/login`.

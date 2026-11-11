@@ -11,6 +11,7 @@ from .users_serializers import (
     RoleSerializer, ResetPasswordSerializer,
 )
 from .rbac import check_org_admin_not_last
+from .permissions import IsApplicationAdmin, is_application_admin
 import logging
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ ROLES_CONFIG = [
         'description': 'Gère les agents de son organisation. Valide les opérations et configure les paramètres spécifiques.',
         'permissions': [
             'Voir les agents de son organisation',
-            'Créer/Modifier/Supprimer les agents',
+            'Modifier/Supprimer les agents (création réservée à l\'administration de l\'application)',
             'Réinitialiser le mot de passe des agents',
             'Configurer les paramètres de l\'organisation',
             'Consulter les rapports de l\'organisation',
@@ -123,6 +124,13 @@ def can_manage_user(admin_user, target_user):
 
 class UserListView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        """La LECTURE reste ouverte aux admins d'organisation (filtrée par queryset) ;
+        la CRÉATION est réservée au Super Admin et à l'Admin Système."""
+        if self.request.method == 'POST':
+            return [permissions.IsAuthenticated(), IsApplicationAdmin()]
+        return super().get_permissions()
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -502,7 +510,7 @@ class UserBulkRestoreView(APIView):
 
 def _is_app_admin(user):
     """Vrai pour un Super Admin ou un Admin Système (administration de l'application)."""
-    return user.is_superuser or user.get_primary_role() == 'ROLE_ADMIN_SYSTEME'
+    return is_application_admin(user)
 
 
 class UserPermanentDeleteView(APIView):

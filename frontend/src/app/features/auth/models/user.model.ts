@@ -21,21 +21,9 @@ export interface User {
     role?: UserRole; // Rôle RBAC de l'utilisateur
 }
 
-/**
- * @interface RegisterPayload
- * @description Représente la structure des données envoyées au backend lors de l'inscription.
- *              Inclut tous les champs nécessaires pour la création d'un nouveau compte.
- *              Supporte l'inscription avec code d'organisation pour RBAC.
- */
-export interface RegisterPayload {
-    first_name: string;   // Prénom (champ Django standard)
-    last_name: string;    // Nom (champ Django standard)
-    nomSociete?: string;
-    email: string;
-    password: string;
-    organizationCode?: string; // Code d'organisation optionnel pour rejoindre une organisation existante
-    // Pas de confirmPassword ici, car c'est une validation côté client uniquement
-}
+// Pas de `RegisterPayload` : l'inscription publique n'existe pas. La création de compte
+// passe par `CreateUserPayload` (core/models/user.model.ts), réservée à l'administration
+// de l'application.
 
 /**
  * @interface AuthResponse

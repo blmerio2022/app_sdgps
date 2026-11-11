@@ -131,3 +131,19 @@ describe('AuthService', () => {
     expect(service.getAuthToken()).toBeNull();
   });
 });
+
+/**
+ * Pas d'inscription publique : aucun appel à `/auth/register/` n'existe côté client, et
+ * la route `/auth/register` a été retirée du module d'authentification.
+ */
+describe('AuthService (aucune inscription publique)', () => {
+  it("n'expose plus de méthode register()", () => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      providers: [AuthService],
+    });
+    const service = TestBed.inject(AuthService);
+    expect((service as any).register).toBeUndefined();
+    TestBed.inject(HttpTestingController).verify();
+  });
+});

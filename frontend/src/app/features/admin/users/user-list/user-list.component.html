@@ -76,7 +76,7 @@
           (resetToSource)="onResetSort()">
         </app-multi-level-sort>
 
-        <button *ngIf="!showDeleted" class="btn btn-success btn-add-org" (click)="openAddModal()" title="Ajouter un nouvel utilisateur">
+        <button *ngIf="!showDeleted && canCreateUser" class="btn btn-success btn-add-org" (click)="openAddModal()" title="Ajouter un nouvel utilisateur">
           <i class="fas fa-plus-circle"></i>
           <span>Ajouter</span>
         </button>

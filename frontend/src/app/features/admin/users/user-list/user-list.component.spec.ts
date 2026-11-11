@@ -220,3 +220,69 @@ describe('UserListComponent (config colonnes)', () => {
     expect(open).toHaveBeenCalled();
   });
 });
+
+/**
+ * Création de comptes réservée à l'administration de l'APPLICATION.
+ * `currentUserRole` est lu depuis le JWT en localStorage → on y pose un token factice.
+ */
+describe('UserListComponent (création de comptes réservée)', () => {
+  let cmp: UserListComponent;
+  let toast: jasmine.SpyObj<any>;
+
+  function connecteAvecRole(payload: object): void {
+    localStorage.setItem('authToken', `x.${btoa(JSON.stringify(payload))}.y`);
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    toast = jasmine.createSpyObj('ToastService', ['success', 'error']);
+    const authStub = { getUserId: () => null } as any;
+    const sortStub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
+    const columnsStub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
+    cmp = new UserListComponent(
+      {} as any, {} as any, {} as any, toast,
+      authStub, {} as any, new FormBuilder(), {} as any, sortStub, columnsStub,
+    );
+  });
+
+  afterEach(() => localStorage.clear());
+
+  it('canCreateUser est vrai pour un Super Admin', () => {
+    connecteAvecRole({ role: 'ROLE_SUPER_ADMIN', is_superuser: true });
+    expect(cmp.canCreateUser).toBeTrue();
+  });
+
+  it('canCreateUser est vrai pour un Admin Système', () => {
+    connecteAvecRole({ platform_role: 'ROLE_ADMIN_SYSTEME' });
+    expect(cmp.canCreateUser).toBeTrue();
+  });
+
+  it('canCreateUser est faux pour un Admin Organisation', () => {
+    connecteAvecRole({ role: 'ROLE_ORGANISATION_ADMIN' });
+    expect(cmp.canCreateUser).toBeFalse();
+  });
+
+  it('canCreateUser est faux pour un Agent Organisation', () => {
+    connecteAvecRole({ role: 'ROLE_ORGANISATION_AGENT' });
+    expect(cmp.canCreateUser).toBeFalse();
+  });
+
+  it('canCreateUser est faux sans token', () => {
+    expect(cmp.canCreateUser).toBeFalse();
+  });
+
+  it('openAddModal refuse et avertit un Admin Organisation', () => {
+    connecteAvecRole({ role: 'ROLE_ORGANISATION_ADMIN' });
+    cmp.openAddModal();
+    expect(cmp.showAddModal).toBeFalse();
+    expect(toast.error).toHaveBeenCalled();
+  });
+
+  it('openAddModal ouvre la modale pour un Admin Système', () => {
+    connecteAvecRole({ platform_role: 'ROLE_ADMIN_SYSTEME' });
+    cmp.openAddModal();
+    expect(cmp.showAddModal).toBeTrue();
+    expect(toast.error).not.toHaveBeenCalled();
+    document.body.style.overflow = '';
+  });
+});
