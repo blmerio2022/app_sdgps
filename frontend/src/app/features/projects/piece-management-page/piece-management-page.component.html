@@ -172,7 +172,13 @@
         </span>
         <span class="item-meta">
           <span class="tag">{{ sourceLabel(p.source_saisie) }}</span>
-          <span class="badge" [ngClass]="statutBadgeClass(p.statut)">{{ statutLabel(p.statut) }}</span>
+          <!-- Même sélecteur qu'en vue tableau : le statut se change sans ouvrir la pièce. -->
+          <select *ngIf="canChangeStatut(p)" class="statut-select-inline" [ngClass]="statutBadgeClass(p.statut)"
+                  [disabled]="!!statutSaving[p.id]" [ngModel]="p.statut" (ngModelChange)="changeStatut(p, $event)"
+                  (click)="$event.stopPropagation()" title="Modifier le statut de cette pièce">
+            <option *ngFor="let opt of statutOptions" [value]="opt.value">{{ opt.label }}</option>
+          </select>
+          <span *ngIf="!canChangeStatut(p)" class="badge" [ngClass]="statutBadgeClass(p.statut)">{{ statutLabel(p.statut) }}</span>
           <span class="portee-tag" *ngIf="isMultiSession">{{ portee_label(p) }}</span>
         </span>
       </div>
@@ -263,7 +269,17 @@
                 <span class="type-name">{{ p.type_piece_display }}</span>
                 <span class="type-numero" *ngIf="p.numero"><i class="fas fa-hashtag"></i>{{ p.numero }}</span>
               </div>
-              <span *ngIf="col.field === 'statut'" class="badge" [ngClass]="statutBadgeClass(p.statut)">{{ statutLabel(p.statut) }}</span>
+              <!-- Statut modifiable SUR PLACE : plus besoin d'ouvrir la pièce pour la
+                   faire passer de Brouillon à Validée (ou l'inverse). Le serveur reste
+                   seul juge (PPA/PPN sans photo) ; un refus rétablit la valeur. -->
+              <ng-container *ngIf="col.field === 'statut'">
+                <select *ngIf="canChangeStatut(p)" class="statut-select-inline" [ngClass]="statutBadgeClass(p.statut)"
+                        [disabled]="!!statutSaving[p.id]" [ngModel]="p.statut" (ngModelChange)="changeStatut(p, $event)"
+                        title="Modifier le statut de cette pièce">
+                  <option *ngFor="let opt of statutOptions" [value]="opt.value">{{ opt.label }}</option>
+                </select>
+                <span *ngIf="!canChangeStatut(p)" class="badge" [ngClass]="statutBadgeClass(p.statut)">{{ statutLabel(p.statut) }}</span>
+              </ng-container>
               <span *ngIf="col.field === 'is_deleted'">{{ p.is_deleted ? 'Oui' : 'Non' }}</span>
               <ng-container *ngIf="col.field==='portee_label' && showScopeSelector(p)">
                 <select class="scope-select-inline" [ngModel]="p.session || ''" (ngModelChange)="changeScope(p, $event)">

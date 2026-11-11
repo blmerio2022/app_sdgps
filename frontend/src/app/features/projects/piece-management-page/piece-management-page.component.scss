@@ -480,6 +480,31 @@
   }
 }
 
+/* ============================================================
+   Statut modifiable SUR PLACE (vue tableau ET vue cartes)
+   ------------------------------------------------------------
+   Le sélecteur reprend l'apparence du badge de statut — même teinte, même arrondi,
+   mêmes capitales — pour que la colonne reste lisible d'un coup d'œil : seuls le
+   curseur et le survol révèlent qu'elle s'édite. Déclaré au premier niveau pour
+   servir les deux vues sans duplication.
+   ============================================================ */
+.statut-select-inline {
+  padding: 3px 6px; border-radius: 10px; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.3px; cursor: pointer;
+  appearance: none; -webkit-appearance: none; max-width: 100%;
+  background: rgba(149, 165, 166, 0.15); color: #95a5a6;
+  border: 1px solid rgba(149, 165, 166, 0.3);
+  &.badge-success { background: rgba(46, 204, 113, 0.15); color: #2ecc71; border-color: rgba(46, 204, 113, 0.3); }
+  &.badge-warning { background: rgba(243, 156, 18, 0.15); color: #f39c12; border-color: rgba(243, 156, 18, 0.3); }
+  &.badge-secondary { background: rgba(149, 165, 166, 0.15); color: #95a5a6; border-color: rgba(149, 165, 166, 0.3); }
+  &:hover { filter: brightness(1.15); }
+  &:focus { outline: none; box-shadow: 0 0 0 2px rgba(31, 111, 235, 0.25); }
+  &:disabled { opacity: 0.6; cursor: progress; }
+  /* Les options héritent du fond translucide du badge et seraient illisibles dans la
+     liste déroulante du navigateur : on y repose le fond opaque du thème. */
+  option { background: var(--primary-color); color: var(--text-color); text-transform: none; }
+}
+
 /* Marqueur de tri MULTI-NIVEAUX dans les en-têtes (parité liste des organisations). */
 .modern-table thead th.sortable.is-sorted { color: var(--accent-color); }
 .modern-table thead th .sort-badge {

@@ -1,4 +1,4 @@
-import { of } from 'rxjs';
+import { of, throwError, Subject } from 'rxjs';
 import { PieceManagementPageComponent } from './piece-management-page.component';
 import { Piece } from '../../../core/models/piece.model';
 
@@ -525,5 +525,89 @@ describe('PieceManagementPageComponent — rapport de synthèse', () => {
     cmp.reportSessionTo = 'sess-1';
     expect(cmp.reportRange).toEqual({ from: 'sess-3', to: 'sess-1' });
     expect(cmp.canGenerateReport).toBeTrue();
+  });
+});
+
+describe('PieceManagementPageComponent (statut modifiable dans la liste)', () => {
+  let cmp: PieceManagementPageComponent;
+  let piecesSvc: { update: jasmine.Spy };
+  let toast: { success: jasmine.Spy; error: jasmine.Spy };
+
+  function piece(over: Partial<Piece> = {}): Piece {
+    return {
+      id: 'p1', type_piece: 'RDL', type_piece_display: 'Rattachement',
+      ordre: 1, is_deleted: false, session: null, source_saisie: 'manuel',
+      statut: 'brouillon', ...over,
+    } as any;
+  }
+
+  beforeEach(() => {
+    piecesSvc = jasmine.createSpyObj('PiecesService', ['update']);
+    toast = jasmine.createSpyObj('ToastService', ['success', 'error']);
+    const sortStub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
+    const columnsStub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
+    cmp = new PieceManagementPageComponent(
+      {} as any, piecesSvc as any, toast as any, {} as any, {} as any, {} as any,
+      sortStub, columnsStub,
+    );
+  });
+
+  it('enregistre le nouveau statut sans ouvrir la pièce', () => {
+    const p = piece();
+    piecesSvc.update.and.returnValue(of({ ...p, statut: 'valide' }));
+    cmp.changeStatut(p, 'valide');
+    expect(piecesSvc.update).toHaveBeenCalledWith('p1', { statut: 'valide' } as any);
+    expect(p.statut).toBe('valide');
+    expect(toast.success).toHaveBeenCalled();
+  });
+
+  it('n’appelle pas le serveur si le statut ne change pas', () => {
+    cmp.changeStatut(piece({ statut: 'valide' }), 'valide');
+    expect(piecesSvc.update).not.toHaveBeenCalled();
+  });
+
+  it('ignore une valeur vide', () => {
+    cmp.changeStatut(piece(), '');
+    expect(piecesSvc.update).not.toHaveBeenCalled();
+  });
+
+  it('rétablit le statut précédent quand le serveur refuse', () => {
+    const p = piece();
+    piecesSvc.update.and.returnValue(
+      throwError(() => ({ error: { statut: ['Validation impossible : 2 point(s) sans photo.'] } })));
+    cmp.changeStatut(p, 'valide');
+    expect(p.statut).toBe('brouillon');
+    expect(toast.error).toHaveBeenCalledWith('Changement impossible',
+      'Validation impossible : 2 point(s) sans photo.');
+  });
+
+  it('retombe sur le detail puis sur un message générique', () => {
+    piecesSvc.update.and.returnValue(throwError(() => ({ error: { detail: 'Interdit' } })));
+    cmp.changeStatut(piece(), 'valide');
+    expect(toast.error).toHaveBeenCalledWith('Changement impossible', 'Interdit');
+
+    piecesSvc.update.and.returnValue(throwError(() => ({})));
+    cmp.changeStatut(piece(), 'rejete');
+    expect(toast.error).toHaveBeenCalledWith('Changement impossible', 'Statut non modifié');
+  });
+
+  it('ne lance pas deux envois concurrents pour la même pièce', () => {
+    const p = piece();
+    piecesSvc.update.and.returnValue(new Subject<any>().asObservable());
+    cmp.changeStatut(p, 'valide');
+    cmp.changeStatut(p, 'rejete');
+    expect(piecesSvc.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('libère le verrou une fois la réponse reçue', () => {
+    const p = piece();
+    piecesSvc.update.and.returnValue(of({ ...p, statut: 'valide' }));
+    cmp.changeStatut(p, 'valide');
+    expect(cmp.statutSaving['p1']).toBeUndefined();
+  });
+
+  it('interdit le changement sur une pièce supprimée', () => {
+    expect(cmp.canChangeStatut(piece({ is_deleted: true }))).toBeFalse();
+    expect(cmp.canChangeStatut(piece())).toBeTrue();
   });
 });

@@ -364,6 +364,44 @@ export class PieceManagementPageComponent implements OnInit {
   }
 
   // ============================================
+  // Statut modifiable DANS la liste (sans ouvrir la pièce)
+  // ============================================
+  /** Pièces dont le statut est en cours d'enregistrement (clé = id) : évite un second
+   * envoi tant que le premier n'a pas répondu et pilote l'indicateur d'attente. */
+  statutSaving: Record<string, boolean> = {};
+
+  /** Le statut est modifiable sur place, sauf dans la corbeille : une pièce supprimée ne
+   * se modifie pas (il faut d'abord la restaurer). */
+  canChangeStatut(p: Piece): boolean { return !p.is_deleted; }
+
+  /**
+   * Change le statut d'UNE pièce directement depuis la liste, sans passer par sa vue de
+   * détail — même PATCH que la modale, donc mêmes règles côté serveur (notamment PPA/PPN :
+   * le passage à « Validée » est refusé tant qu'un point n'a pas de photo).
+   *
+   * En cas de refus, la valeur locale est rétablie : le sélecteur ne doit jamais afficher
+   * un statut que le serveur n'a pas accepté.
+   */
+  changeStatut(piece: Piece, statut: string): void {
+    if (!statut || statut === piece.statut || this.statutSaving[piece.id]) return;
+    const precedent = piece.statut;
+    this.statutSaving[piece.id] = true;
+    this.piecesService.update(piece.id, { statut } as Partial<Piece>).subscribe({
+      next: (updated) => {
+        delete this.statutSaving[piece.id];
+        Object.assign(piece, updated);
+        this.toast.success('Statut mis à jour', `« ${this.statutLabel(statut)} »`);
+      },
+      error: (e) => {
+        delete this.statutSaving[piece.id];
+        piece.statut = precedent;
+        this.toast.error('Changement impossible',
+          e?.error?.statut?.[0] || e?.error?.detail || 'Statut non modifié');
+      },
+    });
+  }
+
+  // ============================================
   // Filtrage, tri, pagination (affichage)
   // ============================================
   // --- FILTRES DE COLONNE (façon Excel, composant partagé `<app-column-filter>`) ---
