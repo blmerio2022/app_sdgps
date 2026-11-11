@@ -772,6 +772,31 @@ def order_pieces_for_synthesis(pieces) -> list:
     return ordonnees
 
 
+def piece_numbers(numero_groupe: int, session_numero=None) -> tuple[str, str]:
+    """Numéro **affiché** d'une pièce, sous deux formes : `(courant, page de garde)`.
+
+    Règle métier des rapports de SYNTHÈSE : une pièce déclinée par session porte le
+    numéro ``<n° de session>/<n° de pièce>`` — « 1/3 », « 2/3 », « 3/3 » pour les trois
+    sessions de la pièce n°3. Le numéro de pièce est celui de la **pièce logique** (le
+    groupe), identique pour toutes ses sessions : c'est bien la même pièce, observée à
+    des sessions différentes.
+
+    Hors synthèse (`session_numero` nul, cas des pièces communes et de tout rapport
+    mono-session), le numéro reste simplement celui de la pièce.
+
+    Deux formes, car les deux usages n'ont pas la même convention typographique :
+
+    - `courant` — cercle d'en-tête, titre du séparateur, pied de page : « PIÈCE N°3 » ;
+    - `garde` — colonne « N° Ordre » du tableau de la page de garde, historiquement
+      remplie sur deux chiffres (« 01 », « 02 »…). Le zéro de tête n'a pas de sens sur
+      un numéro composé : « 1/3 » y est rendu tel quel.
+    """
+    if session_numero is None:
+        return str(numero_groupe), f'{numero_groupe:02d}'
+    compose = f'{session_numero}/{numero_groupe}'
+    return compose, compose
+
+
 def report_foot_prefix(ssdgps, session_numero=None) -> str:
     """Préfixe d'identification du pied de page, commun à toutes les pages :
 
@@ -848,9 +873,21 @@ def build_report_context(ssdgps, session, pieces, sort_config=None, fields_confi
     sessions_presentes = {p.session_id for p in pieces if p.session_id}
     synthese = len(sessions_presentes) > 1
 
+    # Numéro de la PIÈCE LOGIQUE (groupe `(type_piece, numero)`). En synthèse, les
+    # occurrences d'une même pièce — une par session — partagent ce numéro et se
+    # distinguent par le préfixe de session (« 1/3 », « 2/3 »…) : la liste étant déjà
+    # ordonnée par groupe (`order_pieces_for_synthesis`), un groupe est un segment
+    # contigu et il suffit d'incrémenter au changement de clé. Hors synthèse, chaque
+    # pièce forme son propre groupe : le numéro suit la position, comme avant.
+    numero_groupe, cle_precedente = 0, None
+
     cover_rows, rendered = [], []
     for index, piece in enumerate(pieces, start=1):
         designation = piece_designation(piece)
+        cle = (piece.type_piece, piece.numero or 0)
+        if not synthese or cle != cle_precedente:
+            numero_groupe += 1
+        cle_precedente = cle
 
         # Session propre à CETTE pièce (nulle pour une pièce commune à toutes les sessions).
         piece_session = piece.session if piece.session_id else None
@@ -861,8 +898,20 @@ def build_report_context(ssdgps, session, pieces, sort_config=None, fields_confi
             + (f" du {piece_session_date}" if piece_session_date else '')
         ) if piece_session_numero is not None else ''
 
+        # Numéro affiché : « 1/3 » pour la session 1 de la pièce 3 en synthèse, « 3 »
+        # sinon. Le préfixe de session n'est posé que pour une pièce SPÉCIFIQUE d'un
+        # rapport de synthèse (une pièce commune vaut pour toutes les sessions : la
+        # préfixer d'un numéro de session serait faux).
+        numero_session_affichee = piece_session_numero if synthese else None
+        numero_affiche, numero_garde = piece_numbers(numero_groupe, numero_session_affichee)
+
         cover_rows.append({
+            # `ordre` reste l'index UNIQUE de l'occurrence (1..n) : il identifie la
+            # page-séparateur cible du lien cliquable (`#piece-k`). Le numéro AFFICHÉ,
+            # lui, est celui de la pièce logique — deux occurrences d'une même pièce
+            # partagent « /3 » mais visent bien deux pages différentes.
             'ordre': index,
+            'numero': numero_garde,
             # En synthèse, la session distingue les occurrences d'une même pièce ; les
             # pièces communes restent sans mention, puisqu'elles valent pour toutes.
             'designation': (f"{designation} — Session n°{piece_session_numero}"
@@ -870,10 +919,15 @@ def build_report_context(ssdgps, session, pieces, sort_config=None, fields_confi
                             else designation),
             'nombre': 1,
             'observations': (piece.commentaire or '').strip(),
+            # Numéro de page GLOBAL de la pièce dans le rapport assemblé : inconnu à ce
+            # stade (il dépend de la pagination de toutes les unités), renseigné par
+            # `render_report_pdf` avant le rendu de la page de garde.
+            'page': None,
         })
         landscape = resolve_orientation(piece, ssdgps) == 'paysage'
         rendered.append({
             'index': index,
+            'numero': numero_affiche,
             'title': designation.upper(),
             'code': piece.type_piece,
             'content': _piece_content(piece, landscape, sort_config, fields_config),
@@ -963,18 +1017,52 @@ def render_report_pdf(ssdgps, session, pieces, sort_config=None, fields_config=N
         return _render('piece', foot_prefix,
                        {'piece': {**piece, 'content': _wrap(blocks)}})
 
-    # (1) Page de garde du SDGPS — pied sans « PIÈCE N° ».
-    documents = [_render('cover', foot_base,
-                         {'cover_rows': context['cover_rows'], 'total': context['total']})]
-    # (2) Une pièce = un document (séparateur + contenu) → PAGE N°k/n numérote la pièce.
+    # (1) Les PIÈCES d'abord — contrairement à l'ordre du document final. La page de
+    # garde affiche désormais le n° de page de chaque pièce : on ne peut la rendre
+    # qu'une fois la pagination des pièces connue.
+    # Une pièce = un document (séparateur + contenu) → PAGE N°k/n numérote la pièce.
     # En rapport de SYNTHÈSE, chaque pièce spécifique porte SA session dans le pied : le
     # préfixe est donc recalculé par pièce. Hors synthèse, `session_numero` est nul et
     # l'on retombe sur le préfixe commun (session unique du rapport, ou aucune).
+    piece_docs = []
     for piece in context['pieces']:
         prefixe = (report_foot_prefix(ssdgps, piece['session_numero'])
                    if piece.get('session_numero') is not None else foot_base)
-        foot_prefix = f"{prefixe} PIÈCE N°{piece['index']}"
-        documents.append(_piece_doc(piece, foot_prefix))
+        foot_prefix = f"{prefixe} PIÈCE N°{piece['numero']}"
+        piece_docs.append(_piece_doc(piece, foot_prefix))
+
+    def _plan_pages(pages_garde: int) -> dict:
+        """N° de page GLOBAL (1-based) de la page-séparateur de chaque pièce, si la page
+        de garde occupe `pages_garde` pages. Reproduit exactement la logique d'assemblage
+        ci-dessous, calage recto-verso compris."""
+        total, debuts = pages_garde, {}
+        for index, doc in enumerate(piece_docs, start=1):
+            if duplex and total % 2 == 1:
+                total += 1                      # page blanche de calage
+            debuts[index] = total + 1
+            total += len(doc.pages)
+        return debuts
+
+    def _render_cover(debuts):
+        rows = [{**row, 'page': debuts.get(row['ordre'])} for row in context['cover_rows']]
+        return _render('cover', foot_base, {'cover_rows': rows, 'total': context['total']})
+
+    # (2) Page de garde — pied sans « PIÈCE N° ». Boucle de convergence : le nombre de
+    # pages de la garde décale toutes les pièces, et la colonne « Page » peut elle-même
+    # faire passer la garde sur une page de plus. On itère donc jusqu'à ce que la garde
+    # rendue compte exactement le nombre de pages supposé par le plan — convergence
+    # atteinte au premier tour dans le cas courant. La borne évite tout cas pathologique
+    # d'oscillation (un rapport dont la garde basculerait sans fin entre 1 et 2 pages) :
+    # on garde alors le dernier rendu, cohérent avec son propre plan à une page près.
+    pages_garde = 1
+    for _ in range(4):
+        debuts = _plan_pages(pages_garde)
+        cover_doc = _render_cover(debuts)
+        if len(cover_doc.pages) == pages_garde:
+            break
+        pages_garde = len(cover_doc.pages)
+
+    documents = [cover_doc, *piece_docs]
 
     # Assemblage final. En recto-verso, on cale chaque UNITÉ « pièce » (séparateur + contenu)
     # sur une page DROITE (impaire) : si le cumul courant est impair, on insère une page

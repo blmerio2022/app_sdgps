@@ -12,7 +12,7 @@ que chaque version ne tire QUE sa propre mention dans la marge haute (isolation 
       {% if header.organisme_niveau2 %}<div class="service">{{ header.organisme_niveau2 }}</div>{% endif %}
     </td>
     <td class="ch-mid">
-      <div class="ptitle">PIÈCE N°{{ piece.index }} : {{ piece.title }}{% if mention %}<br>({{ mention }}){% endif %}</div>
+      <div class="ptitle">PIÈCE N°{{ piece.numero }} : {{ piece.title }}{% if mention %}<br>({{ mention }}){% endif %}</div>
       {% comment %}Deux colonnes en PAYSAGE seulement : l'encadré y fait 287 mm de large
       et la hauteur est la ressource rare. En portrait il n'en fait que 200 mm — scindé,
       chaque colonne serait trop étroite et les valeurs passeraient à la ligne.{% endcomment %}
@@ -21,7 +21,7 @@ que chaque version ne tire QUE sa propre mention dans la marge haute (isolation 
     <td class="ch-right">
       <div class="circle">
         <div class="c-half c-top">SDGPS N°{{ header.numero_ssdgps }}</div>
-        <div class="c-half c-bot">PIÈCE N°{{ piece.index }}</div>
+        <div class="c-half c-bot{% if "/" in piece.numero %} c-long{% endif %}">PIÈCE N°{{ piece.numero }}</div>
       </div>
     </td>
   </tr>

@@ -95,6 +95,11 @@
   .circle .c-half { height: 65px; display: flex; align-items: center; justify-content: center;
     font-weight: bold; font-size: 12pt; text-align: center; }
   .circle .c-top { border-bottom: 1.3pt solid #000; }
+  /* Numéro COMPOSÉ (« PIÈCE N°1/2 », rapport de synthèse) : deux caractères de plus que
+     « PIÈCE N°12 », que le diamètre du cercle n'absorbe pas — le texte en touchait le
+     bord. Police réduite et marge latérale pour ce seul cas ; la numérotation simple
+     garde exactement sa taille d'origine. */
+  .circle .c-half.c-long { font-size: 10pt; padding: 0 6px; }
 
   /* ---------- Bloc d'informations (garde / séparateur) ---------- */
   .info { margin: 6px 0 0; font-size: 11pt; }
@@ -144,6 +149,7 @@
   table.pieces-list td.ordre { text-align: center; font-weight: bold; width: 78px; }
   table.pieces-list td.desig { font-weight: bold; }
   table.pieces-list td.nombre { text-align: center; font-weight: bold; width: 74px; }
+  table.pieces-list td.page { text-align: center; font-weight: bold; width: 56px; }
   table.pieces-list td.obs { width: 165px; letter-spacing: 1.5px; }
   table.pieces-list tr.total td { font-weight: bold; text-align: center; }
   table.pieces-list tr.total td.desig { border-right: none; }
@@ -182,6 +188,7 @@
   .ch-left .service { font-weight: bold; font-size: 7pt; line-height: 1.2; }
   .ch-right .circle { width: 116px; height: 116px; }
   .ch-right .circle .c-half { height: 58px; font-size: 10.5pt; }
+  .ch-right .circle .c-half.c-long { font-size: 8.5pt; padding: 0 4px; }
   .ch-mid .ptitle { text-align: center; font-weight: bold; font-size: 11pt; margin-bottom: 6px; }
   .ch-mid table.info { font-size: 9pt; margin: 0; }
   .ch-mid table.info td { padding: 1.5px 4px; }
@@ -327,21 +334,26 @@
 
   <table class="pieces-list">
     <thead>
-      <tr><th style="width:78px">N° Ordre</th><th>Désignation de la pièce</th><th style="width:74px">Nombre</th><th style="width:165px">Obsevations</th></tr>
+      {% comment %}« Page » = n° de page GLOBAL de la pièce dans le rapport assemblé,
+      celui-là même qu'imprime la pagination « Page i/n » du bas de page → la page de
+      garde devient un vrai sommaire. Calculé par `report.render_report_pdf` (la garde
+      est rendue APRÈS les pièces pour cette raison).{% endcomment %}
+      <tr><th style="width:78px">N° Ordre</th><th>Désignation de la pièce</th><th style="width:74px">Nombre</th><th style="width:56px">Page</th><th style="width:165px">Obsevations</th></tr>
     </thead>
     <tbody>
       {% for row in cover_rows %}
       <tr>
-        <td class="ordre"><a class="plink" href="#piece-{{ row.ordre }}">{{ row.ordre|stringformat:"02d" }}</a></td>
+        <td class="ordre"><a class="plink" href="#piece-{{ row.ordre }}">{{ row.numero }}</a></td>
         <td class="desig"><a class="plink" href="#piece-{{ row.ordre }}">{{ row.designation }}</a></td>
         <td class="nombre">{{ row.nombre }}</td>
+        <td class="page"><a class="plink" href="#piece-{{ row.ordre }}">{% if row.page %}{{ row.page }}{% else %}—{% endif %}</a></td>
         <td class="obs">{% if row.observations %}{{ row.observations }}{% else %}..... ..... ..... .....{% endif %}</td>
       </tr>
       {% empty %}
-      <tr><td colspan="4" style="text-align:center" class="empty-note">Aucune pièce valide dans ce rapport.</td></tr>
+      <tr><td colspan="5" style="text-align:center" class="empty-note">Aucune pièce valide dans ce rapport.</td></tr>
       {% endfor %}
       {% if cover_rows %}
-      <tr class="total"><td class="ordre">TOTAL</td><td class="desig"></td><td class="nombre">{{ total }}</td><td class="obs">..... ..... ..... .....</td></tr>
+      <tr class="total"><td class="ordre">TOTAL</td><td class="desig"></td><td class="nombre">{{ total }}</td><td class="page"></td><td class="obs">..... ..... ..... .....</td></tr>
       {% endif %}
     </tbody>
   </table>
@@ -353,7 +365,10 @@
 {% if mode == 'piece' %}
 {# ===================== SÉPARATEUR DE PIÈCE (page de garde de la pièce) ===================== #}
 {% comment %}`id="piece-N"` = cible des liens internes de la page de garde (colonnes
-N° Ordre / Désignation) → clic = saut vers cette page-séparateur.{% endcomment %}
+N° Ordre / Désignation / Page) → clic = saut vers cette page-séparateur. Il porte
+`piece.index`, index UNIQUE de l'occurrence, et non `piece.numero` qui est le numéro
+AFFICHÉ de la pièce logique — en synthèse, les occurrences d'une même pièce partagent
+ce dernier (« 1/3 », « 2/3 ») et doivent pourtant viser des pages différentes.{% endcomment %}
 <section class="piece-sep" id="piece-{{ piece.index }}">
   <table class="top-head">
     <tr>
@@ -368,13 +383,13 @@ N° Ordre / Désignation) → clic = saut vers cette page-séparateur.{% endcomm
       <td class="th-circle">
         <div class="circle">
           <div class="c-half c-top">SDGPS N°{{ header.numero_ssdgps }}</div>
-          <div class="c-half c-bot">PIÈCE N°{{ piece.index }}</div>
+          <div class="c-half c-bot{% if "/" in piece.numero %} c-long{% endif %}">PIÈCE N°{{ piece.numero }}</div>
         </div>
       </td>
     </tr>
   </table>
 
-  <div class="sep-title">PIÈCE N°{{ piece.index }} : {{ piece.title }}</div>
+  <div class="sep-title">PIÈCE N°{{ piece.numero }} : {{ piece.title }}</div>
 
   {% comment %}Page-séparateur : couples en UNE SEULE colonne, les uns sous les autres.
   Elle dispose de toute la hauteur de la page et n'a jamais présenté de chevauchement —

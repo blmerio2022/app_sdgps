@@ -102,9 +102,9 @@ class LiensPageDeGardeTests(TestCase):
                 dest, str, f'destination nommée non résolue : {dest}')
 
     def test_un_lien_par_colonne_cliquable_et_par_piece(self):
-        """N° d'ordre ET désignation sont cliquables → 2 liens par pièce."""
+        """N° d'ordre, désignation ET page sont cliquables → 3 liens par pièce."""
         liens = self._liens_page_de_garde(self._rapport())
-        self.assertEqual(len(liens), 2 * len(self.pieces))
+        self.assertEqual(len(liens), 3 * len(self.pieces))
 
     def test_chaque_lien_vise_la_page_separateur_de_sa_piece(self):
         lecteur = self._rapport()
@@ -112,9 +112,9 @@ class LiensPageDeGardeTests(TestCase):
         for numero in (1, 2):
             attendu = self._page_de_piece(lecteur, numero)
             self.assertIsNotNone(attendu, f'séparateur de la pièce {numero} introuvable')
-            # Les deux liens de la pièce pointent la même page.
-            self.assertEqual(cibles.count(attendu), 2,
-                             f'pièce {numero} : 2 liens attendus vers la page {attendu}')
+            # Les trois liens de la pièce pointent la même page.
+            self.assertEqual(cibles.count(attendu), 3,
+                             f'pièce {numero} : 3 liens attendus vers la page {attendu}')
 
     def test_les_liens_ne_visent_jamais_la_page_de_garde(self):
         """Un lien resté sur la page 0 signalerait une résolution ratée."""
@@ -132,7 +132,7 @@ class LiensPageDeGardeTests(TestCase):
         cibles_duplex = [c for _d, c in self._liens_page_de_garde(duplex)]
         for numero in (1, 2):
             attendu = self._page_de_piece(duplex, numero)
-            self.assertEqual(cibles_duplex.count(attendu), 2)
+            self.assertEqual(cibles_duplex.count(attendu), 3)
 
     def test_destination_conserve_le_zoom_du_lecteur(self):
         """`/XYZ` avec des valeurs nulles = aller en haut de la page sans changer le
