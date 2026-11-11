@@ -351,6 +351,12 @@ export class PieceManagementPageComponent implements OnInit {
   statutBadgeClass(v: string): string {
     return { brouillon: 'badge-warning', valide: 'badge-success', rejete: 'badge-secondary' }[v] || 'badge-secondary';
   }
+  /** Icône sémantique d'un statut — les mêmes que la modale de détail de la pièce
+   * (`piece-detail-modal`), pour qu'un statut se reconnaisse à l'identique partout. */
+  statutIcon(v: string): string {
+    return { brouillon: 'fa-pen-ruler', valide: 'fa-circle-check', rejete: 'fa-circle-xmark' }[v]
+      || 'fa-circle-question';
+  }
   /** Format unifié (cf. `date-format.util`) — passer le champ pour les dates sans heure. */
   formatDate(value: any, field?: string): string {
     return formatFieldDate(value, field);

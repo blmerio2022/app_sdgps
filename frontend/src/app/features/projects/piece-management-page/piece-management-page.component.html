@@ -173,11 +173,15 @@
         <span class="item-meta">
           <span class="tag">{{ sourceLabel(p.source_saisie) }}</span>
           <!-- Même sélecteur qu'en vue tableau : le statut se change sans ouvrir la pièce. -->
-          <select *ngIf="canChangeStatut(p)" class="statut-select-inline" [ngClass]="statutBadgeClass(p.statut)"
-                  [disabled]="!!statutSaving[p.id]" [ngModel]="p.statut" (ngModelChange)="changeStatut(p, $event)"
-                  (click)="$event.stopPropagation()" title="Modifier le statut de cette pièce">
-            <option *ngFor="let opt of statutOptions" [value]="opt.value">{{ opt.label }}</option>
-          </select>
+          <span *ngIf="canChangeStatut(p)" class="statut-control" [ngClass]="statutBadgeClass(p.statut)"
+                [class.is-saving]="!!statutSaving[p.id]" (click)="$event.stopPropagation()">
+            <i class="fas statut-icon" [ngClass]="statutIcon(p.statut)"></i>
+            <select [disabled]="!!statutSaving[p.id]" [ngModel]="p.statut" (ngModelChange)="changeStatut(p, $event)"
+                    title="Modifier le statut de cette pièce" aria-label="Statut de la pièce">
+              <option *ngFor="let opt of statutOptions" [value]="opt.value">{{ opt.label }}</option>
+            </select>
+            <i class="fas statut-caret" [ngClass]="statutSaving[p.id] ? 'fa-circle-notch fa-spin' : 'fa-chevron-down'"></i>
+          </span>
           <span *ngIf="!canChangeStatut(p)" class="badge" [ngClass]="statutBadgeClass(p.statut)">{{ statutLabel(p.statut) }}</span>
           <span class="portee-tag" *ngIf="isMultiSession">{{ portee_label(p) }}</span>
         </span>
@@ -273,11 +277,15 @@
                    faire passer de Brouillon à Validée (ou l'inverse). Le serveur reste
                    seul juge (PPA/PPN sans photo) ; un refus rétablit la valeur. -->
               <ng-container *ngIf="col.field === 'statut'">
-                <select *ngIf="canChangeStatut(p)" class="statut-select-inline" [ngClass]="statutBadgeClass(p.statut)"
-                        [disabled]="!!statutSaving[p.id]" [ngModel]="p.statut" (ngModelChange)="changeStatut(p, $event)"
-                        title="Modifier le statut de cette pièce">
-                  <option *ngFor="let opt of statutOptions" [value]="opt.value">{{ opt.label }}</option>
-                </select>
+                <span *ngIf="canChangeStatut(p)" class="statut-control" [ngClass]="statutBadgeClass(p.statut)"
+                      [class.is-saving]="!!statutSaving[p.id]">
+                  <i class="fas statut-icon" [ngClass]="statutIcon(p.statut)"></i>
+                  <select [disabled]="!!statutSaving[p.id]" [ngModel]="p.statut" (ngModelChange)="changeStatut(p, $event)"
+                          title="Modifier le statut de cette pièce" aria-label="Statut de la pièce">
+                    <option *ngFor="let opt of statutOptions" [value]="opt.value">{{ opt.label }}</option>
+                  </select>
+                  <i class="fas statut-caret" [ngClass]="statutSaving[p.id] ? 'fa-circle-notch fa-spin' : 'fa-chevron-down'"></i>
+                </span>
                 <span *ngIf="!canChangeStatut(p)" class="badge" [ngClass]="statutBadgeClass(p.statut)">{{ statutLabel(p.statut) }}</span>
               </ng-container>
               <span *ngIf="col.field === 'is_deleted'">{{ p.is_deleted ? 'Oui' : 'Non' }}</span>
@@ -512,22 +520,32 @@
 
           <div class="report-range" *ngIf="reportScope === 'synthese'">
             <label class="range-field">
-              <span class="range-label">Session de début</span>
-              <select [(ngModel)]="reportSessionFrom" aria-label="Session de début">
-                <option *ngFor="let s of reportSessions" [value]="s.id">
-                  Session n°{{ s.numero_session }}
-                </option>
-              </select>
+              <span class="range-label"><i class="fas fa-play-circle"></i> Session de début</span>
+              <span class="select-shell">
+                <select [(ngModel)]="reportSessionFrom" aria-label="Session de début">
+                  <option *ngFor="let s of reportSessions" [value]="s.id">
+                    Session n°{{ s.numero_session }}
+                  </option>
+                </select>
+                <i class="fas fa-chevron-down select-caret"></i>
+              </span>
             </label>
+            <!-- Marqueur d'intervalle : d'un coup d'œil, les deux champs se lisent comme
+                 UNE plage et non comme deux réglages indépendants. -->
+            <span class="range-arrow" aria-hidden="true"><i class="fas fa-arrow-right-long"></i></span>
             <label class="range-field">
-              <span class="range-label">Session de fin</span>
-              <select [(ngModel)]="reportSessionTo" aria-label="Session de fin">
-                <option *ngFor="let s of reportSessions" [value]="s.id">
-                  Session n°{{ s.numero_session }}
-                </option>
-              </select>
+              <span class="range-label"><i class="fas fa-stop-circle"></i> Session de fin</span>
+              <span class="select-shell">
+                <select [(ngModel)]="reportSessionTo" aria-label="Session de fin">
+                  <option *ngFor="let s of reportSessions" [value]="s.id">
+                    Session n°{{ s.numero_session }}
+                  </option>
+                </select>
+                <i class="fas fa-chevron-down select-caret"></i>
+              </span>
             </label>
             <p class="range-hint">
+              <i class="fas fa-circle-info"></i>
               Les deux bornes sont incluses. Leur ordre n'a pas d'importance.
             </p>
           </div>
