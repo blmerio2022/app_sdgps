@@ -121,11 +121,57 @@ change-password/logout.
   - `/api/v1/organizations/` → organisations
   - `/api/v1/platform-admin/` → profil super-admin
 
-**Contrôle d'accès :** le défaut DRF est `AllowAny` (voir « Pièges connus »). L'application
-des permissions se fait **par vue** : les vues admin filtrent au niveau du queryset et de
-l'objet (`get_queryset` renvoie `none()` pour un non-admin ; `can_manage_user()` +
+**Contrôle d'accès :** le défaut DRF est **`IsAuthenticated`** — toute vue est fermée tant
+qu'elle ne déclare pas le contraire. Les seules vues publiques sont les quatre flux
+d'authentification (login, forgot/verify/reset password) et `TokenRefreshView` ; elles
+posent `AllowAny` **explicitement**. `accounts/tests_default_permissions.py` parcourt
+l'URLconf réelle et échoue sur toute autre vue publique : une nouvelle vue publique doit
+donc être inscrite dans `VUES_PUBLIQUES_AUTORISEES` avec sa justification. L'application
+des droits reste **par vue** : les vues admin filtrent au niveau du queryset et de l'objet
+(`get_queryset` renvoie `none()` pour un non-admin ; `can_manage_user()` +
 `check_object_permissions` dans `users_views.py`). Toujours vérifier la vue quand on
 raisonne sur les droits.
+
+**Force brute : limitation de débit + verrouillage (règle stricte).** Les endpoints
+d'authentification sont les seuls joignables sans jeton ; ils sont protégés à deux
+niveaux, car aucun ne suffit seul :
+- `accounts/throttling.py` — débits DRF **par IP** (`*_ip`) *et* **par compte visé**
+  (`*_email`, clé hachée) sur login / forgot-password / verify-code / reset-password. Les
+  valeurs sont dans `settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']` ;
+- `accounts/lockout.py` — verrouillage **temporaire du compte** après
+  `MAX_TENTATIVES` échecs, seul rempart contre une attaque lente que le débit ne voit pas
+  passer. Une connexion réussie ou une réinitialisation efface les compteurs.
+
+⚠️ Les deux s'appuient sur le **cache Django**. Avec plusieurs workers gunicorn, un cache
+local par processus multiplie les limites par le nombre de workers et rend le verrou
+contournable : **`REDIS_URL` est obligatoire en environnement serveur** (`CACHES` est
+construit par `backend/observability.py::configuration_du_cache`, qui émet un
+avertissement au démarrage si l'URL manque sur un serveur).
+
+**Journal d'audit (`accounts.models.AuditEvent`).** Les 7 colonnes d'audit disent qui a
+touché une ligne **en dernier** ; elles ne disent pas ce qui a changé et ne gardent aucune
+trace des actions qui ne modifient rien. Le journal, lui, enregistre QUI / QUOI / QUAND,
+**consultations comprises** — exigence courante sur des données foncières.
+- écrire un événement : **toujours** via `accounts/audit.py::journaliser(...)`, jamais
+  `AuditEvent.objects.create()` en direct. Le helper fige l'email de l'acteur (la trace
+  survit à la suppression du compte), déduit la cible, relève l'IP (proxy compris) et
+  **ne lève jamais** : un journal en panne ne doit pas casser l'action journalisée ;
+- **append-only** : `save()` refuse toute modification, `delete()` toute suppression. Un
+  journal modifiable ne prouve rien ;
+- actions couvertes : connexion (réussie / échouée / verrouillage), mot de passe
+  (changement, réinitialisation), compte créé, **rôle modifié** (avant/après), membre
+  rattaché à une organisation, **rapport généré**, suppression définitive. Ajouter une
+  action = une constante `ACTION_*` + son libellé dans `AuditEvent.ACTIONS` ;
+- lecture : `GET /api/v1/audit-events/` (+ `/actions/`), **réservé à l'administration de
+  l'application** (`IsApplicationAdmin`), filtres `action` / `acteur` / `acteur_email` /
+  `cible_id` / `depuis` / `jusqu_a`. Pas d'écran frontend à ce stade ;
+- tests : `backend/accounts/tests_audit_journal.py`.
+
+**Observabilité :** `backend/observability.py::configurer_sentry` (backend) et
+`core/observability/sentry.ts` (frontend). **Inerte** tant que `SENTRY_DSN` /
+`environment.sentryDsn` est vide — aucun appel réseau. `send_default_pii` reste à `False`
+dans les deux : l'application manipule des données foncières nominatives, qui n'ont pas à
+être recopiées chez un tiers.
 
 **Création de comptes : AUCUNE inscription publique (règle stricte).** Il n'existe pas
 d'endpoint d'inscription — `/api/auth/register/`, `RegisterView` et `RegisterSerializer`
@@ -176,23 +222,25 @@ Les modules sont importés en eager dans `app.module.ts` (`LayoutModule`, `AuthM
 État actuel du dépôt qui piège si on l'ignore (facts, pas des jugements) :
 
 - **Ports incohérents.** Le front vise l'API sur le port **8085**
-  (`frontend/src/environments/environment.ts`, et en dur dans `auth.service.ts`), mais le
-  backend et les scripts tournent sur **8000**. Certains scripts servent le front sur
-  **4205** au lieu de 4200. Vérifier le port réel avant de brancher front↔back.
-- **URL d'API en dur.** `auth.service.ts` code `API_URL` en dur au lieu d'importer
-  `environment.apiUrl`. Modifier `environment.ts` seul ne suffit pas.
+  (`frontend/src/environments/environment.ts`), mais les scripts PowerShell
+  (`backend/scripts/setup/restart_servers.ps1`) lancent encore **8000** / **4200**. Le
+  lancement de référence en développement reste **8085** (backend) et **4205** (front) —
+  vérifier le port réel avant de brancher front↔back.
 - **`package.json` → script `start`.** Il contient un `cd` vers un chemin absolu erroné
   (`...PythonProject...` au lieu de `perso`). `npm start` peut échouer ailleurs que sur la
   machine d'origine ; utiliser `ng serve` directement.
-- **JWT partiel.** Le token ne pose que `role`, `platform_role`, `is_superuser`
-  (`accounts/views.py`). Il ne contient **pas** `org_id`/`user_id`, alors que le front les
-  lit → `getOrganizationId()`/`getUserId()` renvoient toujours `null`.
-- **Défaut DRF `AllowAny`.** `DEFAULT_PERMISSION_CLASSES = ['AllowAny']` : toute nouvelle
-  vue est publique tant qu'elle ne pose pas explicitement `IsAuthenticated`.
 - **Deux endpoints change-password** (`accounts` et `platform_admin`) : vérifier lequel
   s'applique au type d'utilisateur visé.
-- **Pillow** est requis (`ImageField` sur les logos/photos) mais absent de
-  `requirements.txt` (seulement installé dans le `Dockerfile`).
+- **Le JWT est un instantané de la connexion.** Il porte `user_id` (posé par simplejwt),
+  `role`, `platform_role`, `is_superuser` et `org_id`. Ces valeurs ne suivent PAS un
+  changement de rôle ou d'organisation : elles ne sont à jour qu'à la reconnexion. Le
+  front peut s'en servir pour l'affichage, **jamais** comme contrôle d'accès — le backend
+  relit toujours la base.
+
+Entrées **corrigées** depuis (conservées pour mémoire, le piège n'existe plus) :
+`auth.service.ts` importe bien `environment.apiUrl` ; le défaut DRF est passé à
+`IsAuthenticated` ; `Pillow` figure dans `requirements.txt` ; le claim `org_id` est posé
+à la connexion ; l'intercepteur implémente un vrai rafraîchissement de jeton sur 401.
 
 ## Politique de tests (OBLIGATOIRE)
 

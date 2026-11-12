@@ -8,6 +8,9 @@ from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from accounts.models import Organization, Membership
+from accounts.permissions import is_application_admin
+from accounts.audit import journaliser
+from accounts.models import AuditEvent
 from .serializers import OrganizationSerializer, OrganizationListSerializer, MembershipSerializer
 import logging
 
@@ -16,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 def is_app_admin(user):
     """Vrai pour un Super Admin ou un Admin Système (administration de l'application)."""
-    return user.is_superuser or user.get_primary_role() == 'ROLE_ADMIN_SYSTEME'
+    return is_application_admin(user)
 
 
 class OrganizationBulkDeleteView(APIView):
@@ -389,11 +392,25 @@ class OrganizationMembersView(generics.ListAPIView):
 class AddMemberView(APIView):
     """
     Endpoint: POST /api/v1/organizations/{id}/add-member/
-    
-    Ajoute un membre à une organisation
+
+    Rattache un utilisateur EXISTANT à une organisation (il ne crée aucun compte : la
+    création est réservée à l'administration de l'application, cf.
+    `accounts/permissions.py`).
+
+    Droits, alignés sur le reste de l'app :
+    - **Super Admin / Admin Système** : rattachent n'importe quel utilisateur, avec
+      n'importe quel rôle ;
+    - **Admin Organisation** : uniquement dans une organisation qu'il administre,
+      uniquement un utilisateur déjà membre d'une de ses organisations, et uniquement
+      comme **agent**. Il ne peut pas nommer d'administrateur — c'est la règle que
+      `UserUpdateSerializer.validate_role` applique déjà par ailleurs ;
+    - **Agent** : aucun droit.
+
+    Sans ces bornes, un Admin Organisation pouvait rattacher n'importe quel compte de la
+    plateforme (en devinant ou listant un identifiant) et le promouvoir administrateur.
     """
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def post(self, request, pk):
         try:
             organization = Organization.objects.get(pk=pk)
@@ -402,28 +419,70 @@ class AddMemberView(APIView):
                 {'detail': 'Organisation non trouvée.'},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
-        # Vérifier que l'utilisateur courant est admin
-        membership = Membership.objects.filter(
-            user=request.user,
-            organization=organization,
-            role='ROLE_ORGANISATION_ADMIN',
-            is_active=True
-        ).first()
-        
-        if not membership and not request.user.is_superuser:
-            return Response(
-                {'detail': 'Vous devez être administrateur pour ajouter des membres.'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        serializer = MembershipSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save(organization=organization)
-            logger.info(f"Membre ajouté à {organization.name} par {request.user.email}")
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        admin_application = is_app_admin(request.user)
+
+        if not admin_application:
+            # Admin de CETTE organisation, sinon rien.
+            est_admin_de_l_org = Membership.objects.filter(
+                user=request.user,
+                organization=organization,
+                role='ROLE_ORGANISATION_ADMIN',
+                is_active=True,
+            ).exists()
+            if not est_admin_de_l_org:
+                return Response(
+                    {'detail': 'Vous devez être administrateur de cette organisation pour y ajouter des membres.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+        # L'organisation vient de l'URL, jamais du corps : on la force AVANT validation,
+        # sinon le contrôle de doublon du serializer (user + organization) ne voit pas
+        # l'organisation et laisse passer une adhésion en double.
+        donnees = {**request.data, 'organization': str(organization.pk)}
+        serializer = MembershipSerializer(data=donnees)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        cible = serializer.validated_data.get('user')
+        role = serializer.validated_data.get('role') or 'ROLE_ORGANISATION_AGENT'
+
+        if not admin_application:
+            if role != 'ROLE_ORGANISATION_AGENT':
+                return Response(
+                    {'detail': "Seul le Super Admin ou l'Admin Système peut attribuer un rôle d'administrateur."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            if cible is not None and (cible.is_superuser or cible.is_platform_admin()):
+                return Response(
+                    {'detail': "Vous ne pouvez pas rattacher un administrateur de l'application."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            # La cible doit déjà appartenir à une organisation que l'appelant administre :
+            # un Admin Organisation n'a pas à piocher dans l'annuaire de la plateforme.
+            mes_organisations = request.user.memberships.filter(
+                is_active=True, role='ROLE_ORGANISATION_ADMIN',
+            ).values_list('organization_id', flat=True)
+            connue = cible is not None and cible.memberships.filter(
+                is_active=True, organization_id__in=list(mes_organisations),
+            ).exists()
+            if not connue:
+                return Response(
+                    {'detail': "Vous ne pouvez rattacher qu'un utilisateur de vos organisations."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+        serializer.save()
+        logger.info(
+            f"Membre {getattr(cible, 'email', '?')} ajouté à {organization.name} "
+            f"({role}) par {request.user.email}"
+        )
+        journaliser(
+            AuditEvent.ACTION_MEMBRE_AJOUTE, request=request, cible=organization,
+            cible_libelle=organization.name,
+            membre=getattr(cible, 'email', ''), role=role,
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class OrganizationMetadataView(APIView):

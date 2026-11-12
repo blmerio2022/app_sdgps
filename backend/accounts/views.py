@@ -1,6 +1,7 @@
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import LoginSerializer
@@ -8,7 +9,16 @@ import random
 import string
 from django.core.cache import cache
 from .email_service import EmailService
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from . import lockout
+from .audit import journaliser
+from .models import AuditEvent
+from .throttling import (
+    ForgotPasswordEmailThrottle, ForgotPasswordIPThrottle,
+    LoginEmailThrottle, LoginIPThrottle,
+    ResetPasswordEmailThrottle, ResetPasswordIPThrottle,
+    VerifyCodeEmailThrottle, VerifyCodeIPThrottle,
+)
 
 User = get_user_model()
 
@@ -17,29 +27,65 @@ class LoginView(APIView):
     """
     Vue pour la connexion des utilisateurs.
     POST /api/auth/login/
+
+    Protégée contre la force brute à deux niveaux (cf. `throttling.py` / `lockout.py`) :
+    une limite de débit par IP et par compte visé, puis un verrouillage temporaire du
+    compte après plusieurs échecs — ce que la seule limite de débit ne couvre pas face à
+    une attaque lente.
     """
+    # Vue PUBLIQUE assumée (défaut DRF = IsAuthenticated).
+    permission_classes = [AllowAny]
+    throttle_classes = [LoginIPThrottle, LoginEmailThrottle]
+
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         if serializer.is_valid():
             email = serializer.validated_data['email']
             password = serializer.validated_data['password']
-            
+
+            if lockout.est_verrouille(email):
+                journaliser(AuditEvent.ACTION_COMPTE_VERROUILLE, request=request,
+                            acteur_email=email, motif='tentative pendant le verrou')
+                return Response(
+                    {
+                        'detail': 'Compte temporairement verrouillé.',
+                        'message': (
+                            'Trop de tentatives de connexion infructueuses. Réessayez dans '
+                            'quelques minutes ou réinitialisez votre mot de passe.'
+                        ),
+                        'code': 'ACCOUNT_LOCKED',
+                        'retry_after': lockout.secondes_restantes(email),
+                    },
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
             # Vérifier si l'email existe dans la BDD
             from django.contrib.auth import get_user_model
             User = get_user_model()
-            
+
             try:
                 user = User.objects.get(email=email)
                 # Email trouvé, vérifier le mot de passe
                 authenticated_user = authenticate(username=email, password=password)
-                
+
                 if authenticated_user is not None:
+                    lockout.effacer_echecs(email)
+                    journaliser(AuditEvent.ACTION_CONNEXION, request=request,
+                                acteur=authenticated_user)
                     # Mot de passe correct - Générer un token JWT
                     refresh = RefreshToken.for_user(authenticated_user)
-                    # Ajouter les claims personnalisés au token
+                    # Claims personnalisés. `user_id` est posé par simplejwt lui-même ;
+                    # `org_id` manquait, ce qui laissait `AuthService.getOrganizationId()`
+                    # renvoyer `null` en permanence côté front. Les claims sont recopiés
+                    # dans l'access token à chaque rafraîchissement.
+                    # ⚠️ Instantané de la connexion : un changement d'organisation ne
+                    # sera visible qu'à la reconnexion. Le backend ne s'y fie JAMAIS —
+                    # il relit l'adhésion en base (cf. `organization_of_user`).
+                    organisation = authenticated_user.get_primary_organization()
                     refresh['platform_role'] = authenticated_user.platform_role or ''
                     refresh['role'] = authenticated_user.get_primary_role()
                     refresh['is_superuser'] = authenticated_user.is_superuser
+                    refresh['org_id'] = str(organisation.id) if organisation else ''
                     access_token = str(refresh.access_token)
                     
                     # Mettre à jour la date de dernière connexion
@@ -58,24 +104,52 @@ class LoginView(APIView):
                         }
                     }, status=status.HTTP_200_OK)
                 else:
-                    # Email correct mais mot de passe incorrect
+                    # Email correct mais mot de passe incorrect : c'est le seul cas qui
+                    # alimente le compteur d'échecs (un email inconnu n'a pas de compte
+                    # à verrouiller).
+                    verrouille, restantes = lockout.enregistrer_echec(email)
+                    journaliser(AuditEvent.ACTION_CONNEXION_ECHEC, request=request,
+                                acteur=user, acteur_email=email,
+                                tentatives_restantes=restantes)
+                    if verrouille:
+                        journaliser(AuditEvent.ACTION_COMPTE_VERROUILLE, request=request,
+                                    acteur=user, acteur_email=email,
+                                    motif="seuil d'échecs atteint")
+                        return Response(
+                            {
+                                'detail': 'Compte temporairement verrouillé.',
+                                'message': (
+                                    'Trop de tentatives de connexion infructueuses. Réessayez dans '
+                                    'quelques minutes ou réinitialisez votre mot de passe.'
+                                ),
+                                'code': 'ACCOUNT_LOCKED',
+                                'retry_after': lockout.secondes_restantes(email),
+                            },
+                            status=status.HTTP_403_FORBIDDEN
+                        )
                     return Response(
                         {
                             'detail': 'Mot de passe incorrect.',
                             'message': 'Le mot de passe saisi ne correspond pas à cet email. Veuillez réessayer ou cliquez sur "Mot de passe oublié".',
-                            'code': 'INVALID_PASSWORD'
+                            'code': 'INVALID_PASSWORD',
+                            'remaining_attempts': restantes,
                         },
                         status=status.HTTP_401_UNAUTHORIZED
                     )
-                    
+
             except User.DoesNotExist:
-                # Email n'existe pas dans la BDD
+                journaliser(AuditEvent.ACTION_CONNEXION_ECHEC, request=request,
+                            acteur_email=email, motif='email inconnu')
+                # Email n'existe pas dans la BDD. Plus d'inscription publique : on ne
+                # propose donc plus « créer un compte ».
                 return Response(
                     {
                         'detail': 'Email non trouvé.',
-                        'message': 'Aucun compte n\'est associé à cette adresse email. Veuillez vérifier l\'email saisi ou créer un compte.',
+                        'message': (
+                            'Aucun compte n\'est associé à cette adresse email. Vérifiez '
+                            'l\'email saisi ou contactez l\'administrateur de l\'application.'
+                        ),
                         'code': 'EMAIL_NOT_FOUND',
-                        'suggestion': 'Créer un compte'
                     },
                     status=status.HTTP_404_NOT_FOUND
                 )
@@ -87,7 +161,14 @@ class ForgotPasswordView(APIView):
     """
     Vue pour demander la réinitialisation du mot de passe.
     POST /api/auth/forgot-password/
+
+    Limitée par IP et par compte visé : chaque appel déclenche un envoi SendGrid (coût
+    réel) et peut servir à harceler un utilisateur de mails.
     """
+    # Vue PUBLIQUE assumée (défaut DRF = IsAuthenticated).
+    permission_classes = [AllowAny]
+    throttle_classes = [ForgotPasswordIPThrottle, ForgotPasswordEmailThrottle]
+
     def post(self, request):
         email = request.data.get('email')
         
@@ -129,19 +210,33 @@ class ForgotPasswordView(APIView):
             print(f"\n{'='*50}")
             print(f"⚠️  EMAIL NON ENVOYÉ - CODE DE RÉINITIALISATION pour {email}: {code}")
             print(f"{'='*50}\n")
-            
-            return Response({
+
+            # Le code ne sort JAMAIS dans la réponse HTTP hors poste de développement :
+            # il suffirait sinon de provoquer un échec d'envoi pour s'emparer de
+            # n'importe quel compte. En environnement serveur, la console (les logs)
+            # reste le seul endroit où le lire.
+            corps = {
                 'detail': 'Un code de vérification a été généré.',
-                'message': 'MODE TEST: Vérifiez la console backend pour le code',
-                'code': code  # Seulement en développement!
-            }, status=status.HTTP_200_OK)
+                'message': "L'envoi de l'email a échoué ; contactez l'administrateur si vous ne le recevez pas.",
+            }
+            if settings.DEBUG and not settings.IS_SERVER_ENV:
+                corps['message'] = 'MODE TEST: Vérifiez la console backend pour le code'
+                corps['code'] = code
+            return Response(corps, status=status.HTTP_200_OK)
 
 
 class VerifyCodeView(APIView):
     """
     Vue pour vérifier le code de réinitialisation.
     POST /api/auth/verify-code/
+
+    Sans limite, un code à 6 chiffres (1 000 000 de combinaisons) s'épuise en quelques
+    minutes à vitesse réseau : la limite par compte visé est ici la vraie protection.
     """
+    # Vue PUBLIQUE assumée (défaut DRF = IsAuthenticated).
+    permission_classes = [AllowAny]
+    throttle_classes = [VerifyCodeIPThrottle, VerifyCodeEmailThrottle]
+
     def post(self, request):
         email = request.data.get('email')
         code = request.data.get('code')
@@ -179,6 +274,10 @@ class ResetPasswordView(APIView):
     Vue pour réinitialiser le mot de passe.
     POST /api/auth/reset-password/
     """
+    # Vue PUBLIQUE assumée (défaut DRF = IsAuthenticated).
+    permission_classes = [AllowAny]
+    throttle_classes = [ResetPasswordIPThrottle, ResetPasswordEmailThrottle]
+
     def post(self, request):
         email = request.data.get('email')
         token = request.data.get('token')
@@ -207,6 +306,11 @@ class ResetPasswordView(APIView):
             # Supprimer le token utilisé
             cache.delete(f'reset_token_{email}')
             cache.delete(f'reset_code_{email}')
+            # Un utilisateur qui s'est verrouillé en cherchant son mot de passe doit
+            # pouvoir se reconnecter immédiatement après l'avoir réinitialisé.
+            lockout.effacer_echecs(email)
+            journaliser(AuditEvent.ACTION_MOT_DE_PASSE_REINITIALISE, request=request,
+                        acteur=user, acteur_email=email)
             
             return Response({
                 'detail': 'Mot de passe réinitialisé avec succès.'
@@ -267,6 +371,8 @@ class ChangePasswordView(APIView):
             user.password_changed_at = timezone.now()
             user.save(update_fields=['must_change_password', 'password_changed_at'])
         
+        journaliser(AuditEvent.ACTION_MOT_DE_PASSE_CHANGE, request=request, acteur=user)
+
         return Response({
             'detail': 'Mot de passe changé avec succès.',
             'message': 'Vous pouvez maintenant accéder à l\'application.'

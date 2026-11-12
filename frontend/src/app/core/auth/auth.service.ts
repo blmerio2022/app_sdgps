@@ -208,8 +208,11 @@ export class AuthService {
 
     /**
      * @method getOrganizationId
-     * @returns string | null L'ID de l'organisation actuelle ou null.
-     * @description Retourne l'ID de l'organisation à laquelle appartient l'utilisateur.
+     * @returns string | null L'ID de l'organisation actuelle, ou null.
+     * @description Lu depuis le claim `org_id` du JWT, posé à la connexion.
+     *              ⚠️ Instantané de la connexion : après un changement d'organisation,
+     *              la valeur n'est à jour qu'à la reconnexion. À n'utiliser que pour
+     *              l'affichage — jamais comme contrôle d'accès.
      */
     getOrganizationId(): string | null {
         return this.organizationId;
@@ -242,24 +245,12 @@ export class AuthService {
         return this.userRole;
     }
 
-    /**
-     * @method hasRole
-     * @param role Le rôle à vérifier.
-     * @returns boolean Vrai si l'utilisateur a le rôle spécifié.
-     * @description Vérifie si l'utilisateur possède un rôle spécifique.
-     */
-    hasRole(role: UserRole): boolean {
-        return this.userRole === role;
-    }
-
-    /**
-     * @method isAdmin
-     * @returns boolean Vrai si l'utilisateur est administrateur.
-     * @description Vérifie si l'utilisateur a le rôle ADMIN.
-     */
-    isAdmin(): boolean {
-        return this.hasRole('ADMIN');
-    }
+    // `hasRole`, `isAdmin`, `isManager` et `canAccessOrganization` ont été RETIRÉS :
+    // ils comparaient le rôle à « ADMIN » / « MANAGER », qui n'existent pas dans cette
+    // application (les rôles sont `ROLE_SUPER_ADMIN`, `ROLE_ADMIN_SYSTEME`,
+    // `ROLE_ORGANISATION_ADMIN`, `ROLE_ORGANISATION_AGENT`). Ils renvoyaient donc
+    // toujours `false` et aucun appelant ne s'en servait. Pour un test de rôle, lire
+    // `getUserRole()` ; la seule barrière qui compte reste le backend.
 
     /**
      * @method isPlatformAdmin
@@ -291,25 +282,6 @@ export class AuthService {
      */
     getPostLoginRoute(): string {
         return this.isPlatformAdmin() ? '/admin/dashboard' : '/dashboard';
-    }
-
-    /**
-     * @method isManager
-     * @returns boolean Vrai si l'utilisateur est gestionnaire.
-     * @description Vérifie si l'utilisateur a le rôle MANAGER.
-     */
-    isManager(): boolean {
-        return this.hasRole('MANAGER') || this.isAdmin(); // ADMIN inclut les droits MANAGER
-    }
-
-    /**
-     * @method canAccessOrganization
-     * @param orgId L'ID de l'organisation à vérifier.
-     * @returns boolean Vrai si l'utilisateur appartient à cette organisation.
-     * @description Vérifie si l'utilisateur peut accéder aux données d'une organisation.
-     */
-    canAccessOrganization(orgId: string): boolean {
-        return this.organizationId === orgId;
     }
 
     /**
@@ -355,7 +327,14 @@ export class AuthService {
             // Extraire les informations RBAC
             this.organizationId = payload.org_id || payload.organizationId || null;
             this.userRole = payload.role || payload.userRole || null;
-            this.userId = payload.user_id || null;
+            // simplejwt sérialise `user_id` en CHAÎNE. Sans conversion, `getUserId()`
+            // renvoyait '1' là où les appelants comparent à un nombre
+            // (`Number(user.id) === currentUserId`) : la comparaison était toujours
+            // fausse et le garde-fou « c'est moi » de la liste des utilisateurs ne
+            // se déclenchait jamais.
+            const brut = payload.user_id;
+            const numerique = brut === null || brut === undefined ? NaN : Number(brut);
+            this.userId = Number.isFinite(numerique) ? numerique : null;
 
             console.log('RBAC Info extracted:', {
                 organizationId: this.organizationId,

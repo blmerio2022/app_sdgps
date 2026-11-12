@@ -336,7 +336,71 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
+    # Défaut FERMÉ : toute vue est authentifiée tant qu'elle ne déclare pas le contraire.
+    # Avec l'ancien défaut `AllowAny`, une vue qui oubliait `permission_classes` était
+    # publique en silence. Les seules vues publiques sont les flux d'authentification,
+    # qui posent `AllowAny` explicitement ; le test `accounts/tests_default_permissions.py`
+    # échoue si une autre vue devient publique.
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
+        'rest_framework.permissions.IsAuthenticated',
     ],
+    # Débits des endpoints d'authentification (cf. `accounts/throttling.py`), seuls
+    # points de l'API joignables sans jeton. Les portées `*_ip` freinent un attaquant
+    # unique, les portées `*_email` une attaque distribuée sur un seul compte.
+    # Les valeurs visent à ne jamais gêner un usage normal — y compris plusieurs agents
+    # derrière la même IP publique — tout en rendant la force brute inopérante.
+    'DEFAULT_THROTTLE_RATES': {
+        'login_ip': '30/min',
+        'login_email': '10/min',
+        'forgot_password_ip': '15/hour',
+        'forgot_password_email': '5/hour',
+        'verify_code_ip': '30/hour',
+        'verify_code_email': '10/hour',
+        'reset_password_ip': '15/hour',
+        'reset_password_email': '10/hour',
+    },
 }
+
+# Cache : support des compteurs de limitation de débit, du verrouillage de compte et des
+# codes de réinitialisation. En environnement serveur, gunicorn lance PLUSIEURS workers ;
+# un cache local par processus multiplierait les limites par le nombre de workers et
+# rendrait le verrouillage contournable. Un Redis partagé est donc requis dès qu'une
+# URL est fournie (`REDIS_URL`), le cache local ne servant qu'au développement.
+from .observability import configuration_du_cache, configurer_sentry
+
+CACHES = configuration_du_cache(config('REDIS_URL', default=''))
+
+if IS_SERVER_ENV and 'locmem' in CACHES['default']['BACKEND'].lower():
+    import warnings
+
+    warnings.warn(
+        "REDIS_URL n'est pas défini : le cache est local au processus. "
+        "La limitation de débit et le verrouillage de compte sont alors appliqués "
+        "worker par worker. Définissez REDIS_URL en environnement serveur.",
+        RuntimeWarning,
+    )
+
+
+# =====================================================================
+# OBSERVABILITÉ — Sentry (erreurs backend)
+# =====================================================================
+# Sans télémétrie, une erreur en production n'est connue que si un opérateur la
+# raconte. Sentry capture l'exception, la requête et la trace au moment où elle se
+# produit.
+#
+# Entièrement INERTE tant que `SENTRY_DSN` est vide : aucun appel réseau, aucune
+# dépendance au démarrage. Le DSN est un secret → il vit dans `.env.<environnement>`
+# (ou les variables de service Railway), jamais dans le dépôt.
+#
+# Données personnelles : `send_default_pii` reste à False. On n'envoie donc ni cookies,
+# ni corps de requête, ni adresse IP — l'application manipule des données foncières
+# nominatives et il n'y a aucune raison de les recopier chez un tiers. L'identifiant de
+# l'utilisateur suffit à diagnostiquer.
+SENTRY_DSN = config('SENTRY_DSN', default='')
+
+configurer_sentry(
+    dsn=SENTRY_DSN,
+    environnement=ENVIRONMENT,
+    release=config('APP_RELEASE', default=''),
+    traces_sample_rate=config('SENTRY_TRACES_SAMPLE_RATE', default=0.0, cast=float),
+)

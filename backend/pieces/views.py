@@ -21,6 +21,8 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from analytics.quotas import ensure_within_quota, organization_of_user
+from accounts.audit import journaliser
+from accounts.models import AuditEvent
 from projects.models import Session, Ssdgps
 from projects.views import scope_queryset, is_scope_visible
 from .catalog import (serialize_catalog, get_piece_def, champs_with_meta, valid_field_names,
@@ -1309,6 +1311,17 @@ class PieceViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         filename = report_filename(ssdgps, session, sessions=sessions_plage)
+
+        # Consultation/export journalisé : pour des données foncières, savoir QUI a
+        # sorti QUEL rapport et QUAND fait partie de la traçabilité attendue — les
+        # colonnes d'audit des tables n'en gardent aucune trace (rien n'est modifié).
+        journaliser(
+            AuditEvent.ACTION_RAPPORT_GENERE, request=request, cible=ssdgps,
+            cible_libelle=str(ssdgps), fichier=filename,
+            sessions=([s.numero_session for s in sessions_plage]
+                      if sessions_plage else None),
+            octets=len(pdf_bytes),
+        )
 
         # Réponse JSON base64 (par défaut pour le front) : le PDF est transporté encodé
         # dans un JSON, puis reconstruit en Blob côté client. On évite ainsi qu'un

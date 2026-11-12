@@ -147,3 +147,89 @@ describe('AuthService (aucune inscription publique)', () => {
     TestBed.inject(HttpTestingController).verify();
   });
 });
+
+/**
+ * API morte retirée : `hasRole`, `isAdmin`, `isManager` et `canAccessOrganization`
+ * comparaient le rôle à « ADMIN » / « MANAGER », qui n'existent pas dans cette
+ * application — elles renvoyaient donc toujours `false`. Ce test empêche leur retour.
+ */
+describe('AuthService (API de rôles morte retirée)', () => {
+  let service: AuthService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      providers: [AuthService],
+    });
+    service = TestBed.inject(AuthService);
+  });
+
+  afterEach(() => TestBed.inject(HttpTestingController).verify());
+
+  it('n\'expose plus les méthodes qui mentaient', () => {
+    for (const nom of ['hasRole', 'isAdmin', 'isManager', 'canAccessOrganization']) {
+      expect((service as any)[nom]).withContext(nom).toBeUndefined();
+    }
+  });
+
+  it('conserve les accesseurs réellement utilisés', () => {
+    expect(typeof service.getUserRole).toBe('function');
+    expect(typeof service.getUserId).toBe('function');
+    expect(typeof service.getOrganizationId).toBe('function');
+    expect(typeof service.isPlatformAdmin).toBe('function');
+  });
+});
+
+/**
+ * `user_id` arrive du backend sous forme de CHAÎNE (sérialisation simplejwt). Les
+ * appelants le comparent à un nombre (`Number(user.id) === currentUserId`) : sans
+ * conversion, la comparaison est toujours fausse et le garde-fou « c'est moi » de la
+ * liste des utilisateurs ne se déclenche jamais.
+ */
+describe('AuthService (identifiant utilisateur du JWT)', () => {
+  let service: AuthService;
+
+  function connecter(payload: object): void {
+    localStorage.setItem('authToken', `x.${btoa(JSON.stringify(payload))}.y`);
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      providers: [AuthService],
+    });
+    service = TestBed.inject(AuthService);
+    // Le constructeur appelle /auth/me/ : on absorbe la requête.
+    TestBed.inject(HttpTestingController).match(() => true).forEach(r => r.flush({}));
+  }
+
+  afterEach(() => localStorage.clear());
+
+  it('convertit un user_id reçu en chaîne', () => {
+    connecter({ user_id: '42' });
+    expect(service.getUserId()).toBe(42);
+  });
+
+  it('accepte un user_id déjà numérique', () => {
+    connecter({ user_id: 42 });
+    expect(service.getUserId()).toBe(42);
+  });
+
+  it('renvoie null quand le claim est absent', () => {
+    connecter({ role: 'ROLE_ORGANISATION_AGENT' });
+    expect(service.getUserId()).toBeNull();
+  });
+
+  it('renvoie null pour un claim inexploitable', () => {
+    connecter({ user_id: 'abc' });
+    expect(service.getUserId()).toBeNull();
+  });
+
+  it('lit l\'organisation depuis le claim org_id', () => {
+    connecter({ user_id: '1', org_id: 'uuid-org' });
+    expect(service.getOrganizationId()).toBe('uuid-org');
+  });
+
+  it('renvoie null quand org_id est vide (compte sans organisation)', () => {
+    connecter({ user_id: '1', org_id: '' });
+    expect(service.getOrganizationId()).toBeNull();
+  });
+});

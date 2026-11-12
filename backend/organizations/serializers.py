@@ -4,6 +4,8 @@ Sérialiseurs pour la gestion des organisations
 from rest_framework import serializers
 from accounts.models import Organization, Membership
 from accounts.fields import AuthorDisplayField
+from accounts.avatars import normalize_avatar, validate_avatar
+from analytics.quotas import ensure_within_quota
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
@@ -52,6 +54,37 @@ class OrganizationSerializer(serializers.ModelSerializer):
 
     def get_member_count(self, obj):
         return obj.get_member_count()
+
+    def validate_logo(self, value):
+        """Contrôle, réduit et IMPUTE le logo au quota de l'organisation.
+
+        Le logo est compté dans la volumétrie d'une organisation
+        (`analytics.quotas._organization_logo_bytes`) mais échappait à toute
+        vérification : ni format, ni plafond, ni quota — un quota qu'on peut contourner
+        n'est pas un quota. Mêmes règles que les photos de profil (`accounts.avatars`),
+        logo réduit avant écriture.
+
+        À la création, `self.instance` est `None` : il n'y a pas encore d'organisation à
+        qui imputer le poids, et sa consommation est nulle de toute façon. À la
+        modification, le contrôle est conservateur — l'ancien logo est encore compté
+        dans l'usage courant.
+        """
+        if not value:
+            return value
+
+        validate_avatar(value, libelle='logo d\'organisation')
+
+        normalise = normalize_avatar(value)
+        if normalise is None:
+            return value                      # image non ré-encodable : on garde l'originale
+
+        contenu, nom = normalise
+        ensure_within_quota(self.instance, contenu.size)
+
+        value.file = contenu.file
+        value.name = nom
+        value.size = contenu.size
+        return value
 
     def validate_code(self, value):
         """Valide que le code est unique (sauf pour l'organisation en cours de modification)"""

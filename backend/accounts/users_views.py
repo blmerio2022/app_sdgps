@@ -12,6 +12,8 @@ from .users_serializers import (
 )
 from .rbac import check_org_admin_not_last
 from .permissions import IsApplicationAdmin, is_application_admin
+from .audit import journaliser
+from .models import AuditEvent
 import logging
 
 logger = logging.getLogger(__name__)
@@ -185,8 +187,14 @@ class UserListView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         # Colonnes d'audit standard (cf. CLAUDE.md) : on trace l'auteur de la création.
-        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+        utilisateur = serializer.save(
+            created_by=self.request.user, updated_by=self.request.user,
+        )
         logger.info(f"Utilisateur créé par: {self.request.user.email}")
+        journaliser(
+            AuditEvent.ACTION_COMPTE_CREE, request=self.request, cible=utilisateur,
+            cible_libelle=utilisateur.email, role=utilisateur.get_primary_role(),
+        )
 
 
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -288,8 +296,20 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
                 from rest_framework.exceptions import PermissionDenied
                 raise PermissionDenied(msg)
 
+        role_avant = instance.get_primary_role()
+
         # Colonnes d'audit standard (cf. CLAUDE.md) : on trace l'auteur de la modification.
         serializer.save(updated_by=self.request.user)
+
+        # Un changement de rôle est l'événement le plus sensible du cycle de vie d'un
+        # compte : il est journalisé avec l'avant/après (cf. `accounts/audit.py`).
+        instance.refresh_from_db()
+        role_apres = instance.get_primary_role()
+        if role_apres != role_avant:
+            journaliser(
+                AuditEvent.ACTION_ROLE_MODIFIE, request=self.request, cible=instance,
+                cible_libelle=instance.email, role_avant=role_avant, role_apres=role_apres,
+            )
 
         if instance.is_superuser:
             logger.warning(f"Super admin modifié: {instance.email} par {self.request.user.email}")
@@ -540,8 +560,13 @@ class UserPermanentDeleteView(APIView):
             return Response({'detail': msg}, status=status.HTTP_403_FORBIDDEN)
 
         email = user.email
+        identifiant = str(user.pk)
         user.delete()
         logger.warning(f"Compte supprimé DÉFINITIVEMENT: {email} par {request.user.email}")
+        journaliser(
+            AuditEvent.ACTION_SUPPRESSION_DEFINITIVE, request=request,
+            cible_type='CustomUser', cible_id=identifiant, cible_libelle=email,
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -574,8 +599,14 @@ class UserBulkPermanentDeleteView(APIView):
                 errors.append({'id': uid, 'detail': msg})
                 continue
             email = user.email
+            identifiant = str(user.pk)
             user.delete()
             logger.warning(f"Compte supprimé DÉFINITIVEMENT (bulk): {email} par {request.user.email}")
+            journaliser(
+                AuditEvent.ACTION_SUPPRESSION_DEFINITIVE, request=request,
+                cible_type='CustomUser', cible_id=identifiant, cible_libelle=email,
+                en_masse=True,
+            )
             deleted_count += 1
 
         return Response({'deleted_count': deleted_count, 'errors': errors}, status=status.HTTP_200_OK)

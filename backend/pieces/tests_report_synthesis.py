@@ -205,6 +205,19 @@ class EndpointPlageTests(SyntheseBaseTest):
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertIn('SESSIONS-N1-A-N3', resp.data['filename'])
 
+    def test_la_generation_est_journalisee(self):
+        """Traçabilité : une génération de rapport ne modifie rien, donc les colonnes
+        d'audit des tables n'en gardent aucune trace. Le journal, si (cf.
+        `accounts/audit.py`)."""
+        from accounts.models import AuditEvent
+
+        self._plage(0, 2)
+
+        evenement = AuditEvent.objects.get(action=AuditEvent.ACTION_RAPPORT_GENERE)
+        self.assertEqual(evenement.cible_id, str(self.ssdgps.pk))
+        self.assertEqual(evenement.details['sessions'], [1, 2, 3])
+        self.assertIn('SESSIONS-N1-A-N3', evenement.details['fichier'])
+
     def test_bornes_inversees_acceptees(self):
         """De la session 3 à la session 1 : même rapport que de 1 à 3."""
         resp = self._plage(2, 0)

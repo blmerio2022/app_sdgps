@@ -25,23 +25,24 @@ from django.core.files.base import ContentFile
 ALLOWED_AVATAR_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.tif', '.tiff', '.webp'}
 
 
-def validate_avatar_extension(value):
+def validate_avatar_extension(value, libelle='photo de profil'):
     ext = os.path.splitext(value.name)[1].lower()
     if ext not in ALLOWED_AVATAR_EXTENSIONS:
         raise ValidationError(
-            f"Extension « {ext} » non autorisée pour une photo de profil. "
+            f"Extension « {ext} » non autorisée pour un(e) {libelle}. "
             f"Formats acceptés : {', '.join(sorted(ALLOWED_AVATAR_EXTENSIONS))}."
         )
 
 
-def validate_avatar_size(value):
+def validate_avatar_size(value, libelle='photo de profil'):
     """Plafond du fichier REÇU. Large à dessein : l'image est de toute façon réduite
     ensuite, ce contrôle ne sert qu'à rejeter tôt un envoi manifestement abusif."""
     max_mb = getattr(settings, 'PROFILE_PICTURE_MAX_UPLOAD_MB', 5)
     if value.size > max_mb * 1024 * 1024:
         taille = value.size / (1024 * 1024)
         raise ValidationError(
-            f"Photo de profil trop volumineuse ({taille:.1f} Mo) : maximum {max_mb} Mo."
+            f"Image trop volumineuse pour un(e) {libelle} ({taille:.1f} Mo) : "
+            f"maximum {max_mb} Mo."
         )
 
 
@@ -61,10 +62,14 @@ def validate_avatar_content(value):
             pass
 
 
-def validate_avatar(value):
-    """Les trois contrôles, dans l'ordre du moins au plus coûteux."""
-    validate_avatar_extension(value)
-    validate_avatar_size(value)
+def validate_avatar(value, libelle='photo de profil'):
+    """Les trois contrôles, dans l'ordre du moins au plus coûteux.
+
+    `libelle` n'intervient que dans les messages d'erreur : les mêmes règles servent aux
+    photos de profil et aux logos d'organisation (cf. `organizations/serializers.py`).
+    """
+    validate_avatar_extension(value, libelle)
+    validate_avatar_size(value, libelle)
     validate_avatar_content(value)
 
 

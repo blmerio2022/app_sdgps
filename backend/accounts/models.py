@@ -1,4 +1,5 @@
 import uuid
+from django.conf import settings
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.utils import timezone
@@ -626,3 +627,129 @@ class PasswordResetToken(models.Model):
         )
         
         return reset_token
+
+
+class AuditEventQuerySet(models.QuerySet):
+    """Refuse les écritures en masse sur le journal.
+
+    `Model.delete()` et `Model.save()` ne couvrent QUE l'objet : `queryset.delete()` et
+    `queryset.update()` passent directement en SQL et contourneraient la garantie
+    append-only. Une purge de rétention reste possible, mais seulement en l'assumant :
+    `AuditEvent.objects.all()._raw_delete(...)` ou une commande d'administration.
+    """
+
+    def delete(self):
+        raise ValueError(
+            "Le journal d'audit est append-only : suppression en masse interdite."
+        )
+
+    def update(self, **kwargs):
+        raise ValueError(
+            "Le journal d'audit est append-only : modification en masse interdite."
+        )
+
+
+class AuditEvent(models.Model):
+    """
+    Journal d'audit : QUI a fait QUOI, QUAND — y compris les consultations.
+
+    Les colonnes d'audit des tables métier (`created_by`, `updated_by`, `deleted_by`)
+    disent qui a touché une ligne EN DERNIER. Elles ne disent pas ce qui a changé, ne
+    gardent aucune trace des actions qui ne modifient rien (consulter, exporter,
+    générer un rapport), et sont écrasées à la modification suivante. Pour des données
+    foncières, la traçabilité des consultations et des exports est pourtant une
+    exigence courante.
+
+    Ce journal est **append-only** : `save()` refuse toute mise à jour et `delete()`
+    toute suppression. Un journal modifiable ne prouve rien. La purge éventuelle
+    (rétention) reste une opération d'administration explicite, en base.
+
+    Les champs `acteur_email` et `cible_libelle` sont des INSTANTANÉS volontairement
+    dénormalisés : un compte supprimé ou renommé ne doit pas effacer la trace de ce
+    qu'il a fait.
+    """
+
+    ACTION_CONNEXION = 'LOGIN_OK'
+    ACTION_CONNEXION_ECHEC = 'LOGIN_FAILED'
+    ACTION_COMPTE_VERROUILLE = 'ACCOUNT_LOCKED'
+    ACTION_MOT_DE_PASSE_CHANGE = 'PASSWORD_CHANGED'
+    ACTION_MOT_DE_PASSE_REINITIALISE = 'PASSWORD_RESET'
+    ACTION_COMPTE_CREE = 'USER_CREATED'
+    ACTION_ROLE_MODIFIE = 'ROLE_CHANGED'
+    ACTION_MEMBRE_AJOUTE = 'MEMBER_ADDED'
+    ACTION_RAPPORT_GENERE = 'REPORT_GENERATED'
+    ACTION_SUPPRESSION_DEFINITIVE = 'PERMANENT_DELETE'
+
+    ACTIONS = [
+        (ACTION_CONNEXION, 'Connexion réussie'),
+        (ACTION_CONNEXION_ECHEC, 'Échec de connexion'),
+        (ACTION_COMPTE_VERROUILLE, 'Compte verrouillé'),
+        (ACTION_MOT_DE_PASSE_CHANGE, 'Mot de passe changé'),
+        (ACTION_MOT_DE_PASSE_REINITIALISE, 'Mot de passe réinitialisé'),
+        (ACTION_COMPTE_CREE, 'Compte créé'),
+        (ACTION_ROLE_MODIFIE, 'Rôle modifié'),
+        (ACTION_MEMBRE_AJOUTE, 'Membre rattaché à une organisation'),
+        (ACTION_RAPPORT_GENERE, 'Rapport généré'),
+        (ACTION_SUPPRESSION_DEFINITIVE, 'Suppression définitive'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    created_at = models.DateTimeField(
+        auto_now_add=True, db_index=True, verbose_name="Horodatage",
+    )
+    action = models.CharField(
+        max_length=32, choices=ACTIONS, db_index=True, verbose_name="Action",
+    )
+    acteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='+',
+        verbose_name="Acteur",
+    )
+    acteur_email = models.CharField(
+        max_length=254, blank=True, db_index=True,
+        verbose_name="Email de l'acteur",
+        help_text="Instantané : survit à la suppression ou au renommage du compte.",
+    )
+    cible_type = models.CharField(
+        max_length=64, blank=True, verbose_name="Type d'objet visé",
+    )
+    cible_id = models.CharField(
+        max_length=64, blank=True, db_index=True, verbose_name="Identifiant visé",
+    )
+    cible_libelle = models.CharField(
+        max_length=255, blank=True, verbose_name="Libellé de l'objet visé",
+    )
+    adresse_ip = models.GenericIPAddressField(
+        null=True, blank=True, verbose_name="Adresse IP",
+    )
+    details = models.JSONField(
+        default=dict, blank=True, verbose_name="Détails",
+        help_text="Contexte libre (ancien/nouveau rôle, nombre d'éléments, etc.).",
+    )
+
+    objects = AuditEventQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "Événement d'audit"
+        verbose_name_plural = "Événements d'audit"
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['-created_at', 'action']),
+        ]
+
+    def __str__(self):
+        return f'{self.created_at:%Y-%m-%d %H:%M} — {self.action} — {self.acteur_email or "anonyme"}'
+
+    def save(self, *args, **kwargs):
+        """Append-only : une ligne déjà écrite ne se modifie pas."""
+        if self.pk and AuditEvent.objects.filter(pk=self.pk).exists():
+            raise ValueError("Un événement d'audit ne peut pas être modifié.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValueError(
+            "Un événement d'audit ne peut pas être supprimé individuellement. "
+            "Une purge de rétention est une opération d'administration explicite."
+        )

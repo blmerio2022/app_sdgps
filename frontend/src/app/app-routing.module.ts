@@ -1,4 +1,4 @@
-import { NgModule, Component } from '@angular/core';
+import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
 import { DashboardLayoutComponent } from './core/layout/components/dashboard-layout/dashboard-layout.component';
 import { AdminGuard } from './core/guards/admin.guard';
@@ -12,13 +12,9 @@ import { PieceFieldDescriptionsComponent } from './features/admin/piece-field-de
 import { StorageDashboardComponent } from './features/admin/storage/storage-dashboard.component';
 import { StorageQuotasComponent } from './features/admin/storage-quotas/storage-quotas.component';
 
-// Composant placeholder temporaire (à remplacer par vos vrais composants)
-@Component({
-  template: '<div style="padding: 20px;"><h2>{{ title }}</h2><p>Ce module est en cours de développement.</p></div>'
-})
-export class PlaceholderComponent {
-  title = '';
-}
+// Aucune route « en cours de développement » : une entrée de menu qui mène à une page
+// vide est pire qu'une entrée absente. Les modules à venir seront routés le jour où ils
+// existeront ; en attendant, une URL inconnue retombe sur le tableau de bord (`**`).
 
 const routes: Routes = [
   {
@@ -40,175 +36,6 @@ const routes: Routes = [
     component: DashboardLayoutComponent,
     canActivate: [AdminGuard],
     children: [
-      {
-        path: '',
-        redirectTo: 'dashboard',
-        pathMatch: 'full'
-      },
-      {
-        // Tableau de bord admin (Super Admin / Admin Système) : réutilise l'accueil
-        // opérateur (`HomeModule` : KPI + projets récents). Voir aussi la redirection
-        // post-login `getPostLoginRoute()` dans AuthService.
-        path: 'dashboard',
-        loadChildren: () => import('./features/home/home.module').then(m => m.HomeModule),
-        data: { title: 'Tableau de bord' }
-      },
-      {
-        path: 'organisations',
-        component: PlaceholderComponent,
-        data: { title: 'Gestion des Organisations' }
-      },
-      {
-        path: 'organisations/liste',
-        component: OrganizationListComponent,
-        data: { title: 'Liste des Organisations' }
-      },
-      {
-        path: 'organisations/ajouter',
-        component: PlaceholderComponent,
-        data: { title: 'Ajouter une Organisation' }
-      },
-      {
-        path: 'organismes/niveau1',
-        component: OrganismeListComponent,
-        data: { title: 'Organismes — premier niveau', niveau: 1 }
-      },
-      {
-        path: 'organismes/niveau2',
-        component: OrganismeListComponent,
-        data: { title: 'Organismes — deuxième niveau', niveau: 2 }
-      },
-      {
-        // Paramètres → Descriptions des champs de pièces (App Admin uniquement).
-        // NB : doit rester AVANT le module `parametres` (route exacte prioritaire).
-        path: 'parametres/descriptions-champs',
-        component: PieceFieldDescriptionsComponent,
-        data: { title: 'Descriptions des champs de pièces' }
-      },
-      {
-        // Paramètres (tri + champs des pièces) — sorti de `profile/` pour ne plus afficher
-        // « Mon profil » dans le fil d'Ariane. URL : /admin/parametres/…
-        path: 'parametres',
-        loadChildren: () => import('./features/parametres/parametres.module').then(m => m.ParametresModule),
-        data: { title: 'Paramètres' }
-      },
-      {
-        path: 'utilisateurs',
-        pathMatch: 'full',
-        component: UserListComponent,
-        data: { title: 'Gestion des Utilisateurs' }
-      },
-      {
-        path: 'utilisateurs/liste',
-        component: UserListComponent,
-        data: { title: 'Liste des Utilisateurs' }
-      },
-      {
-        path: 'utilisateurs/invitations',
-        component: PlaceholderComponent,
-        data: { title: 'Invitations' }
-      },
-      {
-        path: 'utilisateurs/roles',
-        component: RolesPermissionsComponent,
-        data: { title: 'Rôles et Permissions' }
-      },
-      {
-        path: 'utilisateurs/:id',
-        component: UserDetailComponent,
-        data: { title: 'Détail Utilisateur' }
-      },
-      {
-        path: 'roles-permissions',
-        component: RolesPermissionsComponent,
-        data: { title: 'Rôles et Permissions' }
-      },
-      {
-        path: 'logs-audit',
-        component: PlaceholderComponent,
-        data: { title: 'Logs d\'Audit' }
-      },
-      {
-        path: 'supervision',
-        component: PlaceholderComponent,
-        data: { title: 'Supervision Système' }
-      },
-      {
-        path: 'supervision/health',
-        component: PlaceholderComponent,
-        data: { title: 'Health Check' }
-      },
-      {
-        path: 'supervision/stats',
-        component: PlaceholderComponent,
-        data: { title: 'Statistiques' }
-      },
-      {
-        path: 'quotas',
-        component: PlaceholderComponent,
-        data: { title: 'Gestion des Quotas' }
-      },
-      {
-        path: 'quotas/stockage',
-        component: StorageDashboardComponent,
-        data: { title: 'Espace de stockage' }
-      },
-      {
-        path: 'quotas/limites',
-        component: StorageQuotasComponent,
-        data: { title: 'Quotas de stockage' }
-      },
-      {
-        path: 'maintenance',
-        component: PlaceholderComponent,
-        data: { title: 'Mode Maintenance' }
-      },
-      {
-        path: 'projets',
-        loadChildren: () => import('./features/projects/projects.module').then(m => m.ProjectsModule),
-        data: { title: 'Projets' }
-      },
-      {
-        path: 'profile',
-        loadChildren: () => import('./features/profile/profile.module').then(m => m.ProfileModule),
-        data: { title: 'Mon Profil' }
-      },
-      {
-        path: 'test-profile',
-        component: TestProfileRouteComponent,
-        data: { title: 'Test Route Profile' }
-      }
-    ]
-  },
-
-  // Routes Opérateur d'organisation — servies à la RACINE (sans préfixe « dashboard »).
-  {
-    path: '',
-    component: DashboardLayoutComponent,
-    children: [
-      {
-        path: '',
-        redirectTo: 'dashboard',
-        pathMatch: 'full'
-      },
-      {
-        // Tableau de bord opérateur (KPI + projets récents) — Admin & Agent d'organisation.
-        // NB : /admin/dashboard (super-admin / admin système) rend le même HomeModule.
-        path: 'dashboard',
-        loadChildren: () => import('./features/home/home.module').then(m => m.HomeModule),
-        data: { title: 'Tableau de bord' }
-      },
-      {
-        // Ancienne URL de l'accueil opérateur → /dashboard (compat liens/redirections).
-        path: 'home',
-        redirectTo: 'dashboard',
-        pathMatch: 'full'
-      },
-      {
-        path: 'mes-projets',
-        component: PlaceholderComponent,
-        data: { title: 'Mes Projets' }
-      },
       {
         // Feature Projets (Phase 5) accessible aux Agents d'organisation.
         path: 'projets',
