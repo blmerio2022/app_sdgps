@@ -43,9 +43,15 @@ RUN chmod +x /app/docker-entrypoint.sh
 # L'entrypoint attend la base, applique les migrations (+ auto-seed) puis lance la CMD.
 ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
 # gunicorn en forme SHELL pour que ${PORT} (injecté par Railway) soit interprété au runtime.
-# --timeout 300 : la génération du rapport PDF d'un SSDGPS est synchrone et longue
-# (WeasyPrint rend un document par pièce). Mesure de référence : ~120 s pour 21 pièces /
-# 7,6 Mo. Avec l'ancien timeout de 120 s, gunicorn tuait le worker en pleine génération →
-# 502 côté client et barre de progression bloquée. Ne pas redescendre sous 300 s sans
-# rendre la génération asynchrone.
+#
+# --timeout 300 : conservé pour l'ancien endpoint SYNCHRONE `GET /api/v1/pieces/report/`,
+# toujours exposé (clients directs, `format=raw`). Mesure de référence : ~120 s pour
+# 21 pièces / 7,6 Mo. Le front, lui, passe désormais par `POST report-async/` : le rendu
+# part sur un worker Celery et n'immobilise plus de worker web (cf. `backend/celery.py`).
+#
+# ⚠️ La MÊME image sert le worker. Sur Railway, créer un second service à partir d'elle
+# avec, pour commande de démarrage :
+#     celery -A backend worker --loglevel=info --concurrency=2
+# et les mêmes variables (dont REDIS_URL). Sans worker ni REDIS_URL, Celery bascule en
+# mode « eager » : les rapports sont rendus dans la requête web, comme avant.
 CMD gunicorn backend.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 3 --timeout 300

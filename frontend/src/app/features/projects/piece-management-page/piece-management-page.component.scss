@@ -497,6 +497,11 @@
   &.done { background: linear-gradient(135deg, #2ecc71, #27ae60); }
 }
 .progress-label { margin-top: 8px; text-align: right; font-size: 13px; font-weight: 600; color: var(--text-muted); }
+/* Étape en cours annoncée par le serveur, sous la barre : discrète, sur une ligne. */
+.report-step {
+  margin: 4px 0 0; font-size: 12.5px; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .report-filename {
   margin: 14px 0 0; font-size: 12.5px; color: var(--text-muted); word-break: break-all;
   i { color: var(--accent-color); margin-right: 6px; }

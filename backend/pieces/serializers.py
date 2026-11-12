@@ -1,7 +1,7 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
-from .models import Piece, PieceImage
+from .models import Piece, PieceImage, RapportGeneration
 from .validators import validate_piece_coherence, points_without_photo
 from accounts.fields import AuthorDisplayField
 from analytics.quotas import ensure_within_quota, organization_of_user
@@ -148,3 +148,27 @@ class PieceSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {'fichier': e.messages[0] if e.messages else str(e)})
         return attrs
+
+
+class RapportGenerationSerializer(serializers.ModelSerializer):
+    """Suivi d'une génération de rapport, tel que le front le sonde."""
+
+    statut_display = serializers.CharField(source='get_statut_display', read_only=True)
+    demande_par = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RapportGeneration
+        fields = [
+            'id', 'ssdgps', 'session', 'sessions_plage', 'duplex',
+            'statut', 'statut_display', 'progression', 'etape',
+            'pieces_total', 'pieces_faites',
+            'nom_fichier', 'octets', 'erreur',
+            'demande_par', 'created_at', 'started_at', 'finished_at',
+        ]
+        read_only_fields = fields
+
+    def get_demande_par(self, obj):
+        if obj.created_by is None:
+            return None
+        nom = f'{obj.created_by.first_name} {obj.created_by.last_name}'.strip()
+        return nom or obj.created_by.email

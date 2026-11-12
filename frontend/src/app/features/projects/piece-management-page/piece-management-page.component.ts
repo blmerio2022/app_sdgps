@@ -5,7 +5,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { forkJoin, of } from 'rxjs';
 import { catchError, map } from 'rxjs/operators';
 import { ProjectsService } from '../../../core/services/projects.service';
-import { PiecesService } from '../../../core/services/pieces.service';
+import { PiecesService, RapportGeneration } from '../../../core/services/pieces.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { BreadcrumbService } from '../../../core/layout/services/breadcrumb.service';
 import { BreadcrumbItem } from '../../../core/layout/interfaces/menu.interface';
@@ -795,6 +795,10 @@ export class PieceManagementPageComponent implements OnInit {
   showReportModal = false;
   reportGenerating = false;
   reportProgress = 0;
+  /** Étape en cours annoncée par le serveur (« Rendu de la pièce 3/21 — … »). */
+  reportStep = '';
+  /** Identifiant de la génération en cours, sondé jusqu'à son terme. */
+  reportJobId: string | null = null;
   reportError = '';
   reportFilename = '';
   /** Mode d'impression choisi dans la modale : recto-verso (défaut) ou recto seul. */
@@ -849,6 +853,8 @@ export class PieceManagementPageComponent implements OnInit {
     this.reportBlob = null;
     this.reportFilename = '';
     this.reportProgress = 0;
+    this.reportStep = '';
+    this.reportJobId = null;
     this.reportScope = 'courant';
     // Pré-remplissage naturel : de la première à la dernière session.
     const sessions = this.reportSessions;
@@ -864,11 +870,18 @@ export class PieceManagementPageComponent implements OnInit {
     this.reportError = '';
     this.reportBlob = null;
     this.reportProgress = 0;
+    this.reportStep = '';
+    this.reportJobId = null;
   }
 
-  /** Lance la génération avec le mode choisi. Le backend produit le PDF en une seule
-   * requête (pas de progression serveur) : la barre est donc simulée — elle progresse
-   * jusqu'à ~90 % pendant l'attente, puis saute à 100 % à la réception du fichier. */
+  /**
+   * Lance la génération avec le mode choisi.
+   *
+   * Le rendu se fait en TÂCHE DE FOND : la requête rend la main immédiatement, puis on
+   * sonde l'avancement. La barre affiche donc une progression RÉELLE (pièce par pièce)
+   * et non plus une animation qui s'arrêtait à 90 % en attendant une réponse qui
+   * pouvait ne jamais venir — le rendu d'un gros SDGPS dépassait le délai du serveur.
+   */
   generateReport(): void {
     if (this.reportGenerating) return;
     this.reportStarted = true;
@@ -876,16 +889,12 @@ export class PieceManagementPageComponent implements OnInit {
     this.reportBlob = null;
     this.reportFilename = '';
     this.reportProgress = 0;
+    this.reportStep = '';
+    this.reportJobId = null;
     this.reportGenerating = true;
 
-    this.reportTimer = setInterval(() => {
-      if (this.reportProgress < 90) {
-        this.reportProgress = Math.min(90, this.reportProgress + Math.max(1, Math.round((90 - this.reportProgress) / 12)));
-      }
-    }, 200);
-
     const range = this.reportRange;
-    this.piecesService.downloadReport(
+    this.piecesService.startReport(
       this.ssdgps.id,
       // En synthèse, la session courante ne doit PAS être transmise : le backend refuse
       // une session unique et une plage ensemble.
@@ -893,20 +902,67 @@ export class PieceManagementPageComponent implements OnInit {
       this.reportDuplex,
       range,
     ).subscribe({
-      next: (res) => {
-        this.stopReportTimer();
-        this.reportBlob = this.base64ToBlob(res.data, res.content_type || 'application/pdf');
-        this.reportFilename = res.filename || `RAPPORT_SDGPS_SDGPS-N${this.ssdgps.numero_ssdgps}.pdf`;
-        this.reportProgress = 100;
-        this.reportGenerating = false;
-      },
-      error: (err) => {
-        this.stopReportTimer();
-        this.reportGenerating = false;
-        this.reportProgress = 0;
-        this.reportError = PieceManagementPageComponent.reportErrorMessage(err);
-      },
+      next: (job) => this.onReportJob(job),
+      error: (err) => this.failReport(err),
     });
+  }
+
+  /** Applique l'état reçu : terminé → on récupère le fichier ; sinon on continue à sonder. */
+  private onReportJob(job: RapportGeneration): void {
+    this.reportJobId = job.id;
+    this.reportProgress = job.progression ?? 0;
+    this.reportStep = job.etape || '';
+
+    if (job.statut === 'echec') {
+      this.stopReportTimer();
+      this.reportGenerating = false;
+      this.reportProgress = 0;
+      this.reportError = job.erreur
+        || 'Erreur lors de la génération du rapport.';
+      return;
+    }
+
+    if (job.statut === 'termine') {
+      this.stopReportTimer();
+      this.fetchReportFile(job);
+      return;
+    }
+
+    // En attente ou en cours : on repasse dans une seconde et demie. Un rendu dure des
+    // dizaines de secondes ; sonder plus souvent ne ferait que charger le serveur.
+    this.stopReportTimer();
+    this.reportTimer = setTimeout(() => this.pollReportJob(), 1500);
+  }
+
+  private pollReportJob(): void {
+    if (!this.reportJobId) return;
+    this.piecesService.getReportJob(this.reportJobId).subscribe({
+      next: (job) => this.onReportJob(job),
+      error: (err) => this.failReport(err),
+    });
+  }
+
+  /** Récupère le PDF produit (base64) une fois la génération terminée. */
+  private fetchReportFile(job: RapportGeneration): void {
+    this.piecesService.getReportFile(job.id).subscribe({
+      next: (res) => {
+        this.reportBlob = this.base64ToBlob(res.data, res.content_type || 'application/pdf');
+        this.reportFilename = res.filename || job.nom_fichier
+          || `RAPPORT_SDGPS_SDGPS-N${this.ssdgps.numero_ssdgps}.pdf`;
+        this.reportProgress = 100;
+        this.reportStep = '';
+        this.reportGenerating = false;
+      },
+      error: (err) => this.failReport(err),
+    });
+  }
+
+  private failReport(err: any): void {
+    this.stopReportTimer();
+    this.reportGenerating = false;
+    this.reportProgress = 0;
+    this.reportStep = '';
+    this.reportError = PieceManagementPageComponent.reportErrorMessage(err);
   }
 
   /** Message d'erreur de génération présenté à l'opérateur.
@@ -949,7 +1005,7 @@ export class PieceManagementPageComponent implements OnInit {
   }
 
   private stopReportTimer(): void {
-    if (this.reportTimer) { clearInterval(this.reportTimer); this.reportTimer = null; }
+    if (this.reportTimer) { clearTimeout(this.reportTimer); this.reportTimer = null; }
   }
 
   /** Télécharge le PDF déjà généré (blob en mémoire) via le bouton de la modale. */

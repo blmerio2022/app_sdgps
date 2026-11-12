@@ -15,6 +15,30 @@ interface PieceParent {
  * intermédiaires assemblé. */
 export type RcSource = 'rdn' | 'rdia';
 
+/** Suivi d'une génération de rapport menée en tâche de fond (backend `RapportGeneration`). */
+export interface RapportGeneration {
+  id: string;
+  ssdgps: string;
+  session: string | null;
+  sessions_plage: string[];
+  duplex: boolean;
+  statut: 'en_attente' | 'en_cours' | 'termine' | 'echec';
+  statut_display: string;
+  /** Progression RÉELLE, en pourcentage : 5 % à la préparation, puis une part par pièce rendue. */
+  progression: number;
+  /** Libellé de l'étape en cours, p. ex. « Rendu de la pièce 3/21 — Rapport des observations ». */
+  etape: string;
+  pieces_total: number;
+  pieces_faites: number;
+  nom_fichier: string;
+  octets: number;
+  erreur: string;
+  demande_par: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
 /** Pièce candidate à l'application du tri configuré sur son tableau stocké. */
 export interface SortablePiece {
   id: string;
@@ -31,6 +55,8 @@ export interface SortablePiece {
 @Injectable({ providedIn: 'root' })
 export class PiecesService {
   private base = `${environment.apiUrl}/v1/pieces/`;
+  /** Suivi des générations de rapport (ressource distincte des pièces). */
+  private rapportsBase = `${environment.apiUrl}/v1/rapports/`;
 
   constructor(private http: HttpClient) {}
 
@@ -405,5 +431,43 @@ export class PiecesService {
     if (duplex) params = params.set('duplex', '1');
     return this.http.get<{ filename: string; content_type: string; data: string }>(
       `${this.base}report/`, { params });
+  }
+
+  /**
+   * Lance la génération du rapport en TÂCHE DE FOND et renvoie son suivi initial.
+   *
+   * Mêmes paramètres que `downloadReport`, mais la requête rend la main tout de suite :
+   * le rendu dure des dizaines de secondes à plusieurs minutes, pendant lesquelles la
+   * requête synchrone immobilisait un worker du serveur et finissait par dépasser son
+   * délai sur un gros SDGPS.
+   */
+  startReport(ssdgpsId: string, sessionId?: string | null, duplex = false,
+              sessionRange?: { from: string; to: string } | null): Observable<RapportGeneration> {
+    let params = new HttpParams().set('ssdgps', ssdgpsId);
+    if (sessionRange) {
+      params = params.set('session_from', sessionRange.from)
+                     .set('session_to', sessionRange.to);
+    } else if (sessionId) {
+      params = params.set('session', sessionId);
+    }
+    if (duplex) params = params.set('duplex', '1');
+    return this.http.post<RapportGeneration>(`${this.base}report-async/`, {}, { params });
+  }
+
+  /** État courant d'une génération (sondé pendant le rendu). */
+  getReportJob(id: string): Observable<RapportGeneration> {
+    return this.http.get<RapportGeneration>(`${this.rapportsBase}${id}/`);
+  }
+
+  /** PDF produit, en base64 — re-téléchargeable sans relancer le rendu. */
+  getReportFile(id: string): Observable<{ filename: string; content_type: string; data: string }> {
+    return this.http.get<{ filename: string; content_type: string; data: string }>(
+      `${this.rapportsBase}${id}/fichier/`);
+  }
+
+  /** Générations déjà demandées pour un SSDGPS, de la plus récente à la plus ancienne. */
+  listReportJobs(ssdgpsId: string): Observable<RapportGeneration[]> {
+    return this.http.get<RapportGeneration[]>(
+      this.rapportsBase, { params: new HttpParams().set('ssdgps', ssdgpsId) });
   }
 }

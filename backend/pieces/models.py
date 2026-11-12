@@ -6,6 +6,9 @@ un type de pièce (registre statique `catalog.py`), une source de saisie (image,
 import CSV/Excel, saisie manuelle, générée automatiquement), une position dans le
 rapport (`ordre`) et des données structurées (`payload` JSON) et/ou un fichier.
 """
+import uuid
+
+from django.conf import settings
 from django.db import models
 
 from projects.models import BaseModel, Ssdgps, Session
@@ -258,3 +261,99 @@ class PieceImage(models.Model):
 
     def __str__(self):
         return f"Image {self.ordre} de {self.piece_id}"
+
+
+def rapport_upload_path(instance, filename):
+    """Les rapports vivent à part des pièces : ils sont DÉRIVÉS et purgeables."""
+    return f'rapports/{instance.ssdgps_id}/{filename}'
+
+
+class RapportGeneration(models.Model):
+    """
+    Suivi d'une génération de rapport PDF menée en tâche de fond.
+
+    Pourquoi un modèle plutôt que le seul résultat Celery :
+    - la **progression réelle** (pièce par pièce) doit être lisible par l'API de suivi,
+      et le backend de résultat Celery ne porte qu'un état terminal ;
+    - le PDF produit devient un objet **re-téléchargeable** : fermer l'onglet ou perdre
+      le réseau ne fait plus perdre plusieurs minutes de rendu ;
+    - la trace de qui a généré quoi reste consultable même après expiration de la tâche.
+
+    Le fichier est un artefact **dérivé** (re-générable à tout moment) : il n'est donc
+    PAS imputé au quota de stockage de l'organisation, mais il est purgé au-delà de
+    `settings.RAPPORT_RETENTION_JOURS` (`manage.py purger_rapports`).
+    """
+
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        EN_COURS = 'en_cours', 'En cours'
+        TERMINE = 'termine', 'Terminé'
+        ECHEC = 'echec', 'Échec'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    ssdgps = models.ForeignKey(
+        Ssdgps, on_delete=models.CASCADE, related_name='generations_rapport',
+        verbose_name="SSDGPS",
+    )
+    session = models.ForeignKey(
+        Session, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='generations_rapport', verbose_name="Session",
+    )
+    sessions_plage = models.JSONField(
+        default=list, blank=True, verbose_name="Plage de sessions",
+        help_text="Identifiants des sessions couvertes par un rapport de synthèse.",
+    )
+    duplex = models.BooleanField(default=False, verbose_name="Recto-verso")
+
+    statut = models.CharField(
+        max_length=16, choices=Statut.choices, default=Statut.EN_ATTENTE,
+        db_index=True, verbose_name="Statut",
+    )
+    progression = models.PositiveSmallIntegerField(
+        default=0, verbose_name="Progression (%)",
+    )
+    etape = models.CharField(max_length=255, blank=True, verbose_name="Étape en cours")
+    pieces_total = models.PositiveIntegerField(default=0, verbose_name="Pièces à rendre")
+    pieces_faites = models.PositiveIntegerField(default=0, verbose_name="Pièces rendues")
+
+    fichier = models.FileField(
+        upload_to=rapport_upload_path, blank=True, null=True, verbose_name="Fichier PDF",
+    )
+    nom_fichier = models.CharField(max_length=255, blank=True, verbose_name="Nom du fichier")
+    octets = models.PositiveIntegerField(default=0, verbose_name="Taille (octets)")
+    erreur = models.TextField(blank=True, verbose_name="Erreur")
+
+    tache_id = models.CharField(
+        max_length=255, blank=True, verbose_name="Identifiant de tâche",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+', verbose_name="Demandé par",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True, verbose_name="Demandé le")
+    started_at = models.DateTimeField(null=True, blank=True, verbose_name="Démarré le")
+    finished_at = models.DateTimeField(null=True, blank=True, verbose_name="Terminé le")
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Génération de rapport"
+        verbose_name_plural = "Générations de rapport"
+
+    def __str__(self):
+        return f'{self.nom_fichier or "rapport"} — {self.get_statut_display()}'
+
+    @property
+    def est_terminee(self):
+        return self.statut in (self.Statut.TERMINE, self.Statut.ECHEC)
+
+    def marquer_progression(self, faites, total, etape=''):
+        """Enregistre l'avancement. Les 5 premiers % couvrent la préparation, les 90
+        suivants le rendu des pièces, les derniers l'assemblage et l'écriture : une
+        barre qui reflète le temps réellement passé, et non un compteur linéaire."""
+        total = max(1, int(total or 0))
+        faites = max(0, min(int(faites or 0), total))
+        self.pieces_total = total
+        self.pieces_faites = faites
+        self.progression = 5 + int(90 * faites / total)
+        self.etape = (etape or '')[:255]
+        self.save(update_fields=['pieces_total', 'pieces_faites', 'progression', 'etape'])

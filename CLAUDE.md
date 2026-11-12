@@ -148,6 +148,37 @@ contournable : **`REDIS_URL` est obligatoire en environnement serveur** (`CACHES
 construit par `backend/observability.py::configuration_du_cache`, qui émet un
 avertissement au démarrage si l'URL manque sur un serveur).
 
+**Génération des rapports : TÂCHE DE FOND (Celery + Redis).** Le rendu d'un rapport dure
+des dizaines de secondes à plusieurs minutes (une passe WeasyPrint par pièce). En
+synchrone, il immobilisait un worker gunicorn sur trois, dépassait le `--timeout 300` du
+serveur sur un gros SDGPS, et ne pouvait afficher qu'une barre **simulée** bloquée à 90 %.
+- socle : `backend/celery.py` (+ `backend/__init__.py`), réglages `CELERY_*` dans
+  `settings.py`. Le broker est le **même Redis que le cache** (`REDIS_URL`) ;
+- ⚠️ **sans broker, Celery passe en mode « eager »** : la tâche s'exécute en ligne, dans
+  la requête. Tout fonctionne donc en développement et en CI sans Redis ni worker — le
+  suivi renvoyé est simplement déjà terminé. C'est ce qui rend les tests simples ;
+- suivi : modèle `pieces.models.RapportGeneration` (statut, progression, étape, fichier).
+  Le PDF produit est **stocké** et re-téléchargeable : fermer l'onglet ne fait plus perdre
+  plusieurs minutes de rendu ;
+- progression **réelle** : `render_report_pdf(..., on_progress=…)` appelle le rappel avant
+  chaque pièce ; `report._avancer` garantit qu'une défaillance du suivi n'interrompt
+  jamais le rendu ;
+- API : `POST /api/v1/pieces/report-async/` (mêmes paramètres et mêmes contrôles que
+  `report/` — c'est la même `_resoudre_portee_rapport`), puis
+  `GET /api/v1/rapports/<id>/` (sondé toutes les 1,5 s) et
+  `GET /api/v1/rapports/<id>/fichier/`. L'endpoint **synchrone reste exposé** ;
+- le rapport est un artefact **dérivé** : il n'est PAS imputé au quota de l'organisation,
+  mais purgé au-delà de `RAPPORT_RETENTION_JOURS` (`manage.py purger_rapports`) ;
+- worker : profil `redis` de `docker-compose.yml` en local
+  (`docker compose --env-file backend/.env.development --profile redis up -d`) ; sur
+  Railway, un **second service** depuis la même image, commande
+  `celery -A backend worker --loglevel=info --concurrency=2` ;
+- ⚠️ **ne jamais nommer `format` un paramètre de requête DRF** : il est réservé à la
+  négociation de contenu et provoque un 404 avant l'entrée dans la vue. Le flux PDF
+  binaire s'obtient avec `?brut=1` (l'ancien `?format=raw`, documenté de longue date,
+  n'a jamais pu fonctionner) ;
+- tests : `backend/pieces/tests_rapport_async.py`.
+
 **Journal d'audit (`accounts.models.AuditEvent`).** Les 7 colonnes d'audit disent qui a
 touché une ligne **en dernier** ; elles ne disent pas ce qui a changé et ne gardent aucune
 trace des actions qui ne modifient rien. Le journal, lui, enregistre QUI / QUOI / QUAND,

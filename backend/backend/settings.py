@@ -368,7 +368,8 @@ REST_FRAMEWORK = {
 # URL est fournie (`REDIS_URL`), le cache local ne servant qu'au développement.
 from .observability import configuration_du_cache, configurer_sentry
 
-CACHES = configuration_du_cache(config('REDIS_URL', default=''))
+_REDIS_URL_BRUT = config('REDIS_URL', default='')
+CACHES = configuration_du_cache(_REDIS_URL_BRUT)
 
 if IS_SERVER_ENV and 'locmem' in CACHES['default']['BACKEND'].lower():
     import warnings
@@ -379,6 +380,40 @@ if IS_SERVER_ENV and 'locmem' in CACHES['default']['BACKEND'].lower():
         "worker par worker. Définissez REDIS_URL en environnement serveur.",
         RuntimeWarning,
     )
+
+
+# =====================================================================
+# FILE DE TÂCHES — Celery (génération des rapports PDF)
+# =====================================================================
+# La génération d'un rapport dure des dizaines de secondes à plusieurs minutes. En
+# synchrone, elle immobilisait un worker gunicorn sur trois, dépassait le délai du
+# serveur sur un gros SDGPS, et ne pouvait afficher aucune progression réelle.
+#
+# Le broker est le MÊME Redis que le cache (`REDIS_URL`) : une seule dépendance à
+# exploiter. Sans lui — poste de développement, CI — Celery passe en mode **eager** :
+# les tâches s'exécutent en ligne, immédiatement, dans le processus appelant. Tout
+# continue donc de fonctionner sans Redis ni worker ; seul l'asynchrone disparaît, et
+# l'API de suivi renvoie simplement une génération déjà terminée.
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default=_REDIS_URL_BRUT)
+CELERY_RESULT_BACKEND = CELERY_BROKER_URL or None
+CELERY_TASK_ALWAYS_EAGER = not CELERY_BROKER_URL
+CELERY_TASK_EAGER_PROPAGATES = False   # une tâche en échec se lit dans son suivi, pas en 500
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TIMEZONE = TIME_ZONE
+# Un rendu très long ne doit pas être tué en cours de route, mais ne doit pas non plus
+# bloquer un worker indéfiniment : 30 min de plafond dur, alerte à 25 min.
+CELERY_TASK_TIME_LIMIT = config('CELERY_TASK_TIME_LIMIT', default=1800, cast=int)
+CELERY_TASK_SOFT_TIME_LIMIT = config('CELERY_TASK_SOFT_TIME_LIMIT', default=1500, cast=int)
+# Un rapport est lourd : un worker ne prend qu'une tâche d'avance, sinon un worker libre
+# resterait inoccupé pendant qu'un autre accumule la file.
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+
+# Rétention des rapports générés (jours). Un rapport est un artefact DÉRIVÉ,
+# re-générable à tout moment : il n'est pas imputé au quota de l'organisation, mais il
+# est purgé passé ce délai (`manage.py purger_rapports`).
+RAPPORT_RETENTION_JOURS = config('RAPPORT_RETENTION_JOURS', default=30, cast=int)
 
 
 # =====================================================================

@@ -946,8 +946,24 @@ def build_report_context(ssdgps, session, pieces, sort_config=None, fields_confi
     }
 
 
+def _avancer(on_progress, faites, total, etape):
+    """Signale l'avancement à l'appelant, sans jamais le laisser casser le rendu.
+
+    Le rapport doit sortir même si le suivi de progression échoue (base indisponible,
+    tâche révoquée…) : une minute de rendu ne se perd pas pour un compteur.
+    """
+    if on_progress is None:
+        return
+    try:
+        on_progress(faites, total, etape)
+    except Exception:  # pragma: no cover - garde-fou
+        import logging
+
+        logging.getLogger(__name__).exception("Échec du suivi de progression du rapport")
+
+
 def render_report_pdf(ssdgps, session, pieces, sort_config=None, fields_config=None,
-                      duplex=False):
+                      duplex=False, on_progress=None):
     """Rend le rapport en PDF (bytes). Lève `RuntimeError` si une dépendance de la
     chaîne PDF (WeasyPrint et ses bibliothèques natives, pypdf, reportlab) manque sur
     l'environnement d'exécution — vérification faite **en amont** du rendu, qui dure
@@ -962,7 +978,11 @@ def render_report_pdf(ssdgps, session, pieces, sort_config=None, fields_config=N
     `duplex` (recto-verso) : chaque page de garde de pièce est calée sur une page DROITE
     (impaire) par insertion d'une page blanche si nécessaire ; l'identification du pied de
     page bascule côté extérieur via `@page :left/:right`. La pagination globale « Page i/n »
-    est superposée après fusion (le compteur global n'existe pas en CSS entre documents)."""
+    est superposée après fusion (le compteur global n'existe pas en CSS entre documents).
+
+    `on_progress(faites, total, etape)` — rappel facultatif appelé avant chaque pièce,
+    puis à l'assemblage. Il alimente la progression réelle de la génération en tâche de
+    fond (`pieces/tasks.py`) ; une exception de sa part n'interrompt jamais le rendu."""
     # Toute la chaîne est contrôlée d'un coup, AVANT le rendu : un `reportlab` manquant
     # ne doit pas se révéler après une minute de rendu perdu (cf. check_pdf_toolchain).
     check_pdf_toolchain()
@@ -1025,11 +1045,18 @@ def render_report_pdf(ssdgps, session, pieces, sort_config=None, fields_config=N
     # préfixe est donc recalculé par pièce. Hors synthèse, `session_numero` est nul et
     # l'on retombe sur le préfixe commun (session unique du rapport, ou aucune).
     piece_docs = []
-    for piece in context['pieces']:
+    total_pieces = len(context['pieces'])
+    for rang, piece in enumerate(context['pieces'], start=1):
         prefixe = (report_foot_prefix(ssdgps, piece['session_numero'])
                    if piece.get('session_numero') is not None else foot_base)
         foot_prefix = f"{prefixe} PIÈCE N°{piece['numero']}"
+        # Avancement RÉEL : le rendu des pièces est, et de loin, la phase la plus longue
+        # (une passe WeasyPrint par pièce, parfois deux). C'est donc ici que se mesure la
+        # progression affichée à l'opérateur — cf. `pieces/tasks.py`.
+        _avancer(on_progress, rang - 1, total_pieces,
+                 f"Rendu de la pièce {rang}/{total_pieces} — {piece.get('designation') or ''}".strip(' —'))
         piece_docs.append(_piece_doc(piece, foot_prefix))
+    _avancer(on_progress, total_pieces, total_pieces, 'Assemblage du document')
 
     def _plan_pages(pages_garde: int) -> dict:
         """N° de page GLOBAL (1-based) de la page-séparateur de chaque pièce, si la page

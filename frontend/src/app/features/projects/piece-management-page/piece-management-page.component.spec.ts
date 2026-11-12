@@ -429,7 +429,7 @@ describe('PieceManagementPageComponent.reportErrorMessage', () => {
  */
 describe('PieceManagementPageComponent — rapport de synthèse', () => {
   let cmp: PieceManagementPageComponent;
-  let piecesSvc: jasmine.SpyObj<{ downloadReport: any }>;
+  let piecesSvc: jasmine.SpyObj<{ startReport: any; getReportJob: any; getReportFile: any }>;
 
   const sessions = [
     { id: 'sess-3', numero_session: 3 },
@@ -438,8 +438,10 @@ describe('PieceManagementPageComponent — rapport de synthèse', () => {
   ] as any[];
 
   beforeEach(() => {
-    piecesSvc = jasmine.createSpyObj('PiecesService', ['downloadReport']);
-    piecesSvc.downloadReport.and.returnValue(of({ data: '', content_type: 'application/pdf', filename: 'r.pdf' }));
+    piecesSvc = jasmine.createSpyObj('PiecesService', ['startReport', 'getReportJob', 'getReportFile']);
+    piecesSvc.startReport.and.returnValue(of({ id: 'job-1', statut: 'termine', progression: 100 }));
+    piecesSvc.getReportFile.and.returnValue(
+      of({ data: '', content_type: 'application/pdf', filename: 'r.pdf' }));
     const router = jasmine.createSpyObj('Router', ['navigate']);
     (router as any).url = '/projets/p1/pieces/s1';
     const stub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
@@ -489,7 +491,7 @@ describe('PieceManagementPageComponent — rapport de synthèse', () => {
     (cmp as any).currentSessionId = 'sess-2';
     cmp.generateReport();
 
-    const [, session, , range] = piecesSvc.downloadReport.calls.mostRecent().args;
+    const [, session, , range] = piecesSvc.startReport.calls.mostRecent().args;
     expect(session).toBeNull();
     expect(range).toEqual({ from: 'sess-1', to: 'sess-3' });
   });
@@ -499,7 +501,7 @@ describe('PieceManagementPageComponent — rapport de synthèse', () => {
     (cmp as any).currentSessionId = 'sess-2';
     cmp.generateReport();
 
-    const [, session, , range] = piecesSvc.downloadReport.calls.mostRecent().args;
+    const [, session, , range] = piecesSvc.startReport.calls.mostRecent().args;
     expect(session).toBe('sess-2');
     expect(range).toBeNull();
   });
@@ -609,5 +611,163 @@ describe('PieceManagementPageComponent (statut modifiable dans la liste)', () =>
   it('interdit le changement sur une pièce supprimée', () => {
     expect(cmp.canChangeStatut(piece({ is_deleted: true }))).toBeFalse();
     expect(cmp.canChangeStatut(piece())).toBeTrue();
+  });
+});
+
+/**
+ * Génération du rapport en TÂCHE DE FOND.
+ *
+ * Avant : une seule requête synchrone, et une barre SIMULÉE qui montait à 90 % puis
+ * attendait — un rendu de plusieurs minutes finissait par dépasser le délai du serveur,
+ * sans que l'opérateur sache où il en était. Désormais la demande rend la main tout de
+ * suite et le composant sonde l'avancement réel jusqu'au terme.
+ */
+describe('PieceManagementPageComponent — rapport en tâche de fond', () => {
+  let cmp: PieceManagementPageComponent;
+  let piecesSvc: jasmine.SpyObj<{ startReport: any; getReportJob: any; getReportFile: any }>;
+
+  function job(over: any = {}): any {
+    return {
+      id: 'job-1', statut: 'en_cours', progression: 10, etape: 'Rendu de la pièce 1/3',
+      erreur: '', nom_fichier: '', ...over,
+    };
+  }
+
+  beforeEach(() => {
+    jasmine.clock().install();
+    piecesSvc = jasmine.createSpyObj('PiecesService', ['startReport', 'getReportJob', 'getReportFile']);
+    piecesSvc.getReportFile.and.returnValue(
+      of({ data: '', content_type: 'application/pdf', filename: 'rapport.pdf' }));
+    const router = jasmine.createSpyObj('Router', ['navigate']);
+    (router as any).url = '/projets/p1/pieces/s1';
+    const stub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
+    cmp = new PieceManagementPageComponent(
+      {} as any, piecesSvc as any, {} as any, router as any, {} as any, {} as any, stub, stub,
+    );
+    cmp.ssdgps = { id: 's1', numero_ssdgps: 2, type_ssdgps: 'mono-session' } as any;
+    cmp.sessions = [];
+  });
+
+  afterEach(() => {
+    jasmine.clock().uninstall();
+    localStorage.clear();
+  });
+
+  it('affiche la progression réelle renvoyée par le serveur', () => {
+    piecesSvc.startReport.and.returnValue(of(job({ progression: 37, etape: 'Rendu de la pièce 4/10' })));
+    piecesSvc.getReportJob.and.returnValue(of(job({ progression: 37 })));
+
+    cmp.generateReport();
+
+    expect(cmp.reportProgress).toBe(37);
+    expect(cmp.reportStep).toBe('Rendu de la pièce 4/10');
+    expect(cmp.reportGenerating).toBeTrue();
+  });
+
+  it('continue à sonder tant que la génération n’est pas terminée', () => {
+    piecesSvc.startReport.and.returnValue(of(job({ progression: 10 })));
+    piecesSvc.getReportJob.and.returnValue(of(job({ progression: 60 })));
+
+    cmp.generateReport();
+    jasmine.clock().tick(1600);
+
+    expect(piecesSvc.getReportJob).toHaveBeenCalledWith('job-1');
+    expect(cmp.reportProgress).toBe(60);
+  });
+
+  it('récupère le fichier et termine à 100 % quand la génération aboutit', () => {
+    piecesSvc.startReport.and.returnValue(of(job({ statut: 'en_cours' })));
+    piecesSvc.getReportJob.and.returnValue(
+      of(job({ statut: 'termine', progression: 100, nom_fichier: 'rapport.pdf' })));
+
+    cmp.generateReport();
+    jasmine.clock().tick(1600);
+
+    expect(piecesSvc.getReportFile).toHaveBeenCalledWith('job-1');
+    expect(cmp.reportProgress).toBe(100);
+    expect(cmp.reportGenerating).toBeFalse();
+    expect(cmp.reportFilename).toBe('rapport.pdf');
+  });
+
+  it('ne sonde plus une fois la génération terminée', () => {
+    piecesSvc.startReport.and.returnValue(of(job({ statut: 'termine', progression: 100 })));
+
+    cmp.generateReport();
+    jasmine.clock().tick(5000);
+
+    expect(piecesSvc.getReportJob).not.toHaveBeenCalled();
+  });
+
+  it('affiche le message d’erreur du serveur quand la génération échoue', () => {
+    piecesSvc.startReport.and.returnValue(
+      of(job({ statut: 'echec', erreur: 'Image illisible dans la pièce 3.' })));
+
+    cmp.generateReport();
+
+    expect(cmp.reportError).toBe('Image illisible dans la pièce 3.');
+    expect(cmp.reportGenerating).toBeFalse();
+    expect(cmp.reportProgress).toBe(0);
+  });
+
+  it('reste explicite si l’échec ne porte aucun message', () => {
+    piecesSvc.startReport.and.returnValue(of(job({ statut: 'echec', erreur: '' })));
+
+    cmp.generateReport();
+
+    expect(cmp.reportError).toContain('Erreur lors de la génération');
+  });
+
+  it('traite une erreur HTTP au lancement', () => {
+    piecesSvc.startReport.and.returnValue(throwError(() => ({ status: 403 })));
+
+    cmp.generateReport();
+
+    expect(cmp.reportGenerating).toBeFalse();
+    expect(cmp.reportError).toContain('droits');
+  });
+
+  it('traite une erreur HTTP pendant le sondage', () => {
+    piecesSvc.startReport.and.returnValue(of(job()));
+    piecesSvc.getReportJob.and.returnValue(throwError(() => ({ status: 0 })));
+
+    cmp.generateReport();
+    jasmine.clock().tick(1600);
+
+    expect(cmp.reportGenerating).toBeFalse();
+    expect(cmp.reportError).toContain('serveur');
+  });
+
+  it('arrête le sondage à la fermeture de la modale', () => {
+    piecesSvc.startReport.and.returnValue(of(job()));
+    piecesSvc.getReportJob.and.returnValue(of(job()));
+
+    cmp.generateReport();
+    cmp.reportGenerating = false;      // la modale ne se ferme pas pendant le rendu
+    cmp.closeReportModal();
+    piecesSvc.getReportJob.calls.reset();
+    jasmine.clock().tick(5000);
+
+    expect(piecesSvc.getReportJob).not.toHaveBeenCalled();
+  });
+
+  it('repart de zéro quand on revient à la configuration', () => {
+    piecesSvc.startReport.and.returnValue(of(job({ statut: 'termine', progression: 100 })));
+    cmp.generateReport();
+
+    cmp.backToReportConfig();
+
+    expect(cmp.reportProgress).toBe(0);
+    expect(cmp.reportStep).toBe('');
+    expect(cmp.reportJobId).toBeNull();
+  });
+
+  it('ignore un second clic pendant une génération en cours', () => {
+    piecesSvc.startReport.and.returnValue(of(job()));
+    piecesSvc.getReportJob.and.returnValue(of(job()));
+
+    cmp.generateReport();
+    cmp.generateReport();
+
+    expect(piecesSvc.startReport).toHaveBeenCalledTimes(1);
   });
 });

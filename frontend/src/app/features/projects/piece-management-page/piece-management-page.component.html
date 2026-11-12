@@ -575,6 +575,8 @@
           </p>
           <div class="progress-track"><div class="progress-fill" [class.done]="reportProgress >= 100" [style.width.%]="reportProgress"></div></div>
           <div class="progress-label">{{ reportProgress }}%</div>
+          <!-- Étape annoncée par le serveur : la progression est réelle, pas simulée. -->
+          <p class="report-step" *ngIf="reportStep && reportProgress < 100">{{ reportStep }}</p>
           <p class="report-filename" *ngIf="reportProgress >= 100 && reportFilename"><i class="fas fa-file-pdf"></i> {{ reportFilename }}</p>
         </ng-container>
         <p class="report-error" *ngIf="reportError"><i class="fas fa-exclamation-triangle"></i> {{ reportError }}</p>

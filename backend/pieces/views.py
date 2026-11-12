@@ -15,7 +15,7 @@ from django.db import transaction
 from django.db.models import Max, Q
 from django.http import HttpResponse
 from django.utils import timezone
-from rest_framework import viewsets, permissions, status, parsers
+from rest_framework import mixins, viewsets, permissions, status, parsers
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
@@ -31,15 +31,28 @@ from .report import (EXCLUDED_TYPES, PHOTO_TYPES, order_pieces_for_synthesis,
                      render_report_pdf, report_filename,
                      _sorted_only, _sorted_renumbered, sort_versions)
 from .imaging import extract_image_metadata, make_png_preview, NON_WEB_FORMATS
-from .models import Piece, PieceImage
+from .models import Piece, PieceImage, RapportGeneration
 from .parsing import (parse_uploaded_table, apply_mapping, auto_map_columns,
                       parse_rdl_tbc_html, TBC_HTML_PARSERS)
 from .rc import (compute_rapport_controle, compute_ecarts_vs_definitive,
                  compute_ecarts_assembled, assemble_determinations,
                  determinations_from_rdia)
-from .serializers import PieceSerializer
+from .serializers import PieceSerializer, RapportGenerationSerializer
+from .tasks import generer_rapport
 
 logger = logging.getLogger(__name__)
+
+
+def _veut_le_flux_brut(request):
+    """Vrai si l'appelant demande le PDF en flux binaire plutôt qu'en JSON base64.
+
+    Le paramètre s'appelle `brut` et NON `format` : DRF réserve `format` à la
+    négociation de contenu (`URL_FORMAT_OVERRIDE`) et renvoie 404 pour un format
+    inconnu avant d'entrer dans la vue — `?format=raw`, documenté de longue date, n'a
+    donc jamais pu fonctionner.
+    """
+    valeur = str(request.query_params.get('brut', '')).strip().lower()
+    return valeur in ('1', 'true', 'yes')
 
 
 class PieceViewSet(viewsets.ModelViewSet):
@@ -1197,36 +1210,28 @@ class PieceViewSet(viewsets.ModelViewSet):
         serializer.save(created_by=request.user, ordre=(max_ordre + 1) if max_ordre is not None else 0)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    @action(detail=False, methods=['get'], url_path='report')
-    def report(self, request):
-        """
-        GET /api/v1/pieces/report/?ssdgps=<uuid>[&session=<uuid>]
-        GET /api/v1/pieces/report/?ssdgps=<uuid>&session_from=<uuid>&session_to=<uuid>
+    def _resoudre_portee_rapport(self, request):
+        """Valide les paramètres du rapport et résout sa portée.
 
-        Génère le rapport PDF du SSDGPS : page de garde (liste des pièces valides) +
-        contenu de chaque pièce valide (tableaux / images / photos), dans l'ordre du
-        rapport (`ordre`). Seules les pièces `statut == 'valide'` non supprimées sont
-        retenues.
+        Partagée par la génération SYNCHRONE (`report`) et ASYNCHRONE
+        (`report_async`) : une seule source de vérité pour les contrôles d'accès, la
+        validation des bornes et la sélection des pièces — deux copies divergeraient.
 
-        Trois portées :
-        - sans paramètre de session : tout le SSDGPS ;
-        - `session` : les pièces de CETTE session plus les pièces communes (session nulle) ;
-        - `session_from` / `session_to` : rapport de **synthèse** sur une plage de
-          sessions. Les pièces communes n'y figurent qu'UNE fois ; les pièces spécifiques
-          sont regroupées par pièce puis déclinées session par session
-          (cf. `report.order_pieces_for_synthesis`). Les deux bornes sont incluses et
-          peuvent être données dans n'importe quel ordre.
+        Returns:
+            `(contexte, None)` en cas de succès, où `contexte` porte `ssdgps`,
+            `session`, `sessions_plage`, `pieces` et `duplex` ; sinon `(None, Response)`
+            portant l'erreur à renvoyer telle quelle.
         """
         ssdgps_id = request.query_params.get('ssdgps')
         if not ssdgps_id:
-            return Response({'detail': 'Le paramètre ssdgps est requis.'}, status=400)
+            return None, Response({'detail': 'Le paramètre ssdgps est requis.'}, status=400)
 
         # Portée organisationnelle : vérifie l'appartenance de l'organisation du SSDGPS
         # aux droits de l'utilisateur (les admins système / super-admins ne sont pas filtrés).
         ssdgps = Ssdgps.objects.select_related(
             'affaire__propriete__projet__organization').filter(pk=ssdgps_id).first()
         if ssdgps is None:
-            return Response({'detail': 'SSDGPS introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+            return None, Response({'detail': 'SSDGPS introuvable.'}, status=status.HTTP_404_NOT_FOUND)
         projet = ssdgps.affaire.propriete.projet
         if not is_scope_visible(request.user, projet.organization_id, projet.created_by_id):
             raise PermissionDenied("Ce SSDGPS n'appartient pas à votre organisation.")
@@ -1236,7 +1241,7 @@ class PieceViewSet(viewsets.ModelViewSet):
         if session_id:
             session = Session.objects.filter(pk=session_id, ssdgps_id=ssdgps_id).first()
             if session is None:
-                return Response({'detail': 'Session introuvable pour ce SSDGPS.'}, status=400)
+                return None, Response({'detail': 'Session introuvable pour ce SSDGPS.'}, status=400)
 
         # Plage de sessions (rapport de synthèse). Les deux bornes sont requises ensemble
         # et peuvent être fournies dans n'importe quel ordre : on les remet d'aplomb.
@@ -1245,16 +1250,16 @@ class PieceViewSet(viewsets.ModelViewSet):
         to_id = request.query_params.get('session_to') or None
         if from_id or to_id:
             if session_id:
-                return Response({'detail': "Choisissez soit une session unique, soit une "
+                return None, Response({'detail': "Choisissez soit une session unique, soit une "
                                            "plage de sessions, pas les deux."}, status=400)
             if not (from_id and to_id):
-                return Response({'detail': "Une plage de sessions exige « session_from » "
+                return None, Response({'detail': "Une plage de sessions exige « session_from » "
                                            "ET « session_to »."}, status=400)
             bornes = {str(s.pk): s for s in Session.objects.filter(
                 pk__in=[from_id, to_id], ssdgps_id=ssdgps_id, is_deleted=False)}
             debut, fin = bornes.get(str(from_id)), bornes.get(str(to_id))
             if debut is None or fin is None:
-                return Response(
+                return None, Response(
                     {'detail': 'Session de début ou de fin introuvable pour ce SSDGPS.'},
                     status=400)
             bas, haut = sorted((debut.numero_session, fin.numero_session))
@@ -1280,12 +1285,50 @@ class PieceViewSet(viewsets.ModelViewSet):
             pieces = list(qs.order_by('ordre', 'type_piece', 'numero'))
 
         if not pieces:
-            return Response(
+            return None, Response(
                 {'detail': 'Aucune pièce valide à inclure dans le rapport.'}, status=400)
 
         # Mode d'impression : recto-verso (calage des pages de garde sur page droite +
         # pied de page en miroir) si `duplex` vaut 1/true, recto seul sinon.
         duplex = str(request.query_params.get('duplex', '')).strip().lower() in ('1', 'true', 'yes')
+
+
+        return {
+            'ssdgps': ssdgps,
+            'session': session,
+            'sessions_plage': sessions_plage,
+            'pieces': pieces,
+            'duplex': duplex,
+        }, None
+
+    @action(detail=False, methods=['get'], url_path='report')
+    def report(self, request):
+        """
+        GET /api/v1/pieces/report/?ssdgps=<uuid>[&session=<uuid>]
+        GET /api/v1/pieces/report/?ssdgps=<uuid>&session_from=<uuid>&session_to=<uuid>
+
+        Génère le rapport PDF du SSDGPS : page de garde (liste des pièces valides) +
+        contenu de chaque pièce valide (tableaux / images / photos), dans l'ordre du
+        rapport (`ordre`). Seules les pièces `statut == 'valide'` non supprimées sont
+        retenues.
+
+        Trois portées :
+        - sans paramètre de session : tout le SSDGPS ;
+        - `session` : les pièces de CETTE session plus les pièces communes (session nulle) ;
+        - `session_from` / `session_to` : rapport de **synthèse** sur une plage de
+          sessions. Les pièces communes n'y figurent qu'UNE fois ; les pièces spécifiques
+          sont regroupées par pièce puis déclinées session par session
+          (cf. `report.order_pieces_for_synthesis`). Les deux bornes sont incluses et
+          peuvent être données dans n'importe quel ordre.
+        """
+        contexte, erreur = self._resoudre_portee_rapport(request)
+        if erreur is not None:
+            return erreur
+        ssdgps = contexte['ssdgps']
+        session = contexte['session']
+        sessions_plage = contexte['sessions_plage']
+        pieces = contexte['pieces']
+        duplex = contexte['duplex']
 
         try:
             sort_config = getattr(request.user, 'piece_sort_config', None) or {}
@@ -1327,9 +1370,14 @@ class PieceViewSet(viewsets.ModelViewSet):
         # dans un JSON, puis reconstruit en Blob côté client. On évite ainsi qu'un
         # gestionnaire de téléchargement externe (ex. Internet Download Manager) n'intercepte
         # la requête XHR d'un flux « application/pdf » — ce qui la faisait échouer / rejouer
-        # sans en-tête Authorization. Le paramètre `format=raw` sert l'ancien flux binaire
-        # (accès direct navigateur / autres clients).
-        if request.query_params.get('format', 'base64') != 'raw':
+        # sans en-tête Authorization. `?brut=1` sert le flux binaire (accès direct
+        # navigateur / autres clients).
+        #
+        # ⚠️ Le paramètre s'appelait `format` : il ne pouvait PAS fonctionner. DRF
+        # réserve `format` à la négociation de contenu (`URL_FORMAT_OVERRIDE`) et
+        # renvoie 404 pour un format inconnu AVANT même d'entrer dans la vue. Le flux
+        # binaire était donc inaccessible depuis l'origine.
+        if not _veut_le_flux_brut(request):
             import base64
             return Response({
                 'filename': filename,
@@ -1341,6 +1389,44 @@ class PieceViewSet(viewsets.ModelViewSet):
         response['Content-Disposition'] = f'inline; filename="{filename}"'
         response['X-Content-Type-Options'] = 'nosniff'
         return response
+
+    @action(detail=False, methods=['post'], url_path='report-async')
+    def report_async(self, request):
+        """
+        POST /api/v1/pieces/report-async/?ssdgps=<uuid>[&session=…|&session_from=…&session_to=…][&duplex=1]
+
+        Lance la génération du rapport en TÂCHE DE FOND et renvoie aussitôt son suivi.
+        Mêmes paramètres et mêmes contrôles que `report/` (portée, droits, validation
+        des bornes) : c'est la même résolution qui est appelée.
+
+        Pourquoi ce chemin plutôt que `report/` : le rendu dure des dizaines de secondes
+        à plusieurs minutes. En synchrone, il immobilise un worker du serveur, finit par
+        dépasser son délai sur un gros SDGPS, et ne peut afficher qu'une progression
+        simulée. Ici l'opérateur suit une progression RÉELLE (pièce par pièce) et peut
+        re-télécharger le PDF sans relancer le rendu.
+        """
+        contexte, erreur = self._resoudre_portee_rapport(request)
+        if erreur is not None:
+            return erreur
+
+        generation = RapportGeneration.objects.create(
+            ssdgps=contexte['ssdgps'],
+            session=contexte['session'],
+            sessions_plage=[str(s.pk) for s in (contexte['sessions_plage'] or [])],
+            duplex=contexte['duplex'],
+            pieces_total=len(contexte['pieces']),
+            created_by=request.user,
+            etape="En file d'attente",
+        )
+
+        # `.delay()` part en file quand un broker est configuré ; sinon Celery est en
+        # mode « eager » et la tâche s'exécute ici même (cf. `backend/celery.py`) : le
+        # suivi renvoyé est alors déjà terminé, et le front n'a rien à faire de spécial.
+        generer_rapport.delay(str(generation.pk))
+
+        generation.refresh_from_db()
+        return Response(RapportGenerationSerializer(generation).data,
+                        status=status.HTTP_202_ACCEPTED)
 
     @action(detail=False, methods=['post'], url_path='import', parser_classes=[parsers.MultiPartParser])
     def import_file(self, request):
@@ -1429,3 +1515,64 @@ class PieceViewSet(viewsets.ModelViewSet):
         max_ordre = Piece.objects.filter(ssdgps=ssdgps, is_deleted=False).aggregate(m=Max('ordre'))['m']
         serializer.save(created_by=request.user, ordre=(max_ordre + 1) if max_ordre is not None else 0)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class RapportGenerationViewSet(mixins.RetrieveModelMixin,
+                               mixins.ListModelMixin,
+                               viewsets.GenericViewSet):
+    """
+    Suivi des générations de rapport (lecture seule).
+
+    - `GET /api/v1/rapports/<id>/` — état et progression RÉELLE, sondé par le front ;
+    - `GET /api/v1/rapports/<id>/fichier/` — le PDF produit, re-téléchargeable sans
+      relancer le rendu ;
+    - `GET /api/v1/rapports/?ssdgps=<uuid>` — historique des générations d'un SSDGPS.
+
+    Portée RBAC identique aux pièces : on ne voit que les générations des SSDGPS de ses
+    organisations (ou des projets qu'on a créés).
+    """
+    serializer_class = RapportGenerationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    queryset = RapportGeneration.objects.select_related('ssdgps', 'session', 'created_by')
+
+    def get_queryset(self):
+        qs = scope_queryset(
+            self.queryset, self.request.user,
+            'ssdgps__affaire__propriete__projet__organization_id',
+        )
+        ssdgps_id = self.request.query_params.get('ssdgps')
+        if ssdgps_id:
+            qs = qs.filter(ssdgps_id=ssdgps_id)
+        return qs
+
+    @action(detail=True, methods=['get'], url_path='fichier')
+    def fichier(self, request, pk=None):
+        """Le PDF produit, en base64 (comme `report/`).
+
+        Le base64 n'est pas une coquetterie : un gestionnaire de téléchargement externe
+        intercepte une requête XHR servant un flux `application/pdf` et la rejoue sans
+        l'en-tête `Authorization`, ce qui la fait échouer. `?brut=1` sert le flux
+        binaire pour un accès direct depuis le navigateur (et NON `?format=`, réservé
+        par DRF à la négociation de contenu — cf. `_veut_le_flux_brut`).
+        """
+        generation = self.get_object()
+        if generation.statut != RapportGeneration.Statut.TERMINE or not generation.fichier:
+            return Response(
+                {'detail': "Le rapport n'est pas disponible : la génération n'est pas terminée."},
+                status=status.HTTP_409_CONFLICT)
+
+        with generation.fichier.open('rb') as f:
+            pdf_bytes = f.read()
+
+        if _veut_le_flux_brut(request):
+            response = HttpResponse(pdf_bytes, content_type='application/pdf')
+            response['Content-Disposition'] = f'inline; filename="{generation.nom_fichier}"'
+            response['X-Content-Type-Options'] = 'nosniff'
+            return response
+
+        import base64
+        return Response({
+            'filename': generation.nom_fichier,
+            'content_type': 'application/pdf',
+            'data': base64.b64encode(pdf_bytes).decode('ascii'),
+        })

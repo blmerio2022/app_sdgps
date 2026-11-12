@@ -107,4 +107,55 @@ describe('PiecesService', () => {
       req.flush({});
     });
   });
+
+  /**
+   * Génération en tâche de fond : la demande rend la main tout de suite, puis l'état
+   * est sondé jusqu'au terme. Le rendu dure des dizaines de secondes à plusieurs
+   * minutes — en synchrone il immobilisait un worker du serveur et dépassait son délai.
+   */
+  describe('génération en tâche de fond', () => {
+    const RAPPORTS = `${environment.apiUrl}/v1/rapports/`;
+
+    it('startReport() poste sur report-async/ avec les mêmes paramètres', () => {
+      service.startReport('s1', 'sess-2', true).subscribe();
+      const req = httpMock.expectOne(r => r.url === `${BASE}report-async/`);
+      expect(req.request.method).toBe('POST');
+      expect(req.request.params.get('ssdgps')).toBe('s1');
+      expect(req.request.params.get('session')).toBe('sess-2');
+      expect(req.request.params.get('duplex')).toBe('1');
+      req.flush({});
+    });
+
+    it('startReport() envoie la plage en mode synthèse, sans session', () => {
+      service.startReport('s1', 'sess-2', false, { from: 'a', to: 'b' }).subscribe();
+      const req = httpMock.expectOne(r => r.url === `${BASE}report-async/`);
+      expect(req.request.params.get('session')).toBeNull();
+      expect(req.request.params.get('session_from')).toBe('a');
+      expect(req.request.params.get('session_to')).toBe('b');
+      req.flush({});
+    });
+
+    it('getReportJob() lit le suivi', () => {
+      let recu: any;
+      service.getReportJob('job-1').subscribe(j => (recu = j));
+      const req = httpMock.expectOne(`${RAPPORTS}job-1/`);
+      expect(req.request.method).toBe('GET');
+      req.flush({ id: 'job-1', statut: 'en_cours', progression: 42 });
+      expect(recu.progression).toBe(42);
+    });
+
+    it('getReportFile() récupère le PDF produit', () => {
+      service.getReportFile('job-1').subscribe();
+      const req = httpMock.expectOne(`${RAPPORTS}job-1/fichier/`);
+      expect(req.request.method).toBe('GET');
+      req.flush({ filename: 'r.pdf', content_type: 'application/pdf', data: 'AAA' });
+    });
+
+    it('listReportJobs() filtre par SSDGPS', () => {
+      service.listReportJobs('s1').subscribe();
+      const req = httpMock.expectOne(r => r.url === RAPPORTS);
+      expect(req.request.params.get('ssdgps')).toBe('s1');
+      req.flush([]);
+    });
+  });
 });

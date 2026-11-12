@@ -13,6 +13,10 @@
 #   Développement (SQLite, pas de db) :
 #     docker compose --env-file backend/.env.development up -d backend
 #
+#   Avec la file de tâches (Redis + worker Celery) :
+#     docker compose --env-file backend/.env.development --profile redis up -d
+#   (sans ce profil, les rapports sont rendus en ligne — cf. « eager » dans celery.py)
+#
 #   Local « type serveur » (PostgreSQL) — staging | preprod | production :
 #     docker compose --env-file backend/.env.staging    --profile postgres up -d
 #     docker compose --env-file backend/.env.preprod    --profile postgres up -d
@@ -75,6 +79,51 @@ services:
       # Port hôte par environnement (dev 8085 / staging 8086 / preprod 8087 / prod 8088),
       # fourni par BACKEND_PORT dans backend/.env.<env> (via --env-file au lancement).
       - "${BACKEND_PORT:-8085}:8000"
+
+  # --- Redis : broker Celery ET cache partagé (profil `redis`). ---
+  # Deux usages, une seule dépendance :
+  #   1. file des tâches de génération de rapport (`backend/celery.py`) ;
+  #   2. cache partagé entre workers gunicorn — indispensable à la limitation de débit et
+  #      au verrouillage de compte, qui seraient sinon comptés worker par worker.
+  # En développement, tout fonctionne SANS ce service : Celery passe en mode « eager »
+  # (rendu en ligne) et le cache retombe en mémoire du processus.
+  redis:
+    image: redis:7-alpine
+    container_name: sdgps-redis-${ENVIRONMENT:-development}
+    profiles: ["redis"]
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # --- Worker Celery : exécute les générations de rapport (profil `redis`). ---
+  # Concurrence 2 : un rendu WeasyPrint est gourmand en mémoire ; mieux vaut deux
+  # rapports à la fois qui aboutissent que quatre qui saturent la machine.
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: sdgps-backend:${ENVIRONMENT:-development}
+    container_name: sdgps-worker-${ENVIRONMENT:-development}
+    profiles: ["redis"]
+    restart: unless-stopped
+    entrypoint: [""]          # pas de migrations ni de seed : c'est le rôle du backend
+    command: ["celery", "-A", "backend", "worker", "--loglevel=info", "--concurrency=2"]
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    env_file:
+      - path: ./backend/.env.${ENVIRONMENT:-development}
+        required: false
+    volumes:
+      - ./backend:/app
+      - backend_media:/app/media
+    depends_on:
+      redis:
+        condition: service_healthy
 
   # --- Frontend Angular : PAS de service Docker (volontaire). ---
   # Le `npm ci` dans Docker est instable sur cette machine (réseau WSL2 → ECONNRESET).

@@ -97,6 +97,25 @@ Pour chaque environnement Railway — `staging`, `preprod`, `production` :
 4. **Volume persistant** monté sur `/app/media` (uploads sinon perdus à chaque redéploiement).
    Alternative durable : stockage S3-compatible (voir [deploiement-stockage.md](deploiement-stockage.md)).
 5. **Token de projet Railway scopé à l'environnement** → secret GitHub du fork (voir ci-dessus).
+6. **Service Redis** (plugin Railway) ; variable d'app `REDIS_URL=${{Redis.REDIS_URL}}`.
+   Il sert à DEUX choses, toutes deux nécessaires en production :
+   - le **cache partagé** entre les workers gunicorn — sans lui, la limitation de débit et
+     le verrouillage de compte sont comptés worker par worker, donc multipliés par 3 ;
+   - le **broker Celery** de la génération des rapports.
+7. **Service worker Celery** : *même image GHCR* que le service applicatif, mêmes variables
+   (dont `REDIS_URL` et `DATABASE_URL`), mais **commande de démarrage** remplacée par :
+
+   ```
+   celery -A backend worker --loglevel=info --concurrency=2
+   ```
+
+   Pas de port exposé, pas de volume `/app/media` nécessaire si le stockage est S3 ; avec un
+   volume local, il doit être **partagé avec le service web**, sinon le PDF produit par le
+   worker serait introuvable au téléchargement.
+
+> Sans Redis ni worker, l'application **reste fonctionnelle** : Celery bascule en mode
+> « eager » et les rapports sont rendus dans la requête web, comme avant — avec les limites
+> que cela implique (worker web immobilisé, délai de 300 s, progression non suivie).
 
 > `ENVIRONMENT` pilote tout côté Django (moteur BDD, masquage des données de démo, protections
 > production) — cf. [backend/backend/settings.py](../backend/backend/settings.py). Migrations et seed
