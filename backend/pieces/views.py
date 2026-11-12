@@ -30,6 +30,7 @@ from .catalog import (serialize_catalog, get_piece_def, champs_with_meta, valid_
 from .report import (EXCLUDED_TYPES, PHOTO_TYPES, order_pieces_for_synthesis,
                      render_report_pdf, render_cover_pdf, report_filename,
                      _sorted_only, _sorted_renumbered, sort_versions)
+from .coherence import analyser_coherence
 from .imaging import extract_image_metadata, make_png_preview, NON_WEB_FORMATS
 from .models import Piece, PieceImage, RapportGeneration
 from .parsing import (parse_uploaded_table, apply_mapping, auto_map_columns,
@@ -1210,12 +1211,17 @@ class PieceViewSet(viewsets.ModelViewSet):
         serializer.save(created_by=request.user, ordre=(max_ordre + 1) if max_ordre is not None else 0)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    def _resoudre_portee_rapport(self, request):
+    def _resoudre_portee_rapport(self, request, exiger_pieces=True):
         """Valide les paramètres du rapport et résout sa portée.
 
-        Partagée par la génération SYNCHRONE (`report`) et ASYNCHRONE
-        (`report_async`) : une seule source de vérité pour les contrôles d'accès, la
-        validation des bornes et la sélection des pièces — deux copies divergeraient.
+        Partagée par la génération SYNCHRONE (`report`), ASYNCHRONE (`report_async`),
+        l'aperçu de la page de garde (`report_cover`) et le contrôle de cohérence
+        (`report_check`) : une seule source de vérité pour les contrôles d'accès, la
+        validation des bornes et la sélection des pièces — des copies divergeraient.
+
+        `exiger_pieces=False` n'oppose plus de 400 à une portée sans aucune pièce
+        valide : pour le contrôle de cohérence, c'est précisément un résultat à
+        rapporter, pas une erreur d'appel.
 
         Returns:
             `(contexte, None)` en cas de succès, où `contexte` porte `ssdgps`,
@@ -1284,7 +1290,7 @@ class PieceViewSet(viewsets.ModelViewSet):
         else:
             pieces = list(qs.order_by('ordre', 'type_piece', 'numero'))
 
-        if not pieces:
+        if not pieces and exiger_pieces:
             return None, Response(
                 {'detail': 'Aucune pièce valide à inclure dans le rapport.'}, status=400)
 
@@ -1389,6 +1395,55 @@ class PieceViewSet(viewsets.ModelViewSet):
         response['Content-Disposition'] = f'inline; filename="{filename}"'
         response['X-Content-Type-Options'] = 'nosniff'
         return response
+
+    @action(detail=False, methods=['get'], url_path='report-check')
+    def report_check(self, request):
+        """
+        GET /api/v1/pieces/report-check/?ssdgps=<uuid>[&session=…|&session_from=…&session_to=…]
+
+        Contrôle de cohérence du SDGPS pour la portée demandée, AVANT génération. Ne
+        modifie rien, ne rend aucun PDF : il interroge la base et renvoie la liste des
+        anomalies (cf. `pieces/coherence.py`).
+
+        Pourquoi : le rendu prend les pièces valides telles qu'elles sont et n'alerte sur
+        rien. Une pièce restée en brouillon en est absente, un trou dans la numérotation
+        des déterminations passe inaperçu, une session sans pièce disparaît. L'opérateur
+        ne s'en aperçoit qu'à la relecture du PDF — voire au contrôle du dossier.
+
+        Le contrôle ne BLOQUE jamais la génération : un dossier incomplet se génère
+        légitimement en cours d'instruction. Il informe, l'opérateur décide.
+        """
+        contexte, erreur = self._resoudre_portee_rapport(request, exiger_pieces=False)
+        if erreur is not None:
+            return erreur
+
+        ssdgps = contexte['ssdgps']
+        session = contexte['session']
+        sessions_plage = contexte['sessions_plage']
+
+        # Sessions couvertes par la portée : la plage, la session unique, ou toutes.
+        if sessions_plage is not None:
+            sessions_portee = sessions_plage
+        elif session is not None:
+            sessions_portee = [session]
+        else:
+            sessions_portee = list(Session.objects.filter(
+                ssdgps_id=ssdgps.pk, is_deleted=False).order_by('numero_session'))
+
+        # Pièces de la portée qui ne sont PAS valides : elles seront silencieusement
+        # absentes du rapport, ce qui est précisément ce qu'il faut annoncer.
+        hors = self._scope(self.queryset.filter(ssdgps_id=ssdgps.pk, is_deleted=False)
+                           ).exclude(statut=Piece.Statut.VALIDE
+                           ).exclude(type_piece__in=EXCLUDED_TYPES)
+        if session is not None:
+            hors = hors.filter(Q(session=session) | Q(session__isnull=True))
+        elif sessions_plage is not None:
+            hors = hors.filter(Q(session__in=sessions_plage) | Q(session__isnull=True))
+        pieces_hors_rapport = list(hors.select_related('session')
+                                   .order_by('ordre', 'type_piece', 'numero'))
+
+        return Response(analyser_coherence(
+            ssdgps, contexte['pieces'], sessions_portee, pieces_hors_rapport))
 
     @action(detail=False, methods=['get'], url_path='report-cover')
     def report_cover(self, request):

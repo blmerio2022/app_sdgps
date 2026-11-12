@@ -108,6 +108,26 @@ describe('PiecesService', () => {
     });
   });
 
+  describe('checkReportCoherence()', () => {
+    it('interroge report-check/ pour la portée courante', () => {
+      let recu: any;
+      service.checkReportCoherence('s1', 'sess-2').subscribe(r => (recu = r));
+      const req = httpMock.expectOne(r => r.url === `${BASE}report-check/`);
+      expect(req.request.method).toBe('GET');
+      expect(req.request.params.get('session')).toBe('sess-2');
+      req.flush({ ok: false, total: 1, erreurs: 1, avertissements: 0, anomalies: [] });
+      expect(recu.erreurs).toBe(1);
+    });
+
+    it('envoie la plage en mode synthèse, sans session', () => {
+      service.checkReportCoherence('s1', 'sess-2', { from: 'a', to: 'b' }).subscribe();
+      const req = httpMock.expectOne(r => r.url === `${BASE}report-check/`);
+      expect(req.request.params.get('session')).toBeNull();
+      expect(req.request.params.get('session_from')).toBe('a');
+      req.flush({});
+    });
+  });
+
   /**
    * Aperçu de la page de garde : même portée que le rapport, sur un endpoint dédié qui
    * ne rend que cette page — l'opérateur vérifie la liste des pièces avant d'engager

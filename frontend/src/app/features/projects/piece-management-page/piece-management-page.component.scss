@@ -482,6 +482,41 @@
   }
 }
 
+/* ---------- Contrôle de cohérence (modale rapport) ----------
+   Replié par défaut : le décompte suffit tant que l'opérateur ne veut pas le détail. */
+.coherence-line {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 14px;
+  font-size: 12.5px; padding: 9px 12px; border-radius: 8px; background: var(--hover-bg);
+  &.ok { color: var(--text-muted); i { color: #2ecc71; } }
+  &.loading { color: var(--text-muted); i { color: var(--accent-color); } }
+}
+.coherence-panel {
+  margin: 0 0 14px; border: 1px solid #c8922f; border-radius: 8px;
+  background: rgba(200, 146, 47, 0.08); overflow: hidden;
+  &.has-error { border-color: #e74c3c; background: rgba(231, 76, 60, 0.08); }
+
+  .coherence-head {
+    width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    background: transparent; border: none; cursor: pointer; text-align: left;
+    color: var(--text-color); font-size: 13px;
+    &:hover { background: rgba(255, 255, 255, 0.04); }
+    i { color: #c8922f; }
+    .coherence-title { flex: 1; font-weight: 600; }
+    .coherence-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+  }
+  &.has-error .coherence-head > i { color: #e74c3c; }
+
+  .coherence-list {
+    list-style: none; margin: 0; padding: 0 12px 10px; display: flex;
+    flex-direction: column; gap: 7px; max-height: 190px; overflow-y: auto;
+    li { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; color: var(--text-muted);
+      i { margin-top: 2px; color: #c8922f; }
+      &.erreur { color: var(--text-color); i { color: #e74c3c; } }
+    }
+  }
+  .coherence-note { margin: 0; padding: 0 12px 11px; font-size: 11.5px; color: var(--text-muted); font-style: italic; }
+}
+
 /* ---------- Modale aperçu de la page de garde ----------
    Large et haute : on y lit une page A4 entière, pas un extrait. La modale se superpose
    à celle du rapport (z-index au-dessus), qui garde la configuration choisie. */

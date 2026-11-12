@@ -6,7 +6,7 @@ import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { forkJoin, of } from 'rxjs';
 import { catchError, map } from 'rxjs/operators';
 import { ProjectsService } from '../../../core/services/projects.service';
-import { PiecesService, RapportGeneration } from '../../../core/services/pieces.service';
+import { PiecesService, RapportGeneration, RapportCoherence } from '../../../core/services/pieces.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { BreadcrumbService } from '../../../core/layout/services/breadcrumb.service';
 import { BreadcrumbItem } from '../../../core/layout/interfaces/menu.interface';
@@ -863,6 +863,9 @@ export class PieceManagementPageComponent implements OnInit {
     const sessions = this.reportSessions;
     this.reportSessionFrom = sessions.length ? sessions[0].id : null;
     this.reportSessionTo = sessions.length ? sessions[sessions.length - 1].id : null;
+    this.coherence = null;
+    this.coherenceOpen = false;
+    this.runCoherenceCheck();
   }
 
   /** Revient à l'écran de configuration (pour changer de mode et régénérer). */
@@ -1031,6 +1034,54 @@ export class PieceManagementPageComponent implements OnInit {
     this.reportBlob = null;
     this.closeCoverPreview();
   }
+
+  // ============================================
+  // Contrôle de cohérence (avant génération)
+  // ============================================
+  /** Résultat du dernier contrôle, pour la portée affichée dans la modale. */
+  coherence: RapportCoherence | null = null;
+  coherenceLoading = false;
+  /** Replié par défaut : le décompte suffit tant que l'opérateur ne veut pas le détail. */
+  coherenceOpen = false;
+
+  /**
+   * Relance le contrôle pour la portée courante.
+   *
+   * Il tourne à l'ouverture de la modale et à chaque changement de portée : le résultat
+   * dépend des sessions couvertes, et un contrôle périmé vaudrait moins que pas de
+   * contrôle du tout. L'appel ne lit que la base — aucun rendu.
+   */
+  runCoherenceCheck(): void {
+    if (!this.ssdgps) return;
+    const range = this.reportRange;
+    if (this.reportScope === 'synthese' && !range) { this.coherence = null; return; }
+
+    this.coherenceLoading = true;
+    this.piecesService.checkReportCoherence(
+      this.ssdgps.id,
+      range ? null : (this.currentSessionId || undefined),
+      range,
+    ).subscribe({
+      next: (res) => { this.coherence = res; this.coherenceLoading = false; },
+      // Un contrôle indisponible ne doit pas empêcher de générer : on n'affiche rien.
+      error: () => { this.coherence = null; this.coherenceLoading = false; },
+    });
+  }
+
+  /** Change la portée du rapport et recontrôle aussitôt. */
+  setReportScope(scope: 'courant' | 'synthese'): void {
+    this.reportScope = scope;
+    this.coherenceOpen = false;
+    this.runCoherenceCheck();
+  }
+
+  /** Nouvelle borne de plage choisie : le contrôle ne vaut que pour la portée affichée. */
+  onReportRangeChange(): void {
+    this.coherenceOpen = false;
+    this.runCoherenceCheck();
+  }
+
+  toggleCoherenceDetail(): void { this.coherenceOpen = !this.coherenceOpen; }
 
   // ============================================
   // Aperçu de la page de garde (avant génération)

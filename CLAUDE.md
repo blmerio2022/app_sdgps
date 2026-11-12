@@ -202,6 +202,25 @@ génération complète pour rien.
 - tests : `backend/pieces/tests_rapport_apercu.py`, `pieces.service.spec.ts`,
   `piece-management-page.component.spec.ts`.
 
+**Contrôle de cohérence avant génération.** `GET /api/v1/pieces/report-check/` (même
+portée, mêmes droits, même `_resoudre_portee_rapport`, appelée avec
+`exiger_pieces=False`) renvoie les anomalies du SDGPS sans rien modifier ni rendre :
+`{ok, total, erreurs, avertissements, anomalies[]}`. Le rendu, lui, prend les pièces
+valides telles qu'elles sont et n'alerte sur rien.
+- logique : `backend/pieces/coherence.py::analyser_coherence(...)`. Deux gravités —
+  `erreur` (incohérence de dossier : trou dans la numérotation des déterminations RDN,
+  aucune pièce à inclure) et `avertissement` (pièce non validée donc exclue, pièces
+  prévues par la nature absentes — **regroupées en une seule ligne**, session sans pièce
+  propre, pièce validée mais vide) ;
+- les pièces attendues viennent du champ `natures` du catalogue (`types_attendus`), qui
+  pilote déjà l'assistant d'ajout — pas d'une nouvelle liste à maintenir ;
+- **le contrôle ne bloque JAMAIS la génération** : un dossier en cours d'instruction est
+  légitimement incomplet. L'endpoint de génération ne le consulte pas ;
+- front : panneau repliable en tête de la modale *Rapport PDF*, relancé à l'ouverture et
+  à chaque changement de portée (`setReportScope`, `onReportRangeChange`). Un contrôle
+  en échec n'affiche rien plutôt que d'empêcher de générer ;
+- tests : `backend/pieces/tests_rapport_coherence.py` (21 cas) + specs service/composant.
+
 **Journal d'audit (`accounts.models.AuditEvent`).** Les 7 colonnes d'audit disent qui a
 touché une ligne **en dernier** ; elles ne disent pas ce qui a changé et ne gardent aucune
 trace des actions qui ne modifient rien. Le journal, lui, enregistre QUI / QUOI / QUAND,

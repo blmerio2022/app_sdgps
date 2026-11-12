@@ -433,7 +433,9 @@ describe('PieceManagementPageComponent.reportErrorMessage', () => {
  */
 describe('PieceManagementPageComponent — rapport de synthèse', () => {
   let cmp: PieceManagementPageComponent;
-  let piecesSvc: jasmine.SpyObj<{ startReport: any; getReportJob: any; getReportFile: any }>;
+  let piecesSvc: jasmine.SpyObj<{
+    startReport: any; getReportJob: any; getReportFile: any; checkReportCoherence: any;
+  }>;
 
   const sessions = [
     { id: 'sess-3', numero_session: 3 },
@@ -442,10 +444,15 @@ describe('PieceManagementPageComponent — rapport de synthèse', () => {
   ] as any[];
 
   beforeEach(() => {
-    piecesSvc = jasmine.createSpyObj('PiecesService', ['startReport', 'getReportJob', 'getReportFile']);
+    piecesSvc = jasmine.createSpyObj('PiecesService',
+      ['startReport', 'getReportJob', 'getReportFile', 'checkReportCoherence']);
     piecesSvc.startReport.and.returnValue(of({ id: 'job-1', statut: 'termine', progression: 100 }));
     piecesSvc.getReportFile.and.returnValue(
       of({ data: '', content_type: 'application/pdf', filename: 'r.pdf' }));
+    // Le contrôle de cohérence tourne à l'ouverture de la modale et à chaque
+    // changement de portée.
+    piecesSvc.checkReportCoherence.and.returnValue(
+      of({ ok: true, total: 0, erreurs: 0, avertissements: 0, anomalies: [] }));
     const router = jasmine.createSpyObj('Router', ['navigate']);
     (router as any).url = '/projets/p1/pieces/s1';
     const stub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
@@ -883,5 +890,121 @@ describe('PieceManagementPageComponent — aperçu de la page de garde', () => {
     cmp.closeReportModal();
 
     expect(cmp.showCoverPreview).toBeFalse();
+  });
+});
+
+/**
+ * Contrôle de cohérence avant génération.
+ *
+ * La génération ne dit rien d'elle-même : une pièce restée en brouillon est absente du
+ * rapport, un trou dans la numérotation des déterminations passe inaperçu. Le contrôle
+ * tourne à l'ouverture de la modale et suit la portée choisie — un contrôle périmé
+ * vaudrait moins que pas de contrôle du tout.
+ */
+describe('PieceManagementPageComponent — contrôle de cohérence', () => {
+  let cmp: PieceManagementPageComponent;
+  let piecesSvc: jasmine.SpyObj<{ checkReportCoherence: any }>;
+
+  const SAIN = { ok: true, total: 0, erreurs: 0, avertissements: 0, anomalies: [] };
+  const ANOMALIES = {
+    ok: false, total: 2, erreurs: 1, avertissements: 1,
+    anomalies: [
+      { code: 'determination_manquante', severite: 'erreur', message: 'Trou n°2.' },
+      { code: 'piece_non_validee', severite: 'avertissement', message: 'LPA en brouillon.' },
+    ],
+  };
+
+  beforeEach(() => {
+    piecesSvc = jasmine.createSpyObj('PiecesService', ['checkReportCoherence']);
+    piecesSvc.checkReportCoherence.and.returnValue(of(SAIN));
+    const stub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
+    cmp = new PieceManagementPageComponent(
+      {} as any, piecesSvc as any, {} as any, { navigate: () => {} } as any,
+      {} as any, {} as any, stub, stub, {} as any,
+    );
+    cmp.ssdgps = { id: 's1', numero_ssdgps: 2, type_ssdgps: 'multi-session' } as any;
+    cmp.sessions = [
+      { id: 'sess-1', numero_session: 1 } as any,
+      { id: 'sess-2', numero_session: 2 } as any,
+    ];
+  });
+
+  afterEach(() => localStorage.clear());
+
+  it('contrôle dès l’ouverture de la modale', () => {
+    cmp.openReportModal();
+
+    expect(piecesSvc.checkReportCoherence).toHaveBeenCalled();
+    expect(cmp.coherence).toEqual(SAIN as any);
+    expect(cmp.coherenceLoading).toBeFalse();
+  });
+
+  it('expose le détail des anomalies, replié par défaut', () => {
+    piecesSvc.checkReportCoherence.and.returnValue(of(ANOMALIES));
+
+    cmp.openReportModal();
+
+    expect(cmp.coherence!.erreurs).toBe(1);
+    expect(cmp.coherence!.avertissements).toBe(1);
+    expect(cmp.coherenceOpen).toBeFalse();
+
+    cmp.toggleCoherenceDetail();
+    expect(cmp.coherenceOpen).toBeTrue();
+  });
+
+  it('recontrôle quand la portée change', () => {
+    cmp.openReportModal();
+    piecesSvc.checkReportCoherence.calls.reset();
+
+    cmp.setReportScope('synthese');
+
+    expect(piecesSvc.checkReportCoherence).toHaveBeenCalled();
+    const [, session, range] = piecesSvc.checkReportCoherence.calls.mostRecent().args;
+    expect(session).toBeNull();
+    expect(range).toEqual({ from: 'sess-1', to: 'sess-2' });
+  });
+
+  it('recontrôle quand une borne de plage change', () => {
+    cmp.openReportModal();
+    cmp.setReportScope('synthese');
+    piecesSvc.checkReportCoherence.calls.reset();
+
+    cmp.reportSessionTo = 'sess-1';
+    cmp.onReportRangeChange();
+
+    const [, , range] = piecesSvc.checkReportCoherence.calls.mostRecent().args;
+    expect(range).toEqual({ from: 'sess-1', to: 'sess-1' });
+  });
+
+  it('ne contrôle pas tant que la plage de synthèse est incomplète', () => {
+    cmp.openReportModal();
+    cmp.reportScope = 'synthese';
+    cmp.reportSessionTo = null;
+    piecesSvc.checkReportCoherence.calls.reset();
+
+    cmp.runCoherenceCheck();
+
+    expect(piecesSvc.checkReportCoherence).not.toHaveBeenCalled();
+    expect(cmp.coherence).toBeNull();
+  });
+
+  it('n’affiche rien si le contrôle échoue : il ne doit pas empêcher de générer', () => {
+    piecesSvc.checkReportCoherence.and.returnValue(throwError(() => ({ status: 500 })));
+
+    cmp.openReportModal();
+
+    expect(cmp.coherence).toBeNull();
+    expect(cmp.coherenceLoading).toBeFalse();
+  });
+
+  it('transmet la session courante hors synthèse', () => {
+    cmp.currentSessionId = 'sess-2';
+
+    cmp.openReportModal();
+
+    const [ssdgps, session, range] = piecesSvc.checkReportCoherence.calls.mostRecent().args;
+    expect(ssdgps).toBe('s1');
+    expect(session).toBe('sess-2');
+    expect(range).toBeNull();
   });
 });

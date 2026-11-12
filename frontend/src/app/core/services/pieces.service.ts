@@ -15,6 +15,27 @@ interface PieceParent {
  * intermédiaires assemblé. */
 export type RcSource = 'rdn' | 'rdia';
 
+/** Anomalie relevée par le contrôle de cohérence avant génération. */
+export interface AnomalieCoherence {
+  /** Famille d'anomalie (`piece_non_validee`, `determination_manquante`…). */
+  code: string;
+  severite: 'erreur' | 'avertissement';
+  message: string;
+  type_piece?: string;
+  types_pieces?: string[];
+  piece_id?: string;
+  session_numero?: number | null;
+}
+
+/** Résultat du contrôle de cohérence d'un SDGPS pour une portée de rapport donnée. */
+export interface RapportCoherence {
+  ok: boolean;
+  total: number;
+  erreurs: number;
+  avertissements: number;
+  anomalies: AnomalieCoherence[];
+}
+
 /** Suivi d'une génération de rapport menée en tâche de fond (backend `RapportGeneration`). */
 export interface RapportGeneration {
   id: string;
@@ -452,6 +473,26 @@ export class PiecesService {
     }
     if (duplex) params = params.set('duplex', '1');
     return this.http.post<RapportGeneration>(`${this.base}report-async/`, {}, { params });
+  }
+
+  /**
+   * Contrôle de cohérence du SDGPS pour la portée demandée, avant génération.
+   *
+   * Le rendu ne dit rien : une pièce restée en brouillon est absente du rapport, un trou
+   * dans la numérotation des déterminations passe inaperçu, une session sans pièce
+   * disparaît. Ce contrôle ne modifie rien et ne bloque pas la génération : il informe.
+   */
+  checkReportCoherence(ssdgpsId: string, sessionId?: string | null,
+                       sessionRange?: { from: string; to: string } | null):
+      Observable<RapportCoherence> {
+    let params = new HttpParams().set('ssdgps', ssdgpsId);
+    if (sessionRange) {
+      params = params.set('session_from', sessionRange.from)
+                     .set('session_to', sessionRange.to);
+    } else if (sessionId) {
+      params = params.set('session', sessionId);
+    }
+    return this.http.get<RapportCoherence>(`${this.base}report-check/`, { params });
   }
 
   /**
