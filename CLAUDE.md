@@ -221,6 +221,37 @@ valides telles qu'elles sont et n'alerte sur rien.
   en échec n'affiche rien plutôt que d'empêcher de générer ;
 - tests : `backend/pieces/tests_rapport_coherence.py` (21 cas) + specs service/composant.
 
+**Cycle de vie d'un SDGPS : en cours → soumis → validé → clos (règle stricte).** Un
+SDGPS produit une pièce officielle d'un dossier foncier ; sans état, rien ne distinguait
+un dossier en saisie d'un dossier contrôlé et arrêté, et ses pièces restaient modifiables
+par quiconque sans trace du contrôle.
+- toutes les règles sont dans `backend/projects/workflow.py` (`TRANSITIONS`,
+  `appliquer_transition`, `est_encadrement`, `transitions_possibles`) ; champs portés par
+  `Ssdgps` : `statut`, `statut_change_at/by`, `motif_statut`, `STATUTS_VERROUILLES`,
+  `est_verrouille()` ;
+- transitions : **soumettre** (tout utilisateur ayant accès ; exige que **toutes** les
+  pièces vivantes soient validées), **valider** / **rejeter** / **clore** / **rouvrir**
+  (réservées à l'**Admin Organisation de cette organisation** ou à l'administration de
+  l'application — un rédacteur ne valide pas sa propre production). `rejeter` et
+  `rouvrir` exigent un **motif** ;
+- **API : `POST /api/v1/ssdgps/<id>/transition/`** — `{"action": "...", "motif": "..."}`.
+  ⚠️ `statut` est **read-only** dans `SsdgpsSerializer` : jamais de `PATCH statut`, qui
+  contournerait les règles. Le serializer expose `statut_display`, `verrouille` et
+  `transitions` (transitions ouvertes à l'appelant — garde **cosmétique**) ;
+- **VERROU** : dès `soumis`, plus aucune écriture sur les pièces du dossier. Posé dans
+  `pieces/views.py` par `_check_modifiable()`, appelé depuis `_check_scope()` (chemins de
+  création/import), `check_object_permissions()` (toute action détail en écriture) et les
+  chemins qui ne passent pas par `get_object()` (`restore`, `permanent`). Les opérations
+  **en masse** écartent les pièces verrouillées du lot et renvoient
+  `verrouillees_count`. La **lecture** et la **génération du rapport** restent ouvertes ;
+- journalisé : `AuditEvent.ACTION_SSDGPS_STATUT` (transition, statut avant/après, motif) ;
+- front : badge de statut dans le titre de la page des pièces + boutons de décision +
+  bandeaux (dossier figé / dossier rejeté avec son motif), modale de confirmation avec
+  motif obligatoire ; colonne **Statut** (`statut_display`) dans la liste des SSDGPS
+  (allowlists `TABLE_COLUMN_FIELDS['ssdgps']` et `SSDGPS_SORT_FIELDS`) ;
+- tests : `backend/projects/tests_workflow_ssdgps.py` (34 cas) + specs
+  `projects.service.spec.ts` / `piece-management-page.component.spec.ts`.
+
 **Journal d'audit (`accounts.models.AuditEvent`).** Les 7 colonnes d'audit disent qui a
 touché une ligne **en dernier** ; elles ne disent pas ce qui a changé et ne gardent aucune
 trace des actions qui ne modifient rien. Le journal, lui, enregistre QUI / QUOI / QUAND,

@@ -91,4 +91,26 @@ describe('ProjectsService', () => {
     expect(req.request.params.get('projet')).toBe('P1');
     req.flush([]);
   });
+  /**
+   * Cycle de vie d'un SDGPS : endpoint dédié, et non un PATCH du statut — chaque
+   * passage porte ses règles et son contrôle de rôle côté serveur.
+   */
+  describe('transitionSsdgps()', () => {
+    it('poste l’action sur transition/', () => {
+      let recu: any;
+      service.transitionSsdgps('s1', 'soumettre').subscribe(s => (recu = s));
+      const req = httpMock.expectOne(`${BASE}ssdgps/s1/transition/`);
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toEqual({ action: 'soumettre', motif: '' });
+      req.flush({ id: 's1', statut: 'soumis' });
+      expect(recu.statut).toBe('soumis');
+    });
+
+    it('transmet le motif d’un rejet', () => {
+      service.transitionSsdgps('s1', 'rejeter', 'LPA à reprendre.').subscribe();
+      const req = httpMock.expectOne(`${BASE}ssdgps/s1/transition/`);
+      expect(req.request.body).toEqual({ action: 'rejeter', motif: 'LPA à reprendre.' });
+      req.flush({});
+    });
+  });
 });

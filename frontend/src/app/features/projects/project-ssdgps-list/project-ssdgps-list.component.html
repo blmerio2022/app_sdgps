@@ -161,6 +161,7 @@
                 </span>
                 <span *ngSwitchCase="'nature_ssdgps'" class="badge badge-nature">{{ s.nature_ssdgps }}</span>
                 <span *ngSwitchCase="'type_ssdgps'" [class]="typeBadgeClass(s.type_ssdgps)">{{ s.type_ssdgps === 'multi-session' ? 'Multi' : 'Mono' }}</span>
+                <span *ngSwitchCase="'statut_display'" class="statut-badge" [ngClass]="'statut-' + (s.statut || 'en_cours')">{{ s.statut_display || 'En cours' }}</span>
                 <span *ngSwitchCase="'propriete_label'" class="cell-primary" [title]="s.propriete_nom || ''">{{ proprieteLabel(s) }}</span>
                 <span *ngSwitchCase="'nbr_total_sessions'" class="num-value">{{ s.nbr_total_sessions ?? 0 }}</span>
                 <span *ngSwitchCase="'nbr_total_pieces'" class="num-value">{{ s.nbr_total_pieces ?? 0 }}</span>

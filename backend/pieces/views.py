@@ -88,11 +88,34 @@ class PieceViewSet(viewsets.ModelViewSet):
         return self._scope(self.queryset)
 
     def _check_scope(self, ssdgps):
+        """Portée RBAC **et** verrou du cycle de vie. Appelée sur les chemins d'ÉCRITURE."""
         projet = ssdgps.affaire.propriete.projet
         if not is_scope_visible(self.request.user, projet.organization_id, projet.created_by_id):
             raise PermissionDenied(
                 "Vous ne pouvez créer une pièce que dans votre organisation "
                 "ou dans un projet que vous avez créé.")
+        self._check_modifiable(ssdgps)
+
+    @staticmethod
+    def _check_modifiable(ssdgps):
+        """Refuse toute écriture sur les pièces d'un dossier figé.
+
+        Dès qu'un SDGPS est soumis au contrôle, son contenu ne bouge plus : un dossier
+        qui changerait sous les yeux du valideur ne serait pas contrôlable, et un dossier
+        validé qu'on peut encore modifier ne prouve rien. Le déverrouillage passe par un
+        rejet ou une réouverture, tous deux tracés (cf. `projects/workflow.py`).
+        """
+        if ssdgps is not None and ssdgps.est_verrouille():
+            raise PermissionDenied(
+                f"Ce SDGPS est « {ssdgps.get_statut_display()} » : ses pièces ne sont "
+                "plus modifiables. Demandez sa réouverture pour y revenir.")
+
+    def check_object_permissions(self, request, obj):
+        """Verrou appliqué à TOUTE action détail en écriture (modification, suppression,
+        images, tri, recalculs…) : DRF passe ici dès qu'une vue résout un objet."""
+        super().check_object_permissions(request, obj)
+        if request.method not in permissions.SAFE_METHODS:
+            self._check_modifiable(getattr(obj, 'ssdgps', None))
 
     def perform_create(self, serializer):
         ssdgps = serializer.validated_data.get('ssdgps')
@@ -114,6 +137,8 @@ class PieceViewSet(viewsets.ModelViewSet):
         instance = self._org_scoped_queryset().filter(pk=pk, is_deleted=True).first()
         if instance is None:
             return Response({'detail': 'Pièce non trouvée ou non supprimée.'}, status=status.HTTP_404_NOT_FOUND)
+        # Ces deux chemins ne passent pas par `get_object()` : le verrou s'y pose à la main.
+        self._check_modifiable(instance.ssdgps)
         instance.is_deleted = False
         instance.deleted_at = None
         instance.deleted_by = None
@@ -126,9 +151,14 @@ class PieceViewSet(viewsets.ModelViewSet):
         if not isinstance(ids, list) or not ids:
             return Response({'detail': 'La liste ids est requise.'}, status=status.HTTP_400_BAD_REQUEST)
         qs = self._org_scoped_queryset().filter(pk__in=ids, is_deleted=True)
+        # Les pièces d'un dossier figé sont écartées du lot plutôt que de faire échouer
+        # l'ensemble : une restauration en masse porte souvent sur plusieurs dossiers.
+        verrouilles = [p.pk for p in qs if p.ssdgps.est_verrouille()]
+        qs = qs.exclude(pk__in=verrouilles)
         restored_count = qs.count()
         qs.update(is_deleted=False, deleted_at=None, deleted_by=None)
-        return Response({'restored_count': restored_count})
+        return Response({'restored_count': restored_count,
+                         'verrouillees_count': len(verrouilles)})
 
     @action(detail=True, methods=['delete'], url_path='permanent')
     def permanent_delete(self, request, pk=None):
@@ -139,6 +169,7 @@ class PieceViewSet(viewsets.ModelViewSet):
         instance = self._org_scoped_queryset().filter(pk=pk, is_deleted=True).first()
         if instance is None:
             return Response({'detail': 'Pièce non trouvée ou non supprimée.'}, status=status.HTTP_404_NOT_FOUND)
+        self._check_modifiable(instance.ssdgps)
         instance.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -149,10 +180,15 @@ class PieceViewSet(viewsets.ModelViewSet):
         if not isinstance(ids, list) or not ids:
             return Response({'detail': 'La liste ids est requise.'}, status=status.HTTP_400_BAD_REQUEST)
         qs = self._org_scoped_queryset().filter(pk__in=ids, is_deleted=True)
-        deleted_count = qs.count()
+        deleted_count, verrouillees = 0, 0
         for instance in qs:
+            if instance.ssdgps.est_verrouille():
+                verrouillees += 1
+                continue
             instance.delete()
-        return Response({'deleted_count': deleted_count, 'errors': []})
+            deleted_count += 1
+        return Response({'deleted_count': deleted_count, 'errors': [],
+                         'verrouillees_count': verrouillees})
 
     @action(detail=False, methods=['get'])
     def catalog(self, request):

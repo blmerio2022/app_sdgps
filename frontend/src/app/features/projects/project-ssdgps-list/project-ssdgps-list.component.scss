@@ -116,6 +116,16 @@
   &.badge-primary { background: rgba(52, 152, 219, 0.14); color: #3498db; border-color: rgba(52, 152, 219, 0.3); }
   &.badge-secondary { background: rgba(149, 165, 166, 0.16); color: #95a5a6; border-color: rgba(149, 165, 166, 0.32); }
 }
+/* Statut du cycle de vie (en cours → soumis → validé → clos) : mêmes couleurs que la
+   page des pièces, pour qu'un dossier soit reconnaissable d'un écran à l'autre. */
+.statut-badge {
+  display: inline-block; padding: 2px 9px; border-radius: 11px; font-size: 11px;
+  font-weight: 600; border: 1px solid transparent; white-space: nowrap;
+  &.statut-en_cours { color: #8e9aa6; border-color: rgba(142, 154, 166, 0.45); background: rgba(142, 154, 166, 0.12); }
+  &.statut-soumis   { color: #c8922f; border-color: rgba(200, 146, 47, 0.5); background: rgba(200, 146, 47, 0.14); }
+  &.statut-valide   { color: #2ecc71; border-color: rgba(46, 204, 113, 0.5); background: rgba(46, 204, 113, 0.13); }
+  &.statut-clos     { color: #5a9bd5; border-color: rgba(90, 155, 213, 0.5); background: rgba(90, 155, 213, 0.13); }
+}
 .deleted-badge {
   margin-left: 8px; display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600;
   color: #e74c3c; background: rgba(231, 76, 60, 0.12); border-radius: 8px; padding: 1px 7px; text-transform: none;

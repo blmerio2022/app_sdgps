@@ -83,6 +83,22 @@ export interface Affaire {
 export type NatureSsdgps = 'PDC/GPS' | 'DDC/GPS' | 'PLC/GPS' | 'DLC/GPS';
 export type TypeSsdgps = 'mono-session' | 'multi-session';
 
+/** Statuts du cycle de vie d'un SDGPS. */
+export type SsdgpsStatut = 'en_cours' | 'soumis' | 'valide' | 'clos';
+
+/** Transitions du cycle de vie (noms d'API du backend `projects/workflow.py`). */
+export type SsdgpsTransition = 'soumettre' | 'valider' | 'rejeter' | 'clore' | 'rouvrir';
+
+/** Libellés et icônes des transitions, pour les boutons de décision. */
+export const SSDGPS_TRANSITIONS: Record<SsdgpsTransition,
+    { label: string; icon: string; motif: 'obligatoire' | 'aucun'; danger?: boolean }> = {
+  soumettre: { label: 'Soumettre à validation', icon: 'fa-paper-plane', motif: 'aucun' },
+  valider: { label: 'Valider le dossier', icon: 'fa-circle-check', motif: 'aucun' },
+  rejeter: { label: 'Rejeter', icon: 'fa-rotate-left', motif: 'obligatoire', danger: true },
+  clore: { label: 'Clore le dossier', icon: 'fa-box-archive', motif: 'aucun' },
+  rouvrir: { label: 'Rouvrir en saisie', icon: 'fa-lock-open', motif: 'obligatoire', danger: true },
+};
+
 export interface Ssdgps {
   id: string;
   nature_ssdgps: NatureSsdgps;
@@ -96,6 +112,19 @@ export interface Ssdgps {
   propriete_id_titre?: string;
   propriete_id_requisition?: string;
   affaire_numero?: string;
+  // Cycle de vie du dossier (cf. backend projects/workflow.py). `statut` ne se modifie
+  // JAMAIS par PATCH : seul `POST /ssdgps/<id>/transition/` le fait évoluer, car chaque
+  // passage porte ses règles et son contrôle de rôle.
+  statut?: SsdgpsStatut;
+  statut_display?: string;
+  statut_change_at?: string | null;
+  statut_change_by_email?: string | null;
+  /** Motif du dernier changement de statut (obligatoire au rejet et à la réouverture). */
+  motif_statut?: string;
+  /** Contenu figé : plus aucune écriture sur les pièces du dossier. */
+  verrouille?: boolean;
+  /** Transitions réellement ouvertes à l'utilisateur courant (garde cosmétique). */
+  transitions?: SsdgpsTransition[];
   nbr_total_sessions?: number;
   nbr_total_pieces?: number;
   created_at?: string;

@@ -11,7 +11,7 @@ import { ToastService } from '../../../core/services/toast.service';
 import { BreadcrumbService } from '../../../core/layout/services/breadcrumb.service';
 import { BreadcrumbItem } from '../../../core/layout/interfaces/menu.interface';
 import { Piece, PieceTypeDef } from '../../../core/models/piece.model';
-import { Ssdgps, Session, Projet } from '../../../core/models/project.model';
+import { Ssdgps, Session, Projet, SsdgpsTransition, SSDGPS_TRANSITIONS } from '../../../core/models/project.model';
 import { TableSortConfigService, OrgSortLevel } from '../../../core/services/table-sort-config.service';
 import { SortableField, sortLevelOf, sortDirOf } from '../../../shared/components/multi-level-sort/multi-level-sort.util';
 import { MultiLevelSortComponent } from '../../../shared/components/multi-level-sort/multi-level-sort.component';
@@ -1033,6 +1033,109 @@ export class PieceManagementPageComponent implements OnInit {
     this.reportStarted = false;
     this.reportBlob = null;
     this.closeCoverPreview();
+  }
+
+  // ============================================
+  // Cycle de vie du dossier (en cours → soumis → validé → clos)
+  // ============================================
+  /** Décision en attente de confirmation dans la modale, ou `null`. */
+  pendingTransition: SsdgpsTransition | null = null;
+  transitionMotif = '';
+  workflowBusy = false;
+  workflowError = '';
+
+  /** Contenu figé : le backend refuse toute écriture sur les pièces. */
+  get isLocked(): boolean { return !!this.ssdgps?.verrouille; }
+
+  get lockMessage(): string {
+    const statut = this.ssdgps?.statut_display || 'non modifiable';
+    return `Dossier « ${statut} » : ses pièces ne sont plus modifiables.`;
+  }
+
+  /**
+   * Décisions ouvertes à l'utilisateur, telles que le backend les annonce.
+   *
+   * Garde **cosmétique** : la décision est reprise côté serveur à chaque appel. Masquer
+   * un bouton n'est pas un contrôle d'accès — c'est éviter de proposer un échec.
+   */
+  get availableTransitions(): SsdgpsTransition[] {
+    return this.showDeleted ? [] : (this.ssdgps?.transitions || []);
+  }
+
+  transitionMeta(t: SsdgpsTransition) { return SSDGPS_TRANSITIONS[t]; }
+
+  get transitionQuestion(): string {
+    switch (this.pendingTransition) {
+      case 'soumettre': return 'Soumettre ce dossier à validation ?';
+      case 'valider': return 'Valider ce dossier ? Son contenu restera figé.';
+      case 'rejeter': return 'Renvoyer ce dossier en saisie pour correction ?';
+      case 'clore': return 'Clore ce dossier ? Il sera archivé en l’état.';
+      case 'rouvrir': return 'Rouvrir ce dossier en saisie ? Le contrôle déjà prononcé sera annulé.';
+      default: return '';
+    }
+  }
+
+  /** Un motif obligatoire non saisi bloque la confirmation (le backend le refuserait). */
+  get canConfirmTransition(): boolean {
+    if (!this.pendingTransition) return false;
+    if (SSDGPS_TRANSITIONS[this.pendingTransition].motif !== 'obligatoire') return true;
+    return this.transitionMotif.trim().length > 0;
+  }
+
+  get dossierStatutIcon(): string {
+    switch (this.ssdgps?.statut) {
+      case 'soumis': return 'fa-hourglass-half';
+      case 'valide': return 'fa-circle-check';
+      case 'clos': return 'fa-box-archive';
+      default: return 'fa-pen';
+    }
+  }
+
+  get dossierStatutTooltip(): string {
+    const who = this.ssdgps?.statut_change_by_email;
+    const when = this.ssdgps?.statut_change_at ? this.formatDate(this.ssdgps.statut_change_at) : '';
+    return who ? `Décision de ${who}${when ? ' le ' + when : ''}` : 'Dossier en saisie';
+  }
+
+  askTransition(t: SsdgpsTransition): void {
+    this.pendingTransition = t;
+    this.transitionMotif = '';
+    this.workflowError = '';
+  }
+
+  cancelTransition(): void {
+    if (this.workflowBusy) return;
+    this.pendingTransition = null;
+    this.transitionMotif = '';
+    this.workflowError = '';
+  }
+
+  /** Applique la décision, puis recharge le dossier : statut, verrou et boutons suivent. */
+  confirmTransition(): void {
+    if (!this.pendingTransition || this.workflowBusy || !this.canConfirmTransition) return;
+    const action = this.pendingTransition;
+    this.workflowBusy = true;
+    this.workflowError = '';
+
+    this.projectsService.transitionSsdgps(this.ssdgps.id, action, this.transitionMotif.trim())
+      .subscribe({
+        next: (maj) => {
+          this.ssdgps = maj;
+          this.workflowBusy = false;
+          this.pendingTransition = null;
+          this.transitionMotif = '';
+          this.toast.success('Dossier mis à jour', maj.statut_display || '');
+          // Le verrou change ce que l'opérateur peut faire sur chaque pièce.
+          this.loadPieces();
+        },
+        error: (err) => {
+          this.workflowBusy = false;
+          // Le `detail` du serveur nomme la règle non satisfaite (pièces non validées,
+          // motif manquant, rôle insuffisant) : il vaut mieux que tout message générique.
+          this.workflowError = err?.error?.detail
+            || 'La décision n’a pas pu être enregistrée.';
+        },
+      });
   }
 
   // ============================================

@@ -137,6 +137,27 @@ class SsdgpsSerializer(serializers.ModelSerializer):
     created_by_email = AuthorDisplayField(source='created_by')
     updated_by_email = AuthorDisplayField(source='updated_by')
     deleted_by_email = AuthorDisplayField(source='deleted_by')
+    # Cycle de vie (cf. projects/workflow.py). Le statut n'est PAS modifiable ici : il
+    # ne change que par `POST /ssdgps/<id>/transition/`, qui porte les règles et les
+    # contrôles de rôle. Un champ libre reviendrait à ne pas les avoir.
+    statut_display = serializers.CharField(source='get_statut_display', read_only=True)
+    statut_change_by_email = AuthorDisplayField(source='statut_change_by')
+    verrouille = serializers.SerializerMethodField()
+    transitions = serializers.SerializerMethodField()
+
+    def get_verrouille(self, obj) -> bool:
+        return obj.est_verrouille()
+
+    def get_transitions(self, obj):
+        """Transitions réellement ouvertes à l'appelant — garde **cosmétique** côté
+        front : la décision est reprise à chaque appel de l'endpoint."""
+        request = self.context.get('request')
+        if request is None:
+            return []
+        from .workflow import transitions_possibles
+
+        return transitions_possibles(
+            obj, request.user, obj.affaire.propriete.projet.organization_id)
 
     class Meta:
         model = Ssdgps
@@ -144,10 +165,13 @@ class SsdgpsSerializer(serializers.ModelSerializer):
             'id', 'nature_ssdgps', 'numero_ssdgps', 'type_ssdgps', 'affaire',
             'propriete', 'propriete_nom', 'propriete_id_titre', 'propriete_id_requisition',
             'affaire_numero',
+            'statut', 'statut_display', 'statut_change_at', 'statut_change_by_email',
+            'motif_statut', 'verrouille', 'transitions',
             'nbr_total_sessions', 'nbr_total_pieces', 'created_at', 'updated_at', 'is_deleted', 'deleted_at',
             'created_by_email', 'updated_by_email', 'deleted_by_email',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'is_deleted', 'deleted_at']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+                            'statut', 'statut_change_at', 'motif_statut']
 
     def validate(self, attrs):
         # Unicité (affaire, numero_ssdgps) : garantie en base par une UniqueConstraint. On la

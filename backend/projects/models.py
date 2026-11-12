@@ -210,6 +210,25 @@ class Ssdgps(BaseModel):
         MONO = 'mono-session', "Mono-session"
         MULTI = 'multi-session', "Multi-session"
 
+    class Statut(models.TextChoices):
+        """Cycle de vie du dossier : en cours → soumis → validé → clos.
+
+        Un SDGPS produit une pièce officielle d'un dossier foncier. Sans état, rien ne
+        distinguait un dossier en saisie d'un dossier contrôlé et arrêté : les pièces
+        d'un dossier « terminé » restaient modifiables par quiconque, sans trace de qui
+        l'avait contrôlé ni quand. Les transitions sont dans `projects/workflow.py`.
+        """
+        EN_COURS = 'en_cours', "En cours"
+        SOUMIS = 'soumis', "Soumis à validation"
+        VALIDE = 'valide', "Validé"
+        CLOS = 'clos', "Clos"
+
+    # Statuts où le contenu du dossier est FIGÉ : plus aucune écriture sur ses pièces.
+    # Un dossier soumis au contrôle qui continuerait de bouger sous les yeux du valideur
+    # ne serait pas contrôlable. Le retour en arrière passe par un rejet ou une
+    # réouverture, tous deux tracés.
+    STATUTS_VERROUILLES = ('soumis', 'valide', 'clos')
+
     nature_ssdgps = models.CharField(
         max_length=10, choices=NatureSSDGPS.choices, verbose_name="Nature du SSDGPS",
     )
@@ -225,6 +244,22 @@ class Ssdgps(BaseModel):
         Affaire, on_delete=models.CASCADE, related_name='ssdgps_set',
         verbose_name="Affaire (SD)",
     )
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.EN_COURS, db_index=True,
+        verbose_name="Statut du dossier",
+    )
+    statut_change_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Dernier changement de statut")
+    statut_change_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='ssdgps_statuts_changes', verbose_name="Auteur du dernier statut")
+    motif_statut = models.TextField(
+        blank=True, verbose_name="Motif du dernier changement de statut",
+        help_text="Obligatoire pour un rejet : le rédacteur doit savoir quoi corriger.")
+
+    def est_verrouille(self) -> bool:
+        """Le contenu du dossier est-il figé (plus aucune écriture sur ses pièces) ?"""
+        return self.statut in self.STATUTS_VERROUILLES
 
     class Meta:
         ordering = ['numero_ssdgps']

@@ -482,6 +482,52 @@
   }
 }
 
+/* ---------- Cycle de vie du dossier (statut, verrou, décisions) ----------
+   Le statut est la première chose à savoir avant de toucher une pièce : il décide de ce
+   qui est modifiable. Il vit donc dans le titre, pas dans un onglet. */
+.statut-badge {
+  display: inline-flex; align-items: center; gap: 6px; margin-left: 12px;
+  padding: 3px 10px; border-radius: 9999px; font-size: 11.5px; font-weight: 600;
+  vertical-align: middle; border: 1px solid transparent;
+  &.statut-en_cours { color: #8e9aa6; border-color: rgba(142, 154, 166, 0.45); background: rgba(142, 154, 166, 0.12); }
+  &.statut-soumis   { color: #c8922f; border-color: rgba(200, 146, 47, 0.5); background: rgba(200, 146, 47, 0.14); }
+  &.statut-valide   { color: #2ecc71; border-color: rgba(46, 204, 113, 0.5); background: rgba(46, 204, 113, 0.13); }
+  &.statut-clos     { color: #5a9bd5; border-color: rgba(90, 155, 213, 0.5); background: rgba(90, 155, 213, 0.13); }
+}
+
+.lock-banner, .reject-banner {
+  display: flex; align-items: flex-start; gap: 12px; margin: 0 0 16px;
+  padding: 12px 14px; border-radius: 10px; font-size: 13px;
+  border: 1px solid var(--border-color); background: var(--hover-bg);
+  > i { font-size: 16px; margin-top: 2px; }
+  > div { display: flex; flex-direction: column; gap: 3px; }
+  .lock-meta { font-size: 12px; color: var(--text-muted); }
+  .lock-motif { font-size: 12.5px; color: var(--text-color); font-style: italic; }
+}
+.lock-banner { border-color: rgba(90, 155, 213, 0.45); > i { color: #5a9bd5; } }
+.reject-banner { border-color: rgba(231, 76, 60, 0.45); > i { color: #e74c3c; } }
+
+.btn-workflow {
+  background: linear-gradient(135deg, #1f6feb, #14396b); color: #fff; border: none;
+  &:hover:not(:disabled) { filter: brightness(1.1); }
+}
+.btn-danger-soft {
+  background: transparent; color: #e74c3c; border: 1px solid rgba(231, 76, 60, 0.6);
+  &:hover:not(:disabled) { background: rgba(231, 76, 60, 0.12); }
+}
+
+/* Motif d'une décision (rejet, réouverture) : saisi dans la modale de confirmation. */
+.motif-field {
+  display: flex; flex-direction: column; gap: 6px; margin-top: 14px;
+  .motif-label { font-size: 12.5px; color: var(--text-muted); em { font-style: normal; color: #e74c3c; } }
+  textarea {
+    width: 100%; padding: 9px 12px; border-radius: 8px; resize: vertical;
+    border: 1px solid var(--border-color); background: var(--primary-color);
+    color: var(--text-color); font-size: 13px; font-family: inherit;
+    &:focus { border-color: var(--accent-color); outline: none; }
+  }
+}
+
 /* ---------- Contrôle de cohérence (modale rapport) ----------
    Replié par défaut : le décompte suffit tant que l'opérateur ne veut pas le détail. */
 .coherence-line {

@@ -1008,3 +1008,135 @@ describe('PieceManagementPageComponent — contrôle de cohérence', () => {
     expect(range).toBeNull();
   });
 });
+
+/**
+ * Cycle de vie du dossier : en cours → soumis → validé → clos.
+ *
+ * Le statut décide de ce qui est modifiable. Les boutons de décision ne sont qu'une
+ * garde cosmétique : c'est le backend qui annonce les transitions ouvertes et qui les
+ * reprend à chaque appel.
+ */
+describe('PieceManagementPageComponent — cycle de vie du dossier', () => {
+  let cmp: PieceManagementPageComponent;
+  let projectsSvc: jasmine.SpyObj<{ transitionSsdgps: any }>;
+  let toast: any;
+
+  function ssdgps(over: any = {}): any {
+    return {
+      id: 's1', numero_ssdgps: 2, type_ssdgps: 'mono-session', statut: 'en_cours',
+      statut_display: 'En cours', verrouille: false, transitions: ['soumettre'],
+      motif_statut: '', ...over,
+    };
+  }
+
+  beforeEach(() => {
+    projectsSvc = jasmine.createSpyObj('ProjectsService', ['transitionSsdgps']);
+    toast = jasmine.createSpyObj('ToastService', ['success', 'error']);
+    const stub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
+    cmp = new PieceManagementPageComponent(
+      projectsSvc as any, {} as any, toast, { navigate: () => {} } as any,
+      {} as any, {} as any, stub, stub, {} as any,
+    );
+    cmp.ssdgps = ssdgps();
+    cmp.sessions = [];
+    spyOn(cmp, 'loadPieces');
+  });
+
+  afterEach(() => localStorage.clear());
+
+  it('n’affiche que les transitions annoncées par le serveur', () => {
+    expect(cmp.availableTransitions).toEqual(['soumettre'] as any);
+
+    cmp.ssdgps = ssdgps({ statut: 'soumis', transitions: ['valider', 'rejeter'] });
+    expect(cmp.availableTransitions).toEqual(['valider', 'rejeter'] as any);
+  });
+
+  it('n’offre aucune décision dans la corbeille', () => {
+    cmp.showDeleted = true;
+    expect(cmp.availableTransitions).toEqual([]);
+  });
+
+  it('expose le verrou et son message', () => {
+    cmp.ssdgps = ssdgps({ statut: 'valide', statut_display: 'Validé', verrouille: true });
+
+    expect(cmp.isLocked).toBeTrue();
+    expect(cmp.lockMessage).toContain('Validé');
+  });
+
+  it('exige un motif avant de confirmer un rejet', () => {
+    cmp.askTransition('rejeter');
+
+    expect(cmp.canConfirmTransition).toBeFalse();
+
+    cmp.transitionMotif = '   ';
+    expect(cmp.canConfirmTransition).toBeFalse();
+
+    cmp.transitionMotif = 'LPA à reprendre.';
+    expect(cmp.canConfirmTransition).toBeTrue();
+  });
+
+  it('ne demande pas de motif pour une soumission', () => {
+    cmp.askTransition('soumettre');
+
+    expect(cmp.canConfirmTransition).toBeTrue();
+  });
+
+  it('applique la décision et adopte le dossier renvoyé', () => {
+    projectsSvc.transitionSsdgps.and.returnValue(
+      of(ssdgps({ statut: 'soumis', statut_display: 'Soumis à validation', verrouille: true, transitions: [] })));
+    cmp.askTransition('soumettre');
+
+    cmp.confirmTransition();
+
+    expect(projectsSvc.transitionSsdgps).toHaveBeenCalledWith('s1', 'soumettre', '');
+    expect(cmp.ssdgps.statut).toBe('soumis');
+    expect(cmp.isLocked).toBeTrue();
+    expect(cmp.pendingTransition).toBeNull();
+    // Le verrou change ce que l'opérateur peut faire sur chaque pièce.
+    expect(cmp.loadPieces).toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalled();
+  });
+
+  it('transmet le motif saisi', () => {
+    projectsSvc.transitionSsdgps.and.returnValue(of(ssdgps()));
+    cmp.askTransition('rejeter');
+    cmp.transitionMotif = '  Coordonnées à revoir.  ';
+
+    cmp.confirmTransition();
+
+    expect(projectsSvc.transitionSsdgps)
+      .toHaveBeenCalledWith('s1', 'rejeter', 'Coordonnées à revoir.');
+  });
+
+  it('affiche la règle non satisfaite renvoyée par le serveur', () => {
+    projectsSvc.transitionSsdgps.and.returnValue(throwError(() => ({
+      status: 400, error: { detail: '2 pièce(s) ne sont pas validées : ROB (Brouillon).' },
+    })));
+    cmp.askTransition('soumettre');
+
+    cmp.confirmTransition();
+
+    expect(cmp.workflowError).toContain('ne sont pas validées');
+    // La modale reste ouverte : l'opérateur doit lire la raison.
+    expect(cmp.pendingTransition).toBe('soumettre' as any);
+    expect(cmp.workflowBusy).toBeFalse();
+  });
+
+  it('ne confirme rien tant qu’un motif obligatoire manque', () => {
+    cmp.askTransition('rouvrir');
+
+    cmp.confirmTransition();
+
+    expect(projectsSvc.transitionSsdgps).not.toHaveBeenCalled();
+  });
+
+  it('abandonne proprement la décision', () => {
+    cmp.askTransition('rejeter');
+    cmp.transitionMotif = 'x';
+
+    cmp.cancelTransition();
+
+    expect(cmp.pendingTransition).toBeNull();
+    expect(cmp.transitionMotif).toBe('');
+  });
+});

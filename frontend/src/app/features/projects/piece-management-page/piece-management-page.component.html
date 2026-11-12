@@ -40,7 +40,15 @@
     <div class="level-title">
       <span class="level-icon"><i class="fas fa-paperclip"></i></span>
       <div>
-        <h2>Pièces du rapport</h2>
+        <h2>
+          Pièces du rapport
+          <!-- Statut du dossier : la première chose à savoir avant de toucher une pièce -->
+          <span class="statut-badge" *ngIf="ssdgps?.statut"
+                [ngClass]="'statut-' + ssdgps.statut"
+                [title]="dossierStatutTooltip">
+            <i class="fas" [ngClass]="dossierStatutIcon"></i> {{ ssdgps.statut_display }}
+          </span>
+        </h2>
         <p class="subtitle" *ngIf="!loading">
           <strong>Total : </strong>{{ items.length }} | <strong>Filtrés : </strong>{{ filteredItems.length }} | <strong>Sélectionnés : </strong>{{ selectedCount }}
         </p>
@@ -62,9 +70,42 @@
         <i class="fas fa-file-pdf"></i> Rapport PDF
         <span *ngIf="validCount > 0" class="btn-count">{{ validCount }}</span>
       </button>
-      <button class="btn btn-success" *ngIf="!showDeleted" (click)="openAddWizard()"><i class="fas fa-plus-circle"></i> Ajouter</button>
+      <!-- Décisions du cycle de vie : seules celles ouvertes à l'utilisateur -->
+      <button *ngFor="let t of availableTransitions" class="btn"
+              [ngClass]="transitionMeta(t).danger ? 'btn-danger-soft' : 'btn-workflow'"
+              [disabled]="workflowBusy"
+              (click)="askTransition(t)">
+        <i class="fas" [ngClass]="transitionMeta(t).icon"></i> {{ transitionMeta(t).label }}
+      </button>
+      <button class="btn btn-success" *ngIf="!showDeleted" (click)="openAddWizard()"
+              [disabled]="isLocked"
+              [title]="isLocked ? lockMessage : 'Ajouter une pièce'">
+        <i class="fas fa-plus-circle"></i> Ajouter
+      </button>
     </div>
   </header>
+
+  <!-- Dossier figé : dit pourquoi les actions d'écriture ont disparu -->
+  <div class="lock-banner" *ngIf="isLocked">
+    <i class="fas fa-lock"></i>
+    <div>
+      <strong>{{ lockMessage }}</strong>
+      <span class="lock-meta" *ngIf="ssdgps.statut_change_by_email">
+        Décision de {{ ssdgps.statut_change_by_email }}
+        <ng-container *ngIf="ssdgps.statut_change_at"> le {{ formatDate(ssdgps.statut_change_at) }}</ng-container>.
+      </span>
+      <span class="lock-motif" *ngIf="ssdgps.motif_statut">« {{ ssdgps.motif_statut }} »</span>
+    </div>
+  </div>
+
+  <!-- Dossier rejeté : le motif est la consigne de correction -->
+  <div class="reject-banner" *ngIf="!isLocked && ssdgps?.statut === 'en_cours' && ssdgps?.motif_statut">
+    <i class="fas fa-rotate-left"></i>
+    <div>
+      <strong>Dossier renvoyé en saisie</strong>
+      <span class="lock-motif">« {{ ssdgps.motif_statut }} »</span>
+    </div>
+  </div>
 
   <div class="level-tabs">
     <button class="level-tab" [class.active]="!showDeleted" (click)="setTab(false)">
@@ -639,6 +680,48 @@
       <button class="btn btn-report" *ngIf="reportStarted && ((reportProgress >= 100 && !reportError) || reportError)"
               (click)="reportError ? generateReport() : downloadReportFile()">
         <i class="fas" [ngClass]="reportError ? 'fa-rotate-right' : 'fa-download'"></i> {{ reportError ? 'Réessayer' : 'Télécharger' }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== Modale décision du cycle de vie ========== -->
+<div class="modal-overlay" *ngIf="pendingTransition" (click)="cancelTransition()">
+  <div class="modal-content small" (click)="$event.stopPropagation()">
+    <div class="modal-header" [class.danger]="transitionMeta(pendingTransition).danger">
+      <div class="modal-header-left">
+        <span class="header-icon" [class.danger]="transitionMeta(pendingTransition).danger">
+          <i class="fas" [ngClass]="transitionMeta(pendingTransition).icon"></i>
+        </span>
+        <h3>{{ transitionMeta(pendingTransition).label }}</h3>
+      </div>
+      <button class="close-btn" (click)="cancelTransition()" [disabled]="workflowBusy">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p class="confirm-text">{{ transitionQuestion }}</p>
+      <p class="confirm-note" *ngIf="pendingTransition === 'soumettre'">
+        <i class="fas fa-circle-info"></i>
+        Le dossier sera figé pendant le contrôle : ses pièces ne seront plus modifiables.
+      </p>
+      <label class="motif-field" *ngIf="transitionMeta(pendingTransition).motif === 'obligatoire'">
+        <span class="motif-label">Motif <em>(obligatoire)</em></span>
+        <textarea rows="3" [(ngModel)]="transitionMotif"
+                  placeholder="Ce que le rédacteur doit corriger"></textarea>
+      </label>
+      <p class="report-error" *ngIf="workflowError">
+        <i class="fas fa-exclamation-triangle"></i> {{ workflowError }}
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" (click)="cancelTransition()" [disabled]="workflowBusy">Annuler</button>
+      <button class="btn"
+              [ngClass]="transitionMeta(pendingTransition).danger ? 'btn-danger-soft' : 'btn-workflow'"
+              [disabled]="workflowBusy || !canConfirmTransition"
+              (click)="confirmTransition()">
+        <i class="fas" [ngClass]="workflowBusy ? 'fa-spinner fa-spin' : transitionMeta(pendingTransition).icon"></i>
+        Confirmer
       </button>
     </div>
   </div>

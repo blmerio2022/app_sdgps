@@ -29,6 +29,7 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   { field: 'numero_ssdgps', label: 'SSDGPS', visible: true, type: 'number' },
   { field: 'nature_ssdgps', label: 'Nature', visible: true, type: 'text' },
   { field: 'type_ssdgps', label: 'Type', visible: true, type: 'text' },
+  { field: 'statut_display', label: 'Statut', visible: true, type: 'text' },
   { field: 'propriete_label', label: 'Propriété', visible: true, type: 'text' },
   { field: 'affaire_numero', label: 'Affaire (SD)', visible: true, type: 'text' },
   { field: 'nbr_total_sessions', label: 'Sessions', visible: true, type: 'number' },
@@ -50,6 +51,7 @@ const SORTABLE_FIELDS: { field: string; label: string }[] = [
   { field: 'numero_ssdgps', label: 'SSDGPS (numéro)' },
   { field: 'nature_ssdgps', label: 'Nature' },
   { field: 'type_ssdgps', label: 'Type' },
+  { field: 'statut_display', label: 'Statut' },
   { field: 'propriete_label', label: 'Propriété' },
   { field: 'affaire_numero', label: 'Affaire (SD)' },
   { field: 'nbr_total_sessions', label: 'Sessions' },
@@ -65,6 +67,7 @@ const FIELD_DESCRIPTIONS: Record<string, string> = {
   numero_ssdgps: "Numéro d'ordre du SSDGPS dans l'affaire",
   nature_ssdgps: 'Nature du sous-sous-dossier GPS',
   type_ssdgps: 'Mono-session ou multi-session',
+  statut_display: "Statut du dossier : en cours, soumis à validation, validé ou clos",
   propriete_label: 'Propriété de rattachement (titre foncier, sinon réquisition)',
   affaire_numero: "Numéro du SD d'affaire de rattachement",
   nbr_total_sessions: 'Nombre total de sessions rattachées',
@@ -496,6 +499,7 @@ export class ProjectSsdgpsListComponent implements OnInit, OnDestroy {
       case 'propriete_label': return this.proprieteLabel(s) || '—';
       case 'affaire_numero': return s.affaire_numero ? `SD ${s.affaire_numero}` : '—';
       case 'type_ssdgps': return s.type_ssdgps === 'multi-session' ? 'Multi-session' : 'Mono-session';
+      case 'statut_display': return s.statut_display || 'En cours';
       case 'created_at': case 'updated_at': case 'deleted_at': return this.formatDate((s as any)[field]);
       case 'is_deleted': return s.is_deleted ? 'Oui' : 'Non';
       default: { const v = (s as any)[field]; return v == null || v === '' ? '—' : String(v); }

@@ -664,7 +664,8 @@ class PieceFieldsConfigResetView(APIView):
 
 # Colonnes triables du tableau de la liste des SSDGPS (allowlist de validation serveur).
 SSDGPS_SORT_FIELDS = {
-    'numero_ssdgps', 'nature_ssdgps', 'type_ssdgps', 'propriete_label', 'affaire_numero',
+    'numero_ssdgps', 'nature_ssdgps', 'type_ssdgps', 'statut_display',
+    'propriete_label', 'affaire_numero',
     'nbr_total_sessions', 'nbr_total_pieces', 'propriete_nom', 'propriete_id_titre',
     'propriete_id_requisition', 'created_at', 'updated_at',
 }
@@ -1082,7 +1083,8 @@ TABLE_COLUMN_FIELDS = {
     },
     # Liste des SSDGPS d'un projet (features/projects/project-ssdgps-list).
     'ssdgps': {
-        'numero_ssdgps', 'nature_ssdgps', 'type_ssdgps', 'propriete_label', 'affaire_numero',
+        'numero_ssdgps', 'nature_ssdgps', 'type_ssdgps', 'statut_display',
+        'propriete_label', 'affaire_numero',
         'nbr_total_sessions', 'nbr_total_pieces', 'propriete_nom', 'propriete_id_titre',
         'propriete_id_requisition', 'created_at', 'updated_at', 'is_deleted', 'deleted_at',
         'created_by_email', 'updated_by_email', 'deleted_by_email',

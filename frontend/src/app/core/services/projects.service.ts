@@ -3,7 +3,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { environment } from '../../../environments/environment';
-import { Projet, Propriete, Affaire, Ssdgps, Session } from '../models/project.model';
+import { Projet, Propriete, Affaire, Ssdgps, Session, SsdgpsTransition } from '../models/project.model';
 
 /**
  * Service CRUD du domaine métier (projets, propriétés, affaires, ssdgps, sessions).
@@ -78,6 +78,17 @@ export class ProjectsService {
   createSsdgps(s: Partial<Ssdgps>): Observable<Ssdgps> { return this.http.post<Ssdgps>(`${this.base}ssdgps/`, s); }
   updateSsdgps(id: string, s: Partial<Ssdgps>): Observable<Ssdgps> { return this.http.patch<Ssdgps>(`${this.base}ssdgps/${id}/`, s); }
   deleteSsdgps(id: string): Observable<void> { return this.http.delete<void>(`${this.base}ssdgps/${id}/`); }
+  /**
+   * Fait avancer un SDGPS dans son cycle de vie : en cours → soumis → validé → clos,
+   * avec rejet et réouverture en retour (cf. backend `projects/workflow.py`).
+   *
+   * Endpoint dédié, et non un `PATCH statut` : chaque passage porte ses règles (toutes
+   * les pièces validées pour soumettre, motif pour rejeter) et son contrôle de rôle.
+   * `motif` est obligatoire pour `rejeter` et `rouvrir`.
+   */
+  transitionSsdgps(id: string, action: SsdgpsTransition, motif = ''): Observable<Ssdgps> {
+    return this.http.post<Ssdgps>(`${this.base}ssdgps/${id}/transition/`, { action, motif });
+  }
   restoreSsdgps(id: string): Observable<Ssdgps> { return this.restore('ssdgps', id); }
   bulkRestoreSsdgps(ids: string[]): Observable<{ restored_count: number }> { return this.bulkRestore('ssdgps', ids); }
 

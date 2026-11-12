@@ -678,6 +678,7 @@ class AuditEvent(models.Model):
     ACTION_ROLE_MODIFIE = 'ROLE_CHANGED'
     ACTION_MEMBRE_AJOUTE = 'MEMBER_ADDED'
     ACTION_RAPPORT_GENERE = 'REPORT_GENERATED'
+    ACTION_SSDGPS_STATUT = 'SSDGPS_STATUS_CHANGED'
     ACTION_SUPPRESSION_DEFINITIVE = 'PERMANENT_DELETE'
 
     ACTIONS = [
@@ -690,6 +691,7 @@ class AuditEvent(models.Model):
         (ACTION_ROLE_MODIFIE, 'Rôle modifié'),
         (ACTION_MEMBRE_AJOUTE, 'Membre rattaché à une organisation'),
         (ACTION_RAPPORT_GENERE, 'Rapport généré'),
+        (ACTION_SSDGPS_STATUT, 'Statut de SDGPS modifié'),
         (ACTION_SUPPRESSION_DEFINITIVE, 'Suppression définitive'),
     ]
 

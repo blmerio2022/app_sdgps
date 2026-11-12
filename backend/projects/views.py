@@ -4,6 +4,8 @@ Vues API du domaine métier — CRUD avec scoping RBAC par organisation.
 Portée : Admin Système / Super Admin → tout ; Admin Org & Agent → entités de leur(s)
 organisation(s). Suppression = soft-delete. `created_by` renseigné automatiquement.
 """
+from django.core.exceptions import (PermissionDenied as DjangoPermissionDenied,
+                                    ValidationError as DjangoValidationError)
 from django.db.models import Count, F, Q, QuerySet
 from django.utils import timezone
 from rest_framework import viewsets, permissions, status
@@ -11,7 +13,10 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
+from accounts.audit import journaliser
+from accounts.models import AuditEvent
 from .models import Projet, Propriete, Affaire, Ssdgps, Session
+from .workflow import appliquer_transition, transitions_possibles
 from .serializers import (
     ProjetSerializer, ProprieteSerializer, AffaireSerializer,
     SsdgpsSerializer, SessionSerializer,
@@ -413,6 +418,42 @@ class SsdgpsViewSet(BaseOrgScopedViewSet):
                 distinct=True),
             **cumul_pieces_annotations(),
         ).annotate(nbr_total_pieces=CUMUL_PIECES_TOTAL)
+
+    @action(detail=True, methods=['post'], url_path='transition')
+    def transition(self, request, pk=None):
+        """
+        POST /api/v1/ssdgps/<id>/transition/ — `{"action": "soumettre", "motif": "…"}`
+
+        Fait avancer le dossier dans son cycle de vie (cf. `projects/workflow.py`) :
+        en cours → soumis → validé → clos, avec rejet et réouverture en retour.
+
+        Pourquoi un endpoint dédié plutôt qu'un `PATCH statut` : chaque passage porte des
+        règles (pièces toutes validées pour soumettre, motif pour rejeter) et un contrôle
+        de rôle propre. Les laisser à un champ libre reviendrait à ne pas les avoir.
+        """
+        ssdgps = self.get_object()
+        projet = ssdgps.affaire.propriete.projet
+
+        nom = (request.data.get('action') or '').strip()
+        motif = request.data.get('motif') or ''
+        try:
+            ancien, nouveau = appliquer_transition(
+                ssdgps, nom, request.user, projet.organization_id, motif=motif)
+        except DjangoValidationError as exc:
+            return Response({'detail': ' '.join(exc.messages)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except DjangoPermissionDenied as exc:
+            raise PermissionDenied(str(exc))
+
+        # Journalisé : qui a prononcé quoi, quand, et pourquoi. Les colonnes d'audit ne
+        # gardent que le DERNIER auteur — elles ne diraient pas qu'un dossier a été
+        # rejeté puis revalidé (cf. `accounts/audit.py`).
+        journaliser(
+            AuditEvent.ACTION_SSDGPS_STATUT, request=request, cible=ssdgps,
+            cible_libelle=str(ssdgps), transition=nom,
+            statut_avant=ancien, statut_apres=nouveau, motif=motif.strip() or None,
+        )
+        return Response(self.get_serializer(ssdgps).data)
 
 
 class SessionViewSet(BaseOrgScopedViewSet):
