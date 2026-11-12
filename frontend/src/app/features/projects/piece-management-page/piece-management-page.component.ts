@@ -2,6 +2,7 @@ import { formatDateTime, formatFieldDate } from '../../../shared/utils/date-form
 import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from '../../../shared/components/table-pagination/table-pagination.component';
 import { Component, HostListener, OnInit, ViewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { forkJoin, of } from 'rxjs';
 import { catchError, map } from 'rxjs/operators';
 import { ProjectsService } from '../../../core/services/projects.service';
@@ -174,6 +175,7 @@ export class PieceManagementPageComponent implements OnInit {
     private breadcrumb: BreadcrumbService,
     private sortConfigService: TableSortConfigService,
     private columnsConfigService: TableColumnsConfigService,
+    private sanitizer: DomSanitizer,
   ) {}
 
   private projet: Projet | null = null;
@@ -217,6 +219,7 @@ export class PieceManagementPageComponent implements OnInit {
     this.breadcrumb.clear();
     if (this.boundHandleClickOutside) document.removeEventListener('click', this.boundHandleClickOutside);
     this.stopReportTimer();
+    this.revokeCoverPreview();
   }
 
   /**
@@ -1026,6 +1029,70 @@ export class PieceManagementPageComponent implements OnInit {
     this.showReportModal = false;
     this.reportStarted = false;
     this.reportBlob = null;
+    this.closeCoverPreview();
+  }
+
+  // ============================================
+  // Aperçu de la page de garde (avant génération)
+  // ============================================
+  /** Affiche la modale d'aperçu par-dessus la configuration du rapport. */
+  showCoverPreview = false;
+  coverPreviewLoading = false;
+  coverPreviewError = '';
+  /** URL blob du PDF d'aperçu, assainie pour l'`<iframe>`. */
+  coverPreviewUrl: SafeResourceUrl | null = null;
+  private coverPreviewObjectUrl: string | null = null;
+
+  /**
+   * Demande l'aperçu de la page de garde avec la portée et le mode actuellement choisis.
+   *
+   * La page de garde est la table des matières du rapport : c'est là que se voient une
+   * pièce oubliée, un intitulé fautif ou un ordre inattendu. La découvrir après plusieurs
+   * minutes de rendu coûte une génération complète pour rien — d'où cet aperçu, qui ne
+   * rend que cette page (le serveur n'y assemble aucun contenu de pièce).
+   */
+  previewReportCover(): void {
+    if (this.coverPreviewLoading || !this.canGenerateReport) return;
+    this.revokeCoverPreview();
+    this.showCoverPreview = true;
+    this.coverPreviewLoading = true;
+    this.coverPreviewError = '';
+
+    const range = this.reportRange;
+    this.piecesService.previewReportCover(
+      this.ssdgps.id,
+      range ? null : (this.currentSessionId || undefined),
+      this.reportDuplex,
+      range,
+    ).subscribe({
+      next: (res) => {
+        const blob = this.base64ToBlob(res.data, res.content_type || 'application/pdf');
+        this.coverPreviewObjectUrl = URL.createObjectURL(blob);
+        this.coverPreviewUrl = this.sanitizer.bypassSecurityTrustResourceUrl(
+          this.coverPreviewObjectUrl);
+        this.coverPreviewLoading = false;
+      },
+      error: (err) => {
+        this.coverPreviewLoading = false;
+        this.coverPreviewError = PieceManagementPageComponent.reportErrorMessage(err);
+      },
+    });
+  }
+
+  closeCoverPreview(): void {
+    this.showCoverPreview = false;
+    this.coverPreviewLoading = false;
+    this.coverPreviewError = '';
+    this.revokeCoverPreview();
+  }
+
+  /** Libère l'URL blob : un aperçu laissé en mémoire retient tout le PDF. */
+  private revokeCoverPreview(): void {
+    if (this.coverPreviewObjectUrl) {
+      URL.revokeObjectURL(this.coverPreviewObjectUrl);
+      this.coverPreviewObjectUrl = null;
+    }
+    this.coverPreviewUrl = null;
   }
 
 

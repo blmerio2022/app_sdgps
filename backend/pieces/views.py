@@ -28,7 +28,7 @@ from projects.views import scope_queryset, is_scope_visible
 from .catalog import (serialize_catalog, get_piece_def, champs_with_meta, valid_field_names,
                       import_visible_names)
 from .report import (EXCLUDED_TYPES, PHOTO_TYPES, order_pieces_for_synthesis,
-                     render_report_pdf, report_filename,
+                     render_report_pdf, render_cover_pdf, report_filename,
                      _sorted_only, _sorted_renumbered, sort_versions)
 from .imaging import extract_image_metadata, make_png_preview, NON_WEB_FORMATS
 from .models import Piece, PieceImage, RapportGeneration
@@ -1377,6 +1377,65 @@ class PieceViewSet(viewsets.ModelViewSet):
         # réserve `format` à la négociation de contenu (`URL_FORMAT_OVERRIDE`) et
         # renvoie 404 pour un format inconnu AVANT même d'entrer dans la vue. Le flux
         # binaire était donc inaccessible depuis l'origine.
+        if not _veut_le_flux_brut(request):
+            import base64
+            return Response({
+                'filename': filename,
+                'content_type': 'application/pdf',
+                'data': base64.b64encode(pdf_bytes).decode('ascii'),
+            })
+
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        response['X-Content-Type-Options'] = 'nosniff'
+        return response
+
+    @action(detail=False, methods=['get'], url_path='report-cover')
+    def report_cover(self, request):
+        """
+        GET /api/v1/pieces/report-cover/?ssdgps=<uuid>[&session=…|&session_from=…&session_to=…][&duplex=1]
+
+        Prévisualise la SEULE page de garde du rapport, en PDF. Mêmes paramètres, mêmes
+        contrôles et même portée que `report/` — c'est la même résolution.
+
+        À quoi cela sert : la page de garde est la table des matières officielle du
+        rapport (ordre, numérotation, désignations, observations). C'est là que se voient
+        une pièce oubliée, un intitulé fautif ou un ordre inattendu. La découvrir après
+        plusieurs minutes de rendu coûte une génération complète pour rien.
+
+        Le rendu ne touche PAS au contenu des pièces (`avec_contenu=False`) : il reste de
+        l'ordre de la seconde, d'où un endpoint synchrone là où le rapport complet passe
+        par une tâche de fond.
+
+        Pas de journal d'audit ici : l'aperçu n'expose que la liste de pièces d'un SSDGPS
+        que l'opérateur consulte déjà à l'écran, et ne produit aucun document exploitable
+        hors de l'application. La génération du rapport, elle, reste journalisée.
+        """
+        contexte, erreur = self._resoudre_portee_rapport(request)
+        if erreur is not None:
+            return erreur
+        ssdgps = contexte['ssdgps']
+
+        try:
+            pdf_bytes = render_cover_pdf(ssdgps, contexte['session'], contexte['pieces'],
+                                         duplex=contexte['duplex'])
+        except RuntimeError as exc:
+            logger.error("Aperçu de page de garde indisponible (SSDGPS %s) : %s", ssdgps.pk, exc)
+            return Response({'detail': str(exc)}, status=status.HTTP_501_NOT_IMPLEMENTED)
+        except Exception as exc:
+            logger.exception("Échec de l'aperçu de la page de garde (SSDGPS %s)", ssdgps.pk)
+            return Response(
+                {'detail': "Échec de l'aperçu de la page de garde : "
+                           f'{type(exc).__name__} — {exc}. '
+                           'Le détail complet figure dans les journaux du serveur.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        filename = 'APERCU_' + report_filename(
+            ssdgps, contexte['session'], sessions=contexte['sessions_plage'])
+
+        # Même transport que `report/` : JSON base64 par défaut (un gestionnaire de
+        # téléchargement externe ne peut pas intercepter la requête XHR), flux binaire
+        # sur `?brut=1`.
         if not _veut_le_flux_brut(request):
             import base64
             return Response({

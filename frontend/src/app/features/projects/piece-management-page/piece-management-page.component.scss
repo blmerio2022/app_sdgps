@@ -482,6 +482,26 @@
   }
 }
 
+/* ---------- Modale aperçu de la page de garde ----------
+   Large et haute : on y lit une page A4 entière, pas un extrait. La modale se superpose
+   à celle du rapport (z-index au-dessus), qui garde la configuration choisie. */
+.cover-preview-overlay { z-index: 1100; }
+.modal-content.cover-preview {
+  max-width: 900px; max-height: 94vh;
+  .cover-preview-body { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .cover-preview-hint {
+    display: flex; align-items: flex-start; gap: 8px; margin: 0;
+    font-size: 12.5px; color: var(--text-muted); background: var(--hover-bg);
+    padding: 10px 12px; border-radius: 8px;
+    i { color: #3498db; margin-top: 2px; }
+  }
+  /* A4 portrait : la hauteur suit le ratio pour éviter une bande vide sous la page. */
+  .cover-preview-frame {
+    width: 100%; height: 62vh; min-height: 0; border: 1px solid var(--border-color);
+    border-radius: 8px; background: #fff;
+  }
+}
+
 /* ---------- Modale rapport PDF : barre de progression ---------- */
 .report-status {
   display: flex; align-items: center; gap: 8px; margin: 0 0 14px; font-size: 14px; color: var(--text-color);

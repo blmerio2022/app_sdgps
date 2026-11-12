@@ -454,6 +454,31 @@ export class PiecesService {
     return this.http.post<RapportGeneration>(`${this.base}report-async/`, {}, { params });
   }
 
+  /**
+   * Aperçu de la seule PAGE DE GARDE du rapport, en PDF base64 (même transport que
+   * `downloadReport`).
+   *
+   * Mêmes paramètres de portée que le rapport complet : c'est la même résolution côté
+   * serveur. Le contenu des pièces n'étant pas rendu, la réponse arrive en une seconde
+   * — d'où un appel synchrone là où le rapport passe par une tâche de fond. La colonne
+   * « Page » y reste vide : le n° de page d'une pièce suppose la pagination de tout le
+   * rapport.
+   */
+  previewReportCover(ssdgpsId: string, sessionId?: string | null, duplex = false,
+                     sessionRange?: { from: string; to: string } | null):
+      Observable<{ filename: string; content_type: string; data: string }> {
+    let params = new HttpParams().set('ssdgps', ssdgpsId);
+    if (sessionRange) {
+      params = params.set('session_from', sessionRange.from)
+                     .set('session_to', sessionRange.to);
+    } else if (sessionId) {
+      params = params.set('session', sessionId);
+    }
+    if (duplex) params = params.set('duplex', '1');
+    return this.http.get<{ filename: string; content_type: string; data: string }>(
+      `${this.base}report-cover/`, { params });
+  }
+
   /** État courant d'une génération (sondé pendant le rendu). */
   getReportJob(id: string): Observable<RapportGeneration> {
     return this.http.get<RapportGeneration>(`${this.rapportsBase}${id}/`);

@@ -819,10 +819,16 @@ def report_foot_prefix(ssdgps, session_numero=None) -> str:
     ) if p)
 
 
-def build_report_context(ssdgps, session, pieces, sort_config=None, fields_config=None):
+def build_report_context(ssdgps, session, pieces, sort_config=None, fields_config=None,
+                         avec_contenu=True):
     """Assemble le contexte de rendu du template `pieces/report.html`. `sort_config` =
     préférences de tri de l'opérateur ({ type_piece: {field, dir} }). `fields_config` =
-    préférences de colonnes de l'opérateur (vue PDF), cf. CustomUser.piece_fields_config."""
+    préférences de colonnes de l'opérateur (vue PDF), cf. CustomUser.piece_fields_config.
+
+    `avec_contenu=False` n'assemble QUE l'en-tête et les lignes de la page de garde, sans
+    rendre le contenu des pièces (`_piece_content` : tableaux, images encodées, photos de
+    points — l'essentiel du coût du rapport). C'est ce qui rend la prévisualisation de la
+    page de garde quasi instantanée là où le rapport complet demande des minutes."""
     affaire = ssdgps.affaire
     propriete = affaire.propriete
     projet = propriete.projet
@@ -924,6 +930,10 @@ def build_report_context(ssdgps, session, pieces, sort_config=None, fields_confi
             # `render_report_pdf` avant le rendu de la page de garde.
             'page': None,
         })
+        if not avec_contenu:
+            # Prévisualisation de la page de garde : les lignes ci-dessus suffisent.
+            continue
+
         landscape = resolve_orientation(piece, ssdgps) == 'paysage'
         rendered.append({
             'index': index,
@@ -960,6 +970,38 @@ def _avancer(on_progress, faites, total, etape):
         import logging
 
         logging.getLogger(__name__).exception("Échec du suivi de progression du rapport")
+
+
+def build_cover_context(ssdgps, session, pieces):
+    """Contexte de la SEULE page de garde (en-tête + lignes + total), sans contenu de pièce."""
+    return build_report_context(ssdgps, session, pieces, avec_contenu=False)
+
+
+def render_cover_pdf(ssdgps, session, pieces, duplex=False):
+    """Rend la seule PAGE DE GARDE en PDF (bytes) — prévisualisation avant génération.
+
+    Même gabarit, même en-tête et même tableau que le rapport complet : l'opérateur voit
+    exactement la page qu'il obtiendra, et peut corriger un intitulé, un ordre ou une
+    pièce oubliée avant d'engager plusieurs minutes de rendu.
+
+    Une seule différence, assumée : la colonne « Page » reste à « — ». Le numéro de page
+    d'une pièce dans le rapport assemblé dépend de la pagination de TOUTES les pièces,
+    qu'il faudrait précisément rendre pour la connaître (cf. `render_report_pdf`, boucle
+    de convergence). L'annoncer vide est honnête ; l'inventer ne le serait pas.
+    """
+    check_pdf_toolchain()
+    from weasyprint import HTML
+
+    context = build_cover_context(ssdgps, session, pieces)
+    html = render_to_string('pieces/report.html', {
+        'header': context['header'],
+        'mode': 'cover',
+        'foot_prefix': report_foot_prefix(ssdgps, context['header']['session_numero']),
+        'duplex': duplex,
+        'cover_rows': context['cover_rows'],
+        'total': context['total'],
+    })
+    return HTML(string=html).write_pdf()
 
 
 def render_report_pdf(ssdgps, session, pieces, sort_config=None, fields_config=None,

@@ -21,6 +21,7 @@ describe('PieceManagementPageComponent (logique)', () => {
     const columnsStub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
     cmp = new PieceManagementPageComponent(
       {} as any, {} as any, {} as any, router as any, {} as any, {} as any, sortStub, columnsStub,
+      {} as any,  // DomSanitizer (aperçu de la page de garde)
     );
     (cmp as any).projectId = 'p1';
     cmp.ssdgps = { id: 's1', numero_ssdgps: 3, type_ssdgps: 'mono-session' } as any;
@@ -240,6 +241,7 @@ describe('PieceManagementPageComponent (suppression définitive)', () => {
     const columnsStub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
     cmp = new PieceManagementPageComponent(
       {} as any, piecesService, toast, { navigate: () => {} } as any, {} as any, {} as any, sortStub, columnsStub,
+      {} as any,  // DomSanitizer (aperçu de la page de garde)
     );
     spyOn(cmp, 'loadPieces');
   });
@@ -277,6 +279,7 @@ describe('PieceManagementPageComponent (tri multi-niveaux de la liste)', () => {
     const columnsStub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
     cmp = new PieceManagementPageComponent(
       {} as any, {} as any, toast, { navigate: () => {} } as any, {} as any, {} as any, sortSvc, columnsStub,
+      {} as any,  // DomSanitizer (aperçu de la page de garde)
     );
   });
   afterEach(() => localStorage.clear());
@@ -331,6 +334,7 @@ describe('PieceManagementPageComponent (config colonnes)', () => {
     cmp = new PieceManagementPageComponent(
       {} as any, {} as any, toast, { navigate: () => {} } as any, {} as any, {} as any,
       { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any, columnsSvc,
+      {} as any,  // DomSanitizer (aperçu de la page de garde)
     );
   });
   afterEach(() => localStorage.clear());
@@ -448,6 +452,7 @@ describe('PieceManagementPageComponent — rapport de synthèse', () => {
     // Ordre réel du constructeur : projects, pieces, toast, router, route, breadcrumb, …
     cmp = new PieceManagementPageComponent(
       {} as any, piecesSvc as any, {} as any, router as any, {} as any, {} as any, stub, stub,
+      {} as any,  // DomSanitizer (aperçu de la page de garde)
     );
     cmp.ssdgps = { id: 's1', numero_ssdgps: 2, type_ssdgps: 'multi-session' } as any;
     cmp.sessions = sessions;
@@ -551,6 +556,7 @@ describe('PieceManagementPageComponent (statut modifiable dans la liste)', () =>
     cmp = new PieceManagementPageComponent(
       {} as any, piecesSvc as any, toast as any, {} as any, {} as any, {} as any,
       sortStub, columnsStub,
+      {} as any,  // DomSanitizer (aperçu de la page de garde)
     );
   });
 
@@ -643,6 +649,7 @@ describe('PieceManagementPageComponent — rapport en tâche de fond', () => {
     const stub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
     cmp = new PieceManagementPageComponent(
       {} as any, piecesSvc as any, {} as any, router as any, {} as any, {} as any, stub, stub,
+      {} as any,  // DomSanitizer (aperçu de la page de garde)
     );
     cmp.ssdgps = { id: 's1', numero_ssdgps: 2, type_ssdgps: 'mono-session' } as any;
     cmp.sessions = [];
@@ -769,5 +776,112 @@ describe('PieceManagementPageComponent — rapport en tâche de fond', () => {
     cmp.generateReport();
 
     expect(piecesSvc.startReport).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Aperçu de la page de garde.
+ *
+ * La page de garde est la table des matières du rapport : ordre, numérotation,
+ * désignations. Une pièce oubliée ou un intitulé fautif s'y voient — mais les découvrir
+ * après plusieurs minutes de rendu coûte une génération complète pour rien. L'aperçu ne
+ * rend que cette page, avec la portée et le mode déjà choisis dans la modale.
+ */
+describe('PieceManagementPageComponent — aperçu de la page de garde', () => {
+  let cmp: PieceManagementPageComponent;
+  let piecesSvc: jasmine.SpyObj<{ previewReportCover: any }>;
+
+  const REPONSE = { data: '', content_type: 'application/pdf', filename: 'APERCU_x.pdf' };
+
+  beforeEach(() => {
+    piecesSvc = jasmine.createSpyObj('PiecesService', ['previewReportCover']);
+    piecesSvc.previewReportCover.and.returnValue(of(REPONSE));
+    const sanitizer = { bypassSecurityTrustResourceUrl: (u: string) => u } as any;
+    const stub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
+    cmp = new PieceManagementPageComponent(
+      {} as any, piecesSvc as any, {} as any, { navigate: () => {} } as any,
+      {} as any, {} as any, stub, stub, sanitizer,
+    );
+    cmp.ssdgps = { id: 's1', numero_ssdgps: 2, type_ssdgps: 'multi-session' } as any;
+    cmp.sessions = [
+      { id: 'sess-1', numero_session: 1 } as any,
+      { id: 'sess-2', numero_session: 2 } as any,
+    ];
+  });
+
+  afterEach(() => localStorage.clear());
+
+  it('ouvre la modale et expose une URL d’aperçu', () => {
+    cmp.previewReportCover();
+
+    expect(cmp.showCoverPreview).toBeTrue();
+    expect(cmp.coverPreviewLoading).toBeFalse();
+    expect(cmp.coverPreviewUrl).toBeTruthy();
+    expect(cmp.coverPreviewError).toBe('');
+  });
+
+  it('transmet la session courante et le mode d’impression choisis', () => {
+    cmp.currentSessionId = 'sess-1';
+    cmp.reportDuplex = true;
+
+    cmp.previewReportCover();
+
+    const [ssdgps, session, duplex, range] = piecesSvc.previewReportCover.calls.mostRecent().args;
+    expect(ssdgps).toBe('s1');
+    expect(session).toBe('sess-1');
+    expect(duplex).toBeTrue();
+    expect(range).toBeNull();
+  });
+
+  it('transmet la plage en mode synthèse, sans session', () => {
+    cmp.currentSessionId = 'sess-1';
+    cmp.reportScope = 'synthese';
+    cmp.reportSessionFrom = 'sess-1';
+    cmp.reportSessionTo = 'sess-2';
+
+    cmp.previewReportCover();
+
+    const [, session, , range] = piecesSvc.previewReportCover.calls.mostRecent().args;
+    expect(session).toBeNull();
+    expect(range).toEqual({ from: 'sess-1', to: 'sess-2' });
+  });
+
+  it('ne demande rien tant que la plage de synthèse est incomplète', () => {
+    cmp.reportScope = 'synthese';
+    cmp.reportSessionFrom = 'sess-1';
+    cmp.reportSessionTo = null;
+
+    cmp.previewReportCover();
+
+    expect(piecesSvc.previewReportCover).not.toHaveBeenCalled();
+    expect(cmp.showCoverPreview).toBeFalse();
+  });
+
+  it('affiche le message du serveur en cas d’échec', () => {
+    piecesSvc.previewReportCover.and.returnValue(
+      throwError(() => ({ status: 501, error: { detail: 'WeasyPrint indisponible' } })));
+
+    cmp.previewReportCover();
+
+    expect(cmp.coverPreviewError).toBe('WeasyPrint indisponible');
+    expect(cmp.coverPreviewUrl).toBeNull();
+    expect(cmp.coverPreviewLoading).toBeFalse();
+  });
+
+  it('libère l’aperçu à la fermeture', () => {
+    cmp.previewReportCover();
+
+    cmp.closeCoverPreview();
+
+    expect(cmp.showCoverPreview).toBeFalse();
+    expect(cmp.coverPreviewUrl).toBeNull();
+  });
+
+  it('ferme aussi l’aperçu quand on ferme la modale du rapport', () => {
+    cmp.previewReportCover();
+
+    cmp.closeReportModal();
+
+    expect(cmp.showCoverPreview).toBeFalse();
   });
 });

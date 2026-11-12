@@ -584,6 +584,13 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" (click)="closeReportModal()" [disabled]="reportGenerating">Fermer</button>
+      <!-- Config : voir la page de garde avant d'engager plusieurs minutes de rendu -->
+      <button class="btn btn-secondary" *ngIf="!reportStarted" (click)="previewReportCover()"
+              [disabled]="!canGenerateReport || coverPreviewLoading"
+              title="Voir la page de garde (liste des pièces) sans générer tout le rapport">
+        <i class="fas" [ngClass]="coverPreviewLoading ? 'fa-spinner fa-spin' : 'fa-eye'"></i>
+        Aperçu de la page de garde
+      </button>
       <!-- Config : lancer la génération -->
       <button class="btn btn-report" *ngIf="!reportStarted" (click)="generateReport()"
               [disabled]="!canGenerateReport"
@@ -598,6 +605,38 @@
               (click)="reportError ? generateReport() : downloadReportFile()">
         <i class="fas" [ngClass]="reportError ? 'fa-rotate-right' : 'fa-download'"></i> {{ reportError ? 'Réessayer' : 'Télécharger' }}
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== Modale aperçu de la page de garde ========== -->
+<div class="modal-overlay cover-preview-overlay" *ngIf="showCoverPreview" (click)="closeCoverPreview()">
+  <div class="modal-content cover-preview" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-header-left">
+        <span class="header-icon"><i class="fas fa-eye"></i></span>
+        <h3>Aperçu de la page de garde</h3>
+      </div>
+      <button class="close-btn" (click)="closeCoverPreview()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body cover-preview-body">
+      <p class="cover-preview-hint">
+        <i class="fas fa-circle-info"></i>
+        Page de garde seule, telle qu'elle sortira dans le rapport. La colonne
+        « Page » n'est renseignée qu'à la génération complète : elle dépend de la
+        pagination de toutes les pièces.
+      </p>
+      <p class="report-status" *ngIf="coverPreviewLoading">
+        <i class="fas fa-spinner fa-spin"></i> Préparation de l'aperçu…
+      </p>
+      <p class="report-error" *ngIf="coverPreviewError">
+        <i class="fas fa-exclamation-triangle"></i> {{ coverPreviewError }}
+      </p>
+      <iframe class="cover-preview-frame" *ngIf="coverPreviewUrl && !coverPreviewError"
+              [src]="coverPreviewUrl" title="Aperçu de la page de garde"></iframe>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" (click)="closeCoverPreview()">Fermer</button>
     </div>
   </div>
 </div>

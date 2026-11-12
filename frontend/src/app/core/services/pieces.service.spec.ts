@@ -109,6 +109,32 @@ describe('PiecesService', () => {
   });
 
   /**
+   * Aperçu de la page de garde : même portée que le rapport, sur un endpoint dédié qui
+   * ne rend que cette page — l'opérateur vérifie la liste des pièces avant d'engager
+   * plusieurs minutes de rendu.
+   */
+  describe('previewReportCover()', () => {
+    it('porte sur report-cover/ avec la session et le mode choisis', () => {
+      service.previewReportCover('s1', 'sess-2', true).subscribe();
+      const req = httpMock.expectOne(r => r.url === `${BASE}report-cover/`);
+      expect(req.request.method).toBe('GET');
+      expect(req.request.params.get('ssdgps')).toBe('s1');
+      expect(req.request.params.get('session')).toBe('sess-2');
+      expect(req.request.params.get('duplex')).toBe('1');
+      req.flush({});
+    });
+
+    it('envoie la plage en mode synthèse, sans session', () => {
+      service.previewReportCover('s1', 'sess-2', false, { from: 'a', to: 'b' }).subscribe();
+      const req = httpMock.expectOne(r => r.url === `${BASE}report-cover/`);
+      expect(req.request.params.get('session')).toBeNull();
+      expect(req.request.params.get('session_from')).toBe('a');
+      expect(req.request.params.get('session_to')).toBe('b');
+      req.flush({});
+    });
+  });
+
+  /**
    * Génération en tâche de fond : la demande rend la main tout de suite, puis l'état
    * est sondé jusqu'au terme. Le rendu dure des dizaines de secondes à plusieurs
    * minutes — en synchrone il immobilisait un worker du serveur et dépassait son délai.

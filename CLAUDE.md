@@ -179,6 +179,29 @@ serveur sur un gros SDGPS, et ne pouvait afficher qu'une barre **simulée** bloq
   n'a jamais pu fonctionner) ;
 - tests : `backend/pieces/tests_rapport_async.py`.
 
+**Aperçu de la page de garde (avant génération).** `GET /api/v1/pieces/report-cover/`
+rend la **seule** page de garde en PDF, avec les mêmes paramètres, la même portée et les
+mêmes contrôles que `report/` (c'est la même `_resoudre_portee_rapport`). Elle est la
+table des matières officielle du rapport : une pièce oubliée, un intitulé fautif ou un
+ordre inattendu s'y voient, et les découvrir après plusieurs minutes de rendu coûte une
+génération complète pour rien.
+- le rendu passe par `report.render_cover_pdf(...)` → `build_cover_context(...)` =
+  `build_report_context(..., avec_contenu=False)` : le contenu des pièces
+  (`_piece_content` — tableaux, images encodées, photos de points), qui fait l'essentiel
+  du coût, n'est **pas** assemblé. D'où un endpoint **synchrone** ;
+- la colonne « Page » y reste à « — » : le n° de page d'une pièce dépend de la pagination
+  de tout le rapport (boucle de convergence de `render_report_pdf`). L'inventer serait
+  trompeur ;
+- transport identique à `report/` : JSON base64 par défaut, flux binaire sur `?brut=1` ;
+  nom de fichier préfixé `APERCU_` ;
+- **non journalisé** : l'aperçu n'expose que la liste de pièces déjà affichée à l'écran et
+  ne produit aucun document exploitable hors de l'application. La **génération**, elle,
+  reste journalisée (`ACTION_RAPPORT_GENERE`) ;
+- front : bouton « Aperçu de la page de garde » dans la modale *Rapport PDF* (écran de
+  configuration) → modale d'aperçu avec `<iframe>` sur un blob PDF ;
+- tests : `backend/pieces/tests_rapport_apercu.py`, `pieces.service.spec.ts`,
+  `piece-management-page.component.spec.ts`.
+
 **Journal d'audit (`accounts.models.AuditEvent`).** Les 7 colonnes d'audit disent qui a
 touché une ligne **en dernier** ; elles ne disent pas ce qui a changé et ne gardent aucune
 trace des actions qui ne modifient rien. Le journal, lui, enregistre QUI / QUOI / QUAND,
