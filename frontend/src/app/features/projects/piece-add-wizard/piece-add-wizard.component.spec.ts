@@ -739,3 +739,41 @@ describe('PieceAddWizardComponent (logique)', () => {
     expect(spy).toHaveBeenCalled();
   });
 });
+
+describe('PieceAddWizardComponent — type imposé par l’hôte (assistant SDGPS)', () => {
+  let cmp: PieceAddWizardComponent;
+  const stubs = () => ({ get: () => of({}) });
+
+  beforeEach(() => {
+    cmp = new PieceAddWizardComponent({} as any, jasmine.createSpyObj('ToastService', ['success', 'error']) as any,
+      new FormBuilder(), stubs() as any, stubs() as any);
+    cmp.ssdgps = { id: 's1', type_ssdgps: 'mono-session', nature_ssdgps: 'PDC/GPS' } as any;
+    cmp.catalog = [{ code: 'LPA', nom: 'Liste', source: 'manuel', natures: 'toutes', champs: [] } as any];
+    cmp.existingPieces = [];
+  });
+
+  it('presetTypeCode saute l’étape « Type »', () => {
+    const emitted = jasmine.createSpy('typeSelected');
+    cmp.typeSelected.subscribe(emitted);
+    cmp.presetTypeCode = 'LPA';
+    cmp.ngOnInit();
+    expect(cmp.selectedType?.code).toBe('LPA');
+    expect(cmp.step).not.toBe('type');
+    expect(emitted).toHaveBeenCalled();
+  });
+
+  it('un code inconnu laisse le parcours sur l’étape « Type »', () => {
+    cmp.presetTypeCode = 'XXX';
+    cmp.ngOnInit();
+    expect(cmp.step).toBe('type');
+  });
+
+  it('revenir au type rend la main à l’hôte quand le type est imposé', () => {
+    const cancelled = jasmine.createSpy('cancelled');
+    cmp.cancelled.subscribe(cancelled);
+    cmp.presetTypeCode = 'LPA';
+    cmp.ngOnInit();
+    cmp.backToType();
+    expect(cancelled).toHaveBeenCalled();
+  });
+});

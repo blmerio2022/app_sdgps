@@ -1,0 +1,484 @@
+<div class="as-page">
+  <!-- ================================================================== EN-TÊTE -->
+  <header class="as-hero">
+    <span class="as-hero-icon"><i class="fas fa-wand-magic-sparkles"></i></span>
+    <div class="as-hero-text">
+      <h1>Assistant de création SDGPS</h1>
+      <p *ngIf="!created">Du projet au rapport livrable, en un seul parcours guidé.</p>
+      <p *ngIf="created && ssdgps">
+        SSDGPS n°{{ ssdgps.numero_ssdgps }} · {{ ssdgps.nature_ssdgps }} ·
+        <span class="as-statut" [attr.data-statut]="ssdgps.statut">{{ ssdgps.statut_display }}</span>
+        <ng-container *ngIf="plan?.modele_nom"> · modèle « {{ plan?.modele_nom }} »</ng-container>
+      </p>
+    </div>
+    <div class="as-hero-actions">
+      <a class="btn-ghost btn-sm" [routerLink]="['../modeles']"><i class="fas fa-layer-group"></i> Mes modèles</a>
+      <button class="btn-ghost btn-sm" *ngIf="created" (click)="openDossier()" [disabled]="!createdProjetId">
+        <i class="fas fa-folder-open"></i> Ouvrir le dossier</button>
+      <button class="btn-ghost btn-sm" *ngIf="created" (click)="restart()"><i class="fas fa-plus"></i> Nouveau SDGPS</button>
+    </div>
+  </header>
+
+  <!-- ================================================================== ÉTAPES -->
+  <nav class="as-stepper" aria-label="Étapes de l'assistant">
+    <ng-container *ngFor="let s of steps; let i = index; let last = last">
+      <button type="button" class="as-step"
+              [class.active]="s.key === step" [class.done]="isDone(s.key)" [class.locked]="!canGoTo(s.key) && s.key !== step"
+              [disabled]="!canGoTo(s.key)" (click)="goTo(s.key)" [attr.aria-current]="s.key === step ? 'step' : null">
+        <span class="as-step-dot">
+          <i class="fas" [ngClass]="isDone(s.key) && s.key !== step ? 'fa-check' : s.icon"></i>
+        </span>
+        <span class="as-step-text">
+          <strong>{{ s.label }}</strong>
+          <small>{{ s.hint }}</small>
+        </span>
+      </button>
+      <span class="as-step-line" *ngIf="!last" [class.done]="isDone(s.key)"></span>
+    </ng-container>
+  </nav>
+
+  <div class="as-loading" *ngIf="loading"><i class="fas fa-spinner fa-spin"></i> Préparation de l'assistant…</div>
+
+  <div class="as-layout" *ngIf="!loading" [class.with-recap]="!created">
+    <main class="as-main">
+      <div class="as-alert danger" *ngIf="stepError[step]">
+        <i class="fas fa-triangle-exclamation"></i>
+        <div><strong>Le serveur a refusé cette étape.</strong> {{ stepError[step] }}</div>
+      </div>
+
+      <!-- ============================================================ 1. PROJET -->
+      <section class="as-panel" *ngIf="step === 'projet'">
+        <div class="as-panel-head">
+          <h2><span>1</span> Dans quel projet ?</h2>
+          <div class="segment">
+            <button type="button" [class.active]="projetMode === 'existant'" (click)="setProjetMode('existant')" [disabled]="!projets.length">
+              <i class="fas fa-list"></i> Projet existant</button>
+            <button type="button" [class.active]="projetMode === 'nouveau'" (click)="setProjetMode('nouveau')">
+              <i class="fas fa-plus"></i> Nouveau projet</button>
+          </div>
+        </div>
+
+        <ng-container *ngIf="projetMode === 'existant'">
+          <div class="as-search">
+            <i class="fas fa-magnifying-glass"></i>
+            <input type="search" [(ngModel)]="projetSearch" placeholder="Rechercher par nom, code ou organisation…" />
+          </div>
+          <div class="as-grid">
+            <button type="button" class="as-card" *ngFor="let p of filteredProjets" [class.selected]="p.id === projetId" (click)="selectProjet(p.id)">
+              <span class="as-card-icon"><i class="fas fa-diagram-project"></i></span>
+              <span class="as-card-body">
+                <strong>{{ p.nom_projet }}</strong>
+                <small><span class="code-token">{{ p.code_projet }}</span> {{ p.organization_name }}</small>
+                <small class="as-card-meta">{{ p.nbr_total_proprietes || 0 }} propriété(s) · {{ p.nbr_total_ssdgps || 0 }} SSDGPS</small>
+              </span>
+              <i class="fas fa-circle-check as-card-check"></i>
+            </button>
+          </div>
+          <p class="as-empty" *ngIf="!filteredProjets.length">Aucun projet ne correspond à « {{ projetSearch }} ».</p>
+        </ng-container>
+
+        <div class="as-form" *ngIf="projetMode === 'nouveau'">
+          <label class="field span-2"><span>Nom du projet <em>*</em></span>
+            <input type="text" [(ngModel)]="projetNew.nom_projet" placeholder="Ex. Levé cadastral — Commune X" maxlength="255" /></label>
+          <label class="field"><span>Code projet <em>*</em></span>
+            <div class="as-input-action">
+              <input type="text" [(ngModel)]="projetNew.code_projet" placeholder="Identifiant court unique" maxlength="50" />
+              <button type="button" class="btn-ghost btn-sm" (click)="suggestCode()" title="Proposer un code"><i class="fas fa-wand-magic-sparkles"></i></button>
+            </div>
+            <span class="hint">Unique dans l'application.</span></label>
+          <label class="field" *ngIf="!currentOrgId"><span>Organisation <em>*</em></span>
+            <select [(ngModel)]="projetNew.organization">
+              <option value="">— Choisir —</option>
+              <option *ngFor="let o of organizations" [value]="o.id">{{ o.name }}</option>
+            </select></label>
+          <label class="field span-2"><span>Description</span>
+            <textarea [(ngModel)]="projetNew.description_projet" rows="2" placeholder="Facultatif"></textarea></label>
+        </div>
+      </section>
+
+      <!-- ============================================================ 2. PROPRIÉTÉ -->
+      <section class="as-panel" *ngIf="step === 'propriete'">
+        <div class="as-panel-head">
+          <h2><span>2</span> Quelle propriété ?</h2>
+          <div class="segment" *ngIf="proprietes.length">
+            <button type="button" [class.active]="proprieteMode === 'existant'" (click)="setProprieteMode('existant')"><i class="fas fa-list"></i> Existante</button>
+            <button type="button" [class.active]="proprieteMode === 'nouveau'" (click)="setProprieteMode('nouveau')"><i class="fas fa-plus"></i> Nouvelle</button>
+          </div>
+        </div>
+
+        <div class="as-grid" *ngIf="proprieteMode === 'existant'">
+          <button type="button" class="as-card" *ngFor="let p of proprietes" [class.selected]="p.id === proprieteId" (click)="selectPropriete(p.id)">
+            <span class="as-card-icon"><i class="fas fa-map-marker-alt"></i></span>
+            <span class="as-card-body">
+              <strong>{{ proprieteLabel(p) }}</strong>
+              <small>{{ p.nom_propriete }}</small>
+              <small class="as-card-meta">{{ p.nbr_total_affaires || 0 }} affaire(s) · {{ p.organisme_niveau2_nom || '—' }}</small>
+            </span>
+            <i class="fas fa-circle-check as-card-check"></i>
+          </button>
+        </div>
+
+        <div class="as-form" *ngIf="proprieteMode === 'nouveau'">
+          <label class="field span-2"><span>Propriété-dite <em>*</em></span>
+            <input type="text" [(ngModel)]="proprieteNew.nom_propriete" placeholder="Ex. Bled Ouled Ahmed" /></label>
+          <label class="field"><span>Titre foncier</span>
+            <input type="text" [(ngModel)]="proprieteNew.id_titre" placeholder="T12345/A"
+                   [class.invalid]="hasError(proprieteErrors(), 'titre')" />
+            <span class="err" *ngIf="hasError(proprieteErrors(), 'titre')">Format attendu : T&lt;numéro&gt;/&lt;indice&gt;</span></label>
+          <label class="field"><span>Réquisition</span>
+            <input type="text" [(ngModel)]="proprieteNew.id_requisition" placeholder="R19000/55"
+                   [class.invalid]="hasError(proprieteErrors(), 'requisition')" />
+            <span class="err" *ngIf="hasError(proprieteErrors(), 'requisition')">Format attendu : R&lt;numéro&gt;/&lt;indice&gt;</span></label>
+          <p class="hint span-2 as-inline-hint" *ngIf="hasError(proprieteErrors(), 'identifiant')">
+            <i class="fas fa-circle-info"></i> Renseignez au moins le titre foncier ou la réquisition.</p>
+          <label class="field"><span>Organisme de 1er niveau <em>*</em></span>
+            <select [(ngModel)]="proprieteNew.organisme_niveau1" (ngModelChange)="onOrganismeN1Change()">
+              <option value="">— Choisir —</option>
+              <option *ngFor="let o of organismesN1" [value]="o.id">{{ o.sigle || o.nom }}</option>
+            </select></label>
+          <label class="field"><span>Organisme de 2e niveau <em>*</em></span>
+            <select [(ngModel)]="proprieteNew.organisme_niveau2" [disabled]="!proprieteNew.organisme_niveau1">
+              <option value="">— Choisir —</option>
+              <option *ngFor="let o of organismesN2Filtres" [value]="o.id">{{ o.nom }}</option>
+            </select></label>
+        </div>
+      </section>
+
+      <!-- ============================================================ 3. AFFAIRE -->
+      <section class="as-panel" *ngIf="step === 'affaire'">
+        <div class="as-panel-head">
+          <h2><span>3</span> Quelle affaire (SD) ?</h2>
+          <div class="segment" *ngIf="affaires.length">
+            <button type="button" [class.active]="affaireMode === 'existant'" (click)="setAffaireMode('existant')"><i class="fas fa-list"></i> Existante</button>
+            <button type="button" [class.active]="affaireMode === 'nouveau'" (click)="setAffaireMode('nouveau')"><i class="fas fa-plus"></i> Nouvelle</button>
+          </div>
+        </div>
+
+        <div class="as-grid" *ngIf="affaireMode === 'existant'">
+          <button type="button" class="as-card" *ngFor="let a of affaires" [class.selected]="a.id === affaireId" (click)="selectAffaire(a.id)">
+            <span class="as-card-icon"><i class="fas fa-file-signature"></i></span>
+            <span class="as-card-body">
+              <strong>SD {{ a.numero_sd_affaire }} — {{ a.nature_affaire }}</strong>
+              <small>{{ natureAffaireLabel(a.nature_affaire) }} · {{ a.nature_procedure_affaire }}</small>
+              <small class="as-card-meta">{{ a.nbr_total_ssdgps || 0 }} SSDGPS</small>
+            </span>
+            <i class="fas fa-circle-check as-card-check"></i>
+          </button>
+        </div>
+
+        <div class="as-form" *ngIf="affaireMode === 'nouveau'">
+          <label class="field"><span>Numéro du SD <em>*</em></span>
+            <input type="number" min="1" [(ngModel)]="affaireNew.numero_sd_affaire"
+                   [class.invalid]="hasError(affaireErrors(), 'numero_pris')" />
+            <span class="err" *ngIf="hasError(affaireErrors(), 'numero_pris')">Ce numéro existe déjà dans la propriété.</span></label>
+          <label class="field"><span>Nature de procédure <em>*</em></span>
+            <select [(ngModel)]="affaireNew.nature_procedure_affaire" (ngModelChange)="onProcedureChange()">
+              <option value="">— Choisir —</option>
+              <option *ngFor="let o of procedureOptions" [value]="o.value">{{ o.label }}</option>
+            </select></label>
+          <label class="field"><span>Nature d'affaire <em>*</em></span>
+            <select [(ngModel)]="affaireNew.nature_affaire" [disabled]="!affaireNew.nature_procedure_affaire">
+              <option value="">— Choisir —</option>
+              <option *ngFor="let o of natureAffaireOptions" [value]="o.value">{{ o.label }}</option>
+            </select></label>
+          <label class="field" *ngIf="dateBornageRequise"><span>Date de bornage / recollement <em>*</em></span>
+            <input type="datetime-local" step="1" [(ngModel)]="affaireNew.date_bornage" /></label>
+          <p class="hint as-inline-hint" *ngIf="affaireNew.nature_procedure_affaire && !dateBornageRequise">
+            <i class="fas fa-circle-info"></i> Pas de date de bornage pour les procédures IFE / IFR.</p>
+        </div>
+      </section>
+
+      <!-- ============================================================ 4. DOSSIER & MODÈLE -->
+      <section class="as-panel" *ngIf="step === 'dossier'">
+        <div class="as-panel-head"><h2><span>4</span> Nature du SDGPS</h2></div>
+        <div class="as-natures">
+          <button type="button" class="as-nature" *ngFor="let n of natures" [class.selected]="nature === n.value" (click)="setNature(n.value)">
+            <i class="fas" [ngClass]="n.icon"></i>
+            <strong>{{ n.court }}</strong>
+            <small>{{ n.titre }}</small>
+          </button>
+        </div>
+
+        <div class="as-row">
+          <div class="field"><span>Type</span>
+            <div class="segment">
+              <button type="button" [class.active]="typeSsdgps === 'mono-session'" (click)="typeSsdgps = 'mono-session'"><i class="fas fa-circle"></i> Mono-session</button>
+              <button type="button" [class.active]="typeSsdgps === 'multi-session'" (click)="typeSsdgps = 'multi-session'"><i class="fas fa-layer-group"></i> Multi-session</button>
+            </div></div>
+          <label class="field as-narrow" *ngIf="typeSsdgps === 'multi-session'"><span>Nombre de sessions</span>
+            <input type="number" min="1" max="50" [(ngModel)]="nbSessions" /></label>
+          <p class="hint as-inline-hint">Le numéro du SSDGPS est attribué automatiquement (suivant dans l'affaire).</p>
+        </div>
+
+        <div class="as-panel-head as-sub">
+          <h2><i class="fas fa-layer-group"></i> Modèle de pièces</h2>
+          <button type="button" class="btn-ghost btn-sm" (click)="openEditor(null)"><i class="fas fa-plus"></i> Créer un modèle personnalisé</button>
+        </div>
+
+        <div class="as-models">
+          <div class="as-model-list">
+            <p class="as-group-label" *ngIf="modelesSysteme.length"><i class="fas fa-globe"></i> Modèles de l'application</p>
+            <div class="as-model" *ngFor="let m of modelesSysteme" [class.selected]="m.id === modeleId"
+                 (click)="selectModele(m)" (mouseenter)="previewModeleId = m.id" (mouseleave)="previewModeleId = null">
+              <span class="as-model-radio"></span>
+              <span class="as-model-body"><strong>{{ m.nom }}</strong><small>{{ m.nb_pieces }} pièces · {{ m.type_display }}</small></span>
+              <span class="as-model-actions">
+                <button type="button" title="Adapter : copie personnelle modifiable" (click)="$event.stopPropagation(); adaptModele(m)"><i class="fas fa-copy"></i></button>
+                <button type="button" *ngIf="m.modifiable" title="Modifier (administration)" (click)="$event.stopPropagation(); openEditor(m)"><i class="fas fa-pen"></i></button>
+              </span>
+            </div>
+            <p class="as-group-label" *ngIf="modelesPersonnels.length"><i class="fas fa-user"></i> Mes modèles</p>
+            <div class="as-model" *ngFor="let m of modelesPersonnels" [class.selected]="m.id === modeleId"
+                 (click)="selectModele(m)" (mouseenter)="previewModeleId = m.id" (mouseleave)="previewModeleId = null">
+              <span class="as-model-radio"></span>
+              <span class="as-model-body"><strong>{{ m.nom }}</strong><small>{{ m.nb_pieces }} pièces · {{ m.type_display }}</small></span>
+              <span class="as-model-actions">
+                <button type="button" title="Modifier" (click)="$event.stopPropagation(); openEditor(m)"><i class="fas fa-pen"></i></button>
+                <button type="button" class="danger" title="Supprimer" (click)="$event.stopPropagation(); deleteModele(m)"><i class="fas fa-trash-can"></i></button>
+              </span>
+            </div>
+            <p class="as-empty" *ngIf="!modeles.length">Aucun modèle pour cette nature. Créez-en un.</p>
+          </div>
+
+          <div class="as-model-preview" *ngIf="previewModele as pm">
+            <div class="as-preview-head">
+              <strong>{{ pm.nom }}</strong>
+              <span class="as-badge" [class.sys]="pm.portee === 'systeme'">{{ pm.portee_display }}</span>
+            </div>
+            <p class="as-preview-desc" *ngIf="pm.description">{{ pm.description }}</p>
+            <ol class="as-preview-list">
+              <li *ngFor="let p of pm.pieces_detail">
+                <i class="fas" [ngClass]="sourceIcon(p.source)"></i>
+                <span class="code-token">{{ p.type_piece }}<ng-container *ngIf="p.numero"> {{ p.numero }}</ng-container></span>
+                <span class="as-preview-name">{{ p.nom }}</span>
+                <small *ngIf="!p.obligatoire">facultative</small>
+              </li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================ 5. PIÈCES -->
+      <section class="as-panel as-panel-pieces" *ngIf="step === 'pieces' && ssdgps">
+        <!-- Dossier sans modèle (créé hors assistant) : choisir sa liste de contrôle. -->
+        <div class="as-nomodel" *ngIf="plan && !plan.total">
+          <i class="fas fa-list-check"></i>
+          <div>
+            <strong>Ce dossier n'a pas encore de liste de contrôle.</strong>
+            <p>Choisissez le modèle qui décrit les pièces attendues pour un {{ ssdgps.nature_ssdgps }}.</p>
+            <div class="as-row">
+              <select [(ngModel)]="modeleId" class="as-select">
+                <option *ngFor="let m of modeles" [value]="m.id">{{ m.nom }} ({{ m.nb_pieces }} pièces)</option>
+              </select>
+              <button class="btn-primary btn-sm" (click)="applyModele()" [disabled]="!modeleId || locked">Appliquer</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="as-progress" *ngIf="plan && plan.total">
+          <div class="as-progress-ring" [style.--p]="progressValid">
+            <span>{{ plan.validees }}<small>/{{ plan.total }}</small></span>
+          </div>
+          <div class="as-progress-text">
+            <strong *ngIf="!plan.pret">{{ plan.total - plan.importees }} pièce(s) à importer · {{ plan.a_valider }} à valider</strong>
+            <strong *ngIf="plan.pret" class="ok"><i class="fas fa-circle-check"></i> Dossier complet : prêt pour la génération du rapport</strong>
+            <div class="as-bars">
+              <div class="as-bar"><span [style.width.%]="progressImport"></span></div>
+              <small>{{ plan.importees }}/{{ plan.total }} importées</small>
+              <div class="as-bar ok"><span [style.width.%]="progressValid"></span></div>
+              <small>{{ plan.validees }}/{{ plan.total }} validées</small>
+            </div>
+          </div>
+          <div class="as-progress-actions">
+            <button class="btn-success" (click)="validate()" [disabled]="validating || !plan.a_valider || locked">
+              <i class="fas" [ngClass]="validating ? 'fa-spinner fa-spin' : 'fa-check-double'"></i>
+              Valider les pièces importées ({{ plan.a_valider }})</button>
+          </div>
+        </div>
+
+        <div class="as-alert warn" *ngIf="locked">
+          <i class="fas fa-lock"></i>
+          <div>Ce dossier est « {{ ssdgps.statut_display }} » : ses pièces ne sont plus modifiables.</div>
+        </div>
+
+        <div class="as-alert warn" *ngIf="validationEchecs.length">
+          <i class="fas fa-triangle-exclamation"></i>
+          <div><strong>Pièces non validées :</strong>
+            <ul><li *ngFor="let e of validationEchecs"><span class="code-token">{{ e.type_piece }}<ng-container *ngIf="e.numero"> {{ e.numero }}</ng-container></span> {{ e.message }}</li></ul>
+          </div>
+        </div>
+
+        <div class="as-workbench" *ngIf="plan && plan.total">
+          <ol class="as-checklist">
+            <li *ngFor="let it of plan.items; let i = index" [class.active]="itemKey(it) === activeKey" [attr.data-etat]="it.etat">
+              <button type="button" (click)="selectItem(it)">
+                <span class="as-check-rank">{{ i + 1 }}</span>
+                <span class="as-check-body">
+                  <span class="as-check-title"><span class="code-token">{{ it.type_piece }}<ng-container *ngIf="it.numero"> {{ it.numero }}</ng-container></span>
+                    <small *ngIf="!it.obligatoire">facultative</small></span>
+                  <span class="as-check-name">{{ it.nom }}</span>
+                </span>
+                <span class="etat-pill" [ngClass]="it.etat"><i class="fas" [ngClass]="etatIcon(it.etat)"></i>{{ etatLabel(it.etat) }}</span>
+              </button>
+            </li>
+            <li class="as-check-extra" *ngIf="plan.hors_modele.length">
+              <small><i class="fas fa-circle-info"></i> {{ plan.hors_modele.length }} pièce(s) hors modèle dans le dossier.</small>
+            </li>
+          </ol>
+
+          <div class="as-bench">
+            <!-- Aucune pièce sélectionnée -->
+            <div class="as-bench-empty" *ngIf="!activeItem">
+              <i class="fas" [ngClass]="plan.pret ? 'fa-flag-checkered' : 'fa-hand-pointer'"></i>
+              <strong>{{ plan.pret ? 'Toutes les pièces sont prêtes.' : 'Choisissez une pièce dans la liste.' }}</strong>
+              <p *ngIf="!plan.pret">Les pièces à importer s'enchaînent automatiquement après chaque import.</p>
+              <button class="btn-primary" *ngIf="plan.pret" (click)="goTo('rapport')"><i class="fas fa-file-pdf"></i> Générer le rapport</button>
+            </div>
+
+            <!-- Pièce déjà importée : état + actions -->
+            <div class="as-bench-card" *ngIf="activeItem && !showWizard">
+              <div class="as-bench-head">
+                <span class="code-token big">{{ activeItem.type_piece }}<ng-container *ngIf="activeItem.numero"> {{ activeItem.numero }}</ng-container></span>
+                <div><strong>{{ activeItem.nom }}</strong>
+                  <small>{{ activeItem.pieces.length }} occurrence(s) dans le dossier</small></div>
+                <span class="etat-pill" [ngClass]="activeItem.etat"><i class="fas" [ngClass]="etatIcon(activeItem.etat)"></i>{{ etatLabel(activeItem.etat) }}</span>
+              </div>
+              <ul class="as-occ">
+                <li *ngFor="let p of activeItem.pieces">
+                  <span class="etat-pill" [ngClass]="p.statut"><i class="fas" [ngClass]="etatIcon(p.statut)"></i>{{ etatLabel(p.statut) }}</span>
+                  <span>{{ p.session_numero ? 'Session n°' + p.session_numero : 'Commune au SSDGPS' }}</span>
+                  <button class="btn-ghost btn-sm" (click)="openPiece(p.id)" [disabled]="!createdProjetId"><i class="fas fa-eye"></i> Ouvrir</button>
+                </li>
+              </ul>
+              <div class="as-bench-actions">
+                <button class="btn-success btn-sm" *ngIf="activeItem.etat !== 'valide'" (click)="validateItem(activeItem)" [disabled]="validating || locked">
+                  <i class="fas fa-check"></i> Valider cette pièce</button>
+                <button class="btn-ghost btn-sm" (click)="addingAnother = true" [disabled]="locked">
+                  <i class="fas fa-plus"></i> Ajouter une autre occurrence</button>
+                <button class="btn-ghost btn-sm" (click)="selectNextToImport()"><i class="fas fa-forward"></i> Pièce suivante</button>
+              </div>
+            </div>
+
+            <!-- Import : l'assistant d'ajout habituel, type imposé. Le *ngFor sur la clé
+                 recrée le composant à chaque changement de pièce (état vierge garanti). -->
+            <ng-container *ngIf="showWizard">
+              <div class="as-wizard" *ngFor="let k of [activeKey + (addingAnother ? '+' : '')]">
+                <app-piece-add-wizard
+                  [embedded]="true"
+                  [ssdgps]="ssdgps"
+                  [sessions]="sessions"
+                  [catalog]="catalog"
+                  [existingPieces]="pieces"
+                  [presetTypeCode]="activeItem!.type_piece"
+                  (created)="onPieceCreated()"
+                  (cancelled)="onWizardCancelled()">
+                </app-piece-add-wizard>
+              </div>
+            </ng-container>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================ 6. RAPPORT -->
+      <section class="as-panel" *ngIf="step === 'rapport' && ssdgps">
+        <div class="as-panel-head"><h2><span>6</span> Rapport du SDGPS</h2>
+          <button class="btn-ghost btn-sm" (click)="runCoherence()" [disabled]="coherenceLoading">
+            <i class="fas fa-rotate" [class.fa-spin]="coherenceLoading"></i> Relancer le contrôle</button>
+        </div>
+
+        <div class="as-report">
+          <div class="as-report-check">
+            <h3><i class="fas fa-stethoscope"></i> Contrôle de cohérence</h3>
+            <p class="as-muted" *ngIf="coherenceLoading">Analyse du dossier…</p>
+            <div class="as-alert ok" *ngIf="coherence?.ok"><i class="fas fa-circle-check"></i><div>Aucune anomalie : le rapport sera complet.</div></div>
+            <ul class="as-anomalies" *ngIf="coherence && !coherence.ok">
+              <li *ngFor="let a of coherence.anomalies" [class.erreur]="a.severite === 'erreur'">
+                <i class="fas" [ngClass]="a.severite === 'erreur' ? 'fa-circle-exclamation' : 'fa-triangle-exclamation'"></i>{{ a.message }}
+              </li>
+            </ul>
+            <p class="as-muted" *ngIf="coherence && !coherence.ok">Le contrôle informe : il n'empêche jamais la génération.</p>
+          </div>
+
+          <div class="as-report-gen">
+            <h3><i class="fas fa-file-pdf"></i> Génération</h3>
+            <p class="as-muted">Seules les pièces <strong>validées</strong> figurent dans le rapport. Le rendu se fait en tâche de fond : vous pouvez continuer à travailler.</p>
+
+            <div class="as-job" *ngIf="job">
+              <div class="as-bar big" [class.ok]="job.statut === 'termine'" [class.ko]="job.statut === 'echec'"><span [style.width.%]="job.progression"></span></div>
+              <small>{{ job.statut === 'echec' ? (job.erreur || 'Échec') : (job.etape || job.statut_display) }} — {{ job.progression }} %</small>
+            </div>
+
+            <div class="as-gen-actions">
+              <button class="btn-primary" (click)="generate()" [disabled]="generating">
+                <i class="fas" [ngClass]="generating ? 'fa-spinner fa-spin' : 'fa-gears'"></i>
+                {{ job ? 'Générer à nouveau' : 'Générer le rapport' }}</button>
+              <button class="btn-success" *ngIf="reportBlob" (click)="download()"><i class="fas fa-download"></i> Télécharger {{ reportName }}</button>
+            </div>
+          </div>
+
+          <div class="as-report-next">
+            <h3><i class="fas fa-flag-checkered"></i> Et ensuite ?</h3>
+            <button class="btn-ghost" (click)="submitDossier()" [disabled]="!canSubmit || submitting"
+                    [title]="canSubmit ? '' : 'Toutes les pièces doivent être validées'">
+              <i class="fas fa-paper-plane"></i> Soumettre le dossier à validation</button>
+            <button class="btn-ghost" (click)="openSaveAsModel()"><i class="fas fa-bookmark"></i> Enregistrer ce dossier comme modèle</button>
+            <button class="btn-ghost" (click)="openDossier()" [disabled]="!createdProjetId"><i class="fas fa-folder-open"></i> Ouvrir la page des pièces</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ================================================================== RÉCAPITULATIF -->
+    <aside class="as-recap" *ngIf="!created">
+      <h3>Récapitulatif</h3>
+      <ol>
+        <li [class.filled]="recapProjet"><i class="fas fa-diagram-project"></i>
+          <div><small>Projet {{ projetMode === 'nouveau' ? '(nouveau)' : '' }}</small><strong>{{ recapProjet || '—' }}</strong></div></li>
+        <li [class.filled]="recapPropriete"><i class="fas fa-map-marker-alt"></i>
+          <div><small>Propriété {{ proprieteMode === 'nouveau' ? '(nouvelle)' : '' }}</small><strong>{{ recapPropriete || '—' }}</strong></div></li>
+        <li [class.filled]="recapAffaire"><i class="fas fa-file-signature"></i>
+          <div><small>Affaire {{ affaireMode === 'nouveau' ? '(nouvelle)' : '' }}</small><strong>{{ recapAffaire || '—' }}</strong></div></li>
+        <li [class.filled]="step === 'dossier'"><i class="fas fa-satellite-dish"></i>
+          <div><small>SDGPS</small><strong>{{ nature }} · {{ typeSsdgps }}</strong></div></li>
+        <li [class.filled]="!!selectedModele"><i class="fas fa-layer-group"></i>
+          <div><small>Modèle</small><strong>{{ selectedModele?.nom || '—' }}</strong>
+            <small *ngIf="selectedModele">{{ selectedModele.nb_pieces }} pièces à importer</small></div></li>
+      </ol>
+      <p class="as-recap-note"><i class="fas fa-shield-halved"></i> Rien n'est enregistré avant « Créer le dossier » : tout est créé d'un seul coup, ou pas du tout.</p>
+    </aside>
+  </div>
+
+  <!-- ================================================================== PIED -->
+  <footer class="as-foot" *ngIf="!loading">
+    <ng-container *ngIf="!created">
+      <button class="btn-ghost" (click)="previous()" [disabled]="stepIndex === 0"><i class="fas fa-arrow-left"></i> Précédent</button>
+      <button class="btn-primary" (click)="next()" [disabled]="!stepValid(step) || creating">
+        <ng-container *ngIf="step !== 'dossier'">Continuer <i class="fas fa-arrow-right"></i></ng-container>
+        <ng-container *ngIf="step === 'dossier'"><i class="fas" [ngClass]="creating ? 'fa-spinner fa-spin' : 'fa-circle-plus'"></i> Créer le dossier</ng-container>
+      </button>
+    </ng-container>
+    <ng-container *ngIf="created">
+      <button class="btn-ghost" *ngIf="step === 'rapport'" (click)="goTo('pieces')"><i class="fas fa-arrow-left"></i> Retour aux pièces</button>
+      <span></span>
+      <button class="btn-primary" *ngIf="step === 'pieces'" (click)="goTo('rapport')">
+        Continuer vers le rapport <i class="fas fa-arrow-right"></i></button>
+    </ng-container>
+  </footer>
+
+  <app-modele-ssdgps-editor *ngIf="editorOpen"
+    [modele]="editorModele" [catalog]="catalog" [defaultNature]="nature" [canCreateSystem]="isAppAdmin"
+    (saved)="onModeleSaved($event)" (closed)="closeEditor()">
+  </app-modele-ssdgps-editor>
+
+  <div class="as-mini-overlay" *ngIf="saveAsModelOpen" (click)="saveAsModelOpen = false">
+    <div class="as-mini" (click)="$event.stopPropagation()">
+      <h3><i class="fas fa-bookmark"></i> Enregistrer comme modèle</h3>
+      <p class="as-muted">Les pièces actuelles du dossier deviennent un modèle personnel, réutilisable pour vos prochains SDGPS.</p>
+      <label class="field"><span>Nom du modèle</span><input type="text" [(ngModel)]="saveAsModelName" maxlength="150" /></label>
+      <div class="as-mini-actions">
+        <button class="btn-ghost" (click)="saveAsModelOpen = false">Annuler</button>
+        <button class="btn-primary" (click)="saveAsModel()" [disabled]="!saveAsModelName.trim()"><i class="fas fa-floppy-disk"></i> Enregistrer</button>
+      </div>
+    </div>
+  </div>
+</div>

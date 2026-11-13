@@ -312,7 +312,7 @@
 /* ===================== Actions rapides ===================== */
 .quick-actions {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 14px;
 }
 
@@ -392,6 +392,9 @@
   .kpi-grid { grid-template-columns: repeat(3, 1fr); }
   .panels { grid-template-columns: 1fr; }
   .quick-actions { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 1280px) and (min-width: 981px) {
+  .quick-actions { grid-template-columns: repeat(3, 1fr); }
 }
 @media (max-width: 560px) {
   .home { padding: 16px 14px 28px; }

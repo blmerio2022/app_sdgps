@@ -6,9 +6,14 @@ import { ProjectSsdgpsListComponent } from './project-ssdgps-list/project-ssdgps
 import { PieceManagementPageComponent } from './piece-management-page/piece-management-page.component';
 import { PieceAddPageComponent } from './piece-add-page/piece-add-page.component';
 import { PieceDetailPageComponent } from './piece-detail-page/piece-detail-page.component';
+import { SdgpsAssistantComponent } from './sdgps-assistant/sdgps-assistant.component';
+import { ModeleSsdgpsListComponent } from './modele-ssdgps-list/modele-ssdgps-list.component';
 
 const routes: Routes = [
   { path: '', component: ProjectListComponent, data: { title: 'Projets' } },
+  // Routes statiques AVANT `:id` (sinon « assistant » serait pris pour un identifiant de projet).
+  { path: 'assistant', component: SdgpsAssistantComponent, data: { title: 'Assistant de création SDGPS' } },
+  { path: 'modeles', component: ModeleSsdgpsListComponent, data: { title: 'Modèles de SDGPS' } },
   { path: ':id', component: ProjectExplorerComponent, data: { title: 'Explorateur de projet' } },
   { path: ':id/ssdgps', component: ProjectSsdgpsListComponent, data: { title: 'Tous les SSDGPS du projet' } },
   { path: ':id/pieces/:ssdgpsId', component: PieceManagementPageComponent, data: { title: 'Pièces du rapport SSDGPS' } },

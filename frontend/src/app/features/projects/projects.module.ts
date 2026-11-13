@@ -15,6 +15,9 @@ import { PieceAddPageComponent } from './piece-add-page/piece-add-page.component
 import { PieceDetailPageComponent } from './piece-detail-page/piece-detail-page.component';
 import { PiecePhotoPointsComponent } from './piece-photo-points/piece-photo-points.component';
 import { PieceDataTableComponent } from './piece-data-table/piece-data-table.component';
+import { SdgpsAssistantComponent } from './sdgps-assistant/sdgps-assistant.component';
+import { ModeleSsdgpsEditorComponent } from './modele-ssdgps-editor/modele-ssdgps-editor.component';
+import { ModeleSsdgpsListComponent } from './modele-ssdgps-list/modele-ssdgps-list.component';
 
 @NgModule({
   declarations: [
@@ -23,6 +26,7 @@ import { PieceDataTableComponent } from './piece-data-table/piece-data-table.com
     PieceDetailModalComponent, PieceImageGalleryComponent,
     PieceAddPageComponent, PieceDetailPageComponent, PiecePhotoPointsComponent,
     PieceDataTableComponent,
+    SdgpsAssistantComponent, ModeleSsdgpsEditorComponent, ModeleSsdgpsListComponent,
   ],
   imports: [CommonModule, FormsModule, ReactiveFormsModule, ProjectsRoutingModule, SharedModule],
 })

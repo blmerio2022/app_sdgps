@@ -15,11 +15,11 @@ from rest_framework.response import Response
 
 from accounts.audit import journaliser
 from accounts.models import AuditEvent
-from .models import Projet, Propriete, Affaire, Ssdgps, Session
+from .models import Projet, Propriete, Affaire, Ssdgps, Session, ModeleSsdgps
 from .workflow import appliquer_transition, transitions_possibles
 from .serializers import (
     ProjetSerializer, ProprieteSerializer, AffaireSerializer,
-    SsdgpsSerializer, SessionSerializer,
+    SsdgpsSerializer, SessionSerializer, ModeleSsdgpsSerializer, peut_modifier_modele,
 )
 
 
@@ -454,6 +454,203 @@ class SsdgpsViewSet(BaseOrgScopedViewSet):
             statut_avant=ancien, statut_apres=nouveau, motif=motif.strip() or None,
         )
         return Response(self.get_serializer(ssdgps).data)
+
+
+    # --- Assistant de création & liste de contrôle des pièces ------------------------
+
+    @action(detail=False, methods=['post'], url_path='assistant')
+    def assistant(self, request):
+        """
+        POST /api/v1/ssdgps/assistant/ — crée en UNE transaction la chaîne complète
+        projet → propriété → affaire → SDGPS (chaque niveau existant ou nouveau), rattachée
+        au modèle choisi. Cf. `projects/assistant.py`.
+        """
+        from .assistant import creer_dossier
+        from .modeles import plan_du_ssdgps
+        ssdgps, crees = creer_dossier(request.user, request.data, request=request)
+        ssdgps = self._annotate_counts(self.queryset.filter(pk=ssdgps.pk)).get()
+        return Response({
+            'ssdgps': self.get_serializer(ssdgps).data,
+            'projet': str(ssdgps.affaire.propriete.projet_id),
+            'propriete': str(ssdgps.affaire.propriete_id),
+            'affaire': str(ssdgps.affaire_id),
+            'crees': crees,
+            'plan': plan_du_ssdgps(ssdgps),
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='plan')
+    def plan(self, request, pk=None):
+        """GET /api/v1/ssdgps/<id>/plan/ — état de la liste de contrôle des pièces."""
+        from .modeles import plan_du_ssdgps
+        return Response(plan_du_ssdgps(self.get_object()))
+
+    @action(detail=True, methods=['post'], url_path='appliquer-modele')
+    def appliquer_modele(self, request, pk=None):
+        """POST /api/v1/ssdgps/<id>/appliquer-modele/ — `{"modele": "<uuid>"}`.
+
+        Rattache un dossier EXISTANT à un modèle (reprise d'un dossier créé hors de
+        l'assistant). Ne crée ni ne supprime aucune pièce : seule la liste de contrôle
+        change. Refusé sur un dossier figé, dont les exigences ne bougent plus."""
+        from .assistant import modeles_visibles
+        from .modeles import plan_du_ssdgps
+        ssdgps = self.get_object()
+        if ssdgps.est_verrouille():
+            raise PermissionDenied(
+                f"Ce SDGPS est « {ssdgps.get_statut_display()} » : son modèle ne change plus.")
+        modele = modeles_visibles(request.user).filter(pk=request.data.get('modele')).first()
+        if modele is None:
+            return Response({'detail': "Modèle introuvable ou inaccessible."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if modele.nature_ssdgps != ssdgps.nature_ssdgps:
+            return Response({'detail': (
+                f"Le modèle « {modele.nom} » est prévu pour la nature "
+                f"{modele.nature_ssdgps}, pas {ssdgps.nature_ssdgps}.")},
+                status=status.HTTP_400_BAD_REQUEST)
+        ssdgps.modele = modele
+        ssdgps.pieces_prevues = list(modele.pieces)
+        ssdgps.updated_by = request.user
+        ssdgps.save(update_fields=['modele', 'pieces_prevues', 'updated_by', 'updated_at'])
+        return Response(plan_du_ssdgps(ssdgps))
+
+    @action(detail=True, methods=['post'], url_path='valider-pieces')
+    def valider_pieces(self, request, pk=None):
+        """POST /api/v1/ssdgps/<id>/valider-pieces/ — `{"ids": [...]}` (optionnel).
+
+        Valide en une fois les pièces non validées du dossier (toutes, ou celles de
+        `ids`). Chaque pièce passe par le MÊME sérialiseur qu'une validation unitaire :
+        une PPA/PPN dont un point n'a pas de photo reste en brouillon et l'échec est
+        renvoyé avec son motif, sans bloquer les autres."""
+        from pieces.models import Piece
+        from pieces.serializers import PieceSerializer
+        from .modeles import plan_du_ssdgps
+        ssdgps = self.get_object()
+        if ssdgps.est_verrouille():
+            raise PermissionDenied(
+                f"Ce SDGPS est « {ssdgps.get_statut_display()} » : ses pièces ne sont "
+                "plus modifiables.")
+        qs = Piece.objects.filter(ssdgps=ssdgps, is_deleted=False).exclude(
+            statut=Piece.Statut.VALIDE)
+        ids = request.data.get('ids')
+        if ids:
+            if not isinstance(ids, list):
+                return Response({'detail': "`ids` doit être une liste."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            qs = qs.filter(pk__in=ids)
+        validees, echecs = 0, []
+        for piece in qs.select_related('session', 'ssdgps'):
+            ser = PieceSerializer(piece, data={'statut': Piece.Statut.VALIDE}, partial=True,
+                                  context={'request': request})
+            if ser.is_valid():
+                ser.save(updated_by=request.user)
+                validees += 1
+            else:
+                messages = []
+                for valeur in ser.errors.values():
+                    messages.extend(valeur if isinstance(valeur, list) else [valeur])
+                echecs.append({'id': str(piece.pk), 'type_piece': piece.type_piece,
+                               'numero': piece.numero,
+                               'message': ' '.join(str(m) for m in messages)})
+        return Response({'validees': validees, 'echecs': echecs,
+                         'plan': plan_du_ssdgps(ssdgps)})
+
+
+class ModeleSsdgpsViewSet(viewsets.ModelViewSet):
+    """
+    /api/v1/modeles-ssdgps/ — modèles de SDGPS.
+
+    Lecture : modèles de l'application + modèles PERSONNELS de l'appelant (un modèle
+    personnel n'est visible que de son propriétaire). Filtre `?nature=PDC/GPS`.
+    Écriture : un modèle système par l'administration de l'application seulement, un
+    modèle personnel par son propriétaire seulement. Suppression logique.
+    """
+    serializer_class = ModeleSsdgpsSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        from .assistant import modeles_visibles
+        qs = modeles_visibles(self.request.user).select_related(
+            'proprietaire', 'created_by', 'updated_by', 'deleted_by')
+        nature = self.request.query_params.get('nature')
+        if nature:
+            qs = qs.filter(nature_ssdgps=nature)
+        return qs
+
+    def _verifier_droit(self, modele):
+        if not peut_modifier_modele(self.request.user, modele):
+            raise PermissionDenied(
+                "Modèle de l'application : seule l'administration peut le modifier."
+                if modele.portee == ModeleSsdgps.Portee.SYSTEME
+                else "Ce modèle personnel ne vous appartient pas.")
+
+    def perform_create(self, serializer):
+        portee = serializer.validated_data.get('portee', ModeleSsdgps.Portee.PERSONNEL)
+        serializer.save(
+            created_by=self.request.user, portee=portee,
+            proprietaire=None if portee == ModeleSsdgps.Portee.SYSTEME else self.request.user)
+
+    def perform_update(self, serializer):
+        self._verifier_droit(serializer.instance)
+        # La portée ne change pas après coup : publier un modèle personnel pour toute
+        # l'application (ou l'inverse) passe par une duplication explicite.
+        serializer.validated_data.pop('portee', None)
+        serializer.save(updated_by=self.request.user)
+
+    def perform_destroy(self, instance):
+        self._verifier_droit(instance)
+        instance.is_deleted = True
+        instance.deleted_at = timezone.now()
+        instance.deleted_by = self.request.user
+        instance.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
+
+    @action(detail=True, methods=['post'], url_path='dupliquer')
+    def dupliquer(self, request, pk=None):
+        """POST /…/<id>/dupliquer/ — `{"nom": "…"}` : copie PERSONNELLE d'un modèle
+        visible (le point de départ habituel d'un modèle personnalisé)."""
+        source = self.get_object()
+        nom = (request.data.get('nom') or '').strip() or f"{source.nom} (copie)"
+        copie = ModeleSsdgps.objects.create(
+            nom=nom[:150], description=source.description,
+            nature_ssdgps=source.nature_ssdgps, type_ssdgps=source.type_ssdgps,
+            portee=ModeleSsdgps.Portee.PERSONNEL, proprietaire=request.user,
+            pieces=list(source.pieces), created_by=request.user)
+        return Response(self.get_serializer(copie).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='depuis-ssdgps')
+    def depuis_ssdgps(self, request):
+        """POST /…/depuis-ssdgps/ — `{"ssdgps": "<uuid>", "nom": "…"}` : enregistre les
+        pièces d'un dossier existant comme modèle personnel (repartir d'un dossier bien
+        construit)."""
+        from .modeles import normaliser_pieces
+        ssdgps = scope_queryset(
+            Ssdgps.objects.filter(is_deleted=False), request.user,
+            'affaire__propriete__projet__organization_id',
+        ).filter(pk=request.data.get('ssdgps')).first()
+        if ssdgps is None:
+            return Response({'detail': "SDGPS introuvable ou inaccessible."},
+                            status=status.HTTP_404_NOT_FOUND)
+        vues, pieces = set(), []
+        for p in ssdgps.pieces.filter(is_deleted=False).order_by('ordre'):
+            cle = (p.type_piece, p.numero)
+            if cle not in vues:
+                vues.add(cle)
+                pieces.append({'type_piece': p.type_piece, 'numero': p.numero,
+                               'obligatoire': True})
+        # Les pièces générées par le rapport (page de garde) n'ont rien à faire dans un
+        # modèle : on les écarte plutôt que de refuser l'enregistrement.
+        from .modeles import TYPES_GENERES
+        pieces = [p for p in pieces if p['type_piece'] not in TYPES_GENERES]
+        try:
+            pieces = normaliser_pieces(pieces, ssdgps.nature_ssdgps)
+        except DjangoValidationError as exc:
+            return Response({'detail': ' '.join(exc.messages)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        nom = (request.data.get('nom') or '').strip() or f"Modèle issu de {ssdgps}"
+        modele = ModeleSsdgps.objects.create(
+            nom=nom[:150], nature_ssdgps=ssdgps.nature_ssdgps, type_ssdgps=ssdgps.type_ssdgps,
+            portee=ModeleSsdgps.Portee.PERSONNEL, proprietaire=request.user,
+            pieces=pieces, created_by=request.user,
+            description=(request.data.get('description') or '').strip())
+        return Response(self.get_serializer(modele).data, status=status.HTTP_201_CREATED)
 
 
 class SessionViewSet(BaseOrgScopedViewSet):

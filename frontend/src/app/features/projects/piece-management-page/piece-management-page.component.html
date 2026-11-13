@@ -63,6 +63,11 @@
           <i class="fas fa-table"></i>
         </button>
       </div>
+      <!-- Liste de contrôle guidée du dossier (assistant de création, étape « Pièces »). -->
+      <button class="btn btn-assistant" *ngIf="!showDeleted" (click)="openInAssistant()"
+              [title]="assistantTitle">
+        <i class="fas fa-list-check"></i> Assistant
+      </button>
       <button class="btn btn-report" *ngIf="!showDeleted"
               [disabled]="validCount === 0"
               [title]="validCount === 0 ? 'Aucune pièce valide à inclure dans le rapport' : 'Générer le rapport PDF des pièces valides'"

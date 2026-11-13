@@ -1,0 +1,81 @@
+<div class="ml-page">
+  <header class="ml-hero">
+    <span class="ml-hero-icon"><i class="fas fa-layer-group"></i></span>
+    <div class="ml-hero-text">
+      <h1>Modèles de SDGPS</h1>
+      <p>Chaque modèle liste les pièces qu'un dossier doit contenir. Ceux de l'application couvrent les 4 natures ; créez les vôtres pour vos cas récurrents.</p>
+    </div>
+    <div class="ml-hero-actions">
+      <a class="btn-ghost" [routerLink]="['../assistant']"><i class="fas fa-wand-magic-sparkles"></i> Assistant de création</a>
+      <button class="btn-primary" (click)="openEditor(null)"><i class="fas fa-plus"></i> Nouveau modèle</button>
+    </div>
+  </header>
+
+  <div class="ml-toolbar">
+    <div class="segment">
+      <button type="button" [class.active]="!natureFilter" (click)="natureFilter = ''">Toutes <small>{{ modeles.length }}</small></button>
+      <button type="button" *ngFor="let n of natures" [class.active]="natureFilter === n.value" (click)="natureFilter = n.value" [title]="n.titre">
+        {{ n.court }} <small>{{ countFor(n.value) }}</small></button>
+    </div>
+    <div class="segment">
+      <button type="button" [class.active]="!porteeFilter" (click)="porteeFilter = ''">Tous</button>
+      <button type="button" [class.active]="porteeFilter === 'systeme'" (click)="porteeFilter = 'systeme'"><i class="fas fa-globe"></i> Application</button>
+      <button type="button" [class.active]="porteeFilter === 'personnel'" (click)="porteeFilter = 'personnel'"><i class="fas fa-user"></i> Mes modèles <small>{{ personnelsCount }}</small></button>
+    </div>
+    <div class="ml-search">
+      <i class="fas fa-magnifying-glass"></i>
+      <input type="search" [(ngModel)]="search" placeholder="Rechercher un modèle…" />
+    </div>
+  </div>
+
+  <div class="ml-loading" *ngIf="loading"><i class="fas fa-spinner fa-spin"></i> Chargement…</div>
+
+  <div class="ml-grid" *ngIf="!loading">
+    <article class="ml-card" *ngFor="let m of filtered" [class.sys]="m.portee === 'systeme'">
+      <div class="ml-card-top">
+        <span class="ml-nature">{{ natureCourt(m.nature_ssdgps) }}</span>
+        <span class="ml-badge" [class.sys]="m.portee === 'systeme'">
+          <i class="fas" [ngClass]="m.portee === 'systeme' ? 'fa-globe' : 'fa-user'"></i> {{ m.portee === 'systeme' ? 'Application' : 'Personnel' }}</span>
+      </div>
+      <h3>{{ m.nom }}</h3>
+      <p class="ml-desc">{{ m.description || m.nature_display }}</p>
+      <div class="ml-stats">
+        <span><i class="fas fa-paperclip"></i> {{ m.nb_pieces }} pièces</span>
+        <span><i class="fas fa-layer-group"></i> {{ m.type_display }}</span>
+      </div>
+
+      <button type="button" class="ml-toggle" (click)="toggle(m)">
+        <i class="fas" [ngClass]="expanded.has(m.id) ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+        {{ expanded.has(m.id) ? 'Masquer les pièces' : 'Voir les pièces' }}</button>
+      <ol class="ml-pieces" *ngIf="expanded.has(m.id)">
+        <li *ngFor="let p of m.pieces_detail">
+          <i class="fas" [ngClass]="sourceIcon(p.source)"></i>
+          <span class="code-token">{{ p.type_piece }}<ng-container *ngIf="p.numero"> {{ p.numero }}</ng-container></span>
+          <span class="ml-piece-name" [title]="p.nom">{{ p.nom }}</span>
+          <small *ngIf="!p.obligatoire">facultative</small>
+        </li>
+      </ol>
+
+      <footer class="ml-card-foot">
+        <button class="btn-primary btn-sm" (click)="use(m)"><i class="fas fa-play"></i> Utiliser</button>
+        <span class="ml-spacer"></span>
+        <button class="ml-icon" (click)="duplicate(m)" title="Dupliquer en modèle personnel"><i class="fas fa-copy"></i></button>
+        <button class="ml-icon" *ngIf="m.modifiable" (click)="openEditor(m)" title="Modifier"><i class="fas fa-pen"></i></button>
+        <button class="ml-icon danger" *ngIf="m.modifiable" (click)="remove(m)" title="Supprimer"><i class="fas fa-trash-can"></i></button>
+      </footer>
+    </article>
+
+    <button type="button" class="ml-card ml-new" (click)="openEditor(null)">
+      <i class="fas fa-plus"></i>
+      <strong>Nouveau modèle</strong>
+      <small>Partez des pièces par défaut d'une nature et adaptez-les.</small>
+    </button>
+  </div>
+
+  <p class="ml-empty" *ngIf="!loading && !filtered.length">Aucun modèle ne correspond à ces filtres.</p>
+
+  <app-modele-ssdgps-editor *ngIf="editorOpen"
+    [modele]="editorModele" [catalog]="catalog" [defaultNature]="natureFilter || 'PDC/GPS'" [canCreateSystem]="isAppAdmin"
+    (saved)="onSaved()" (closed)="closeEditor()">
+  </app-modele-ssdgps-editor>
+</div>

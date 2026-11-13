@@ -2,7 +2,7 @@
 from rest_framework import serializers
 
 from organismes.models import OrganismeNiveau1, OrganismeNiveau2
-from .models import Projet, Propriete, Affaire, Ssdgps, Session
+from .models import Projet, Propriete, Affaire, Ssdgps, Session, ModeleSsdgps
 from .validators import validate_affaire_coherence
 from accounts.fields import AuthorDisplayField
 
@@ -144,6 +144,8 @@ class SsdgpsSerializer(serializers.ModelSerializer):
     statut_change_by_email = AuthorDisplayField(source='statut_change_by')
     verrouille = serializers.SerializerMethodField()
     transitions = serializers.SerializerMethodField()
+    # Modèle d'origine (assistant de création) — posé une fois, à la création.
+    modele_nom = serializers.CharField(source='modele.nom', read_only=True, default='')
 
     def get_verrouille(self, obj) -> bool:
         return obj.est_verrouille()
@@ -167,11 +169,13 @@ class SsdgpsSerializer(serializers.ModelSerializer):
             'affaire_numero',
             'statut', 'statut_display', 'statut_change_at', 'statut_change_by_email',
             'motif_statut', 'verrouille', 'transitions',
+            'modele', 'modele_nom', 'pieces_prevues',
             'nbr_total_sessions', 'nbr_total_pieces', 'created_at', 'updated_at', 'is_deleted', 'deleted_at',
             'created_by_email', 'updated_by_email', 'deleted_by_email',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'is_deleted', 'deleted_at',
-                            'statut', 'statut_change_at', 'motif_statut']
+                            'statut', 'statut_change_at', 'motif_statut',
+                            'modele', 'pieces_prevues']
 
     def validate(self, attrs):
         # Unicité (affaire, numero_ssdgps) : garantie en base par une UniqueConstraint. On la
@@ -253,3 +257,74 @@ class SessionSerializer(serializers.ModelSerializer):
                     "passez-le en multi-session."
                 )})
         return attrs
+
+
+class ModeleSsdgpsSerializer(serializers.ModelSerializer):
+    """Modèle de SDGPS. La portée `systeme` n'est accordée qu'à l'administration de
+    l'application ; tout autre créateur obtient un modèle PERSONNEL, à son nom."""
+    nature_display = serializers.CharField(source='get_nature_ssdgps_display', read_only=True)
+    type_display = serializers.CharField(source='get_type_ssdgps_display', read_only=True)
+    portee_display = serializers.CharField(source='get_portee_display', read_only=True)
+    proprietaire_email = AuthorDisplayField(source='proprietaire')
+    pieces_detail = serializers.SerializerMethodField()
+    nb_pieces = serializers.SerializerMethodField()
+    modifiable = serializers.SerializerMethodField()
+    created_by_email = AuthorDisplayField(source='created_by')
+    updated_by_email = AuthorDisplayField(source='updated_by')
+    deleted_by_email = AuthorDisplayField(source='deleted_by')
+
+    class Meta:
+        model = ModeleSsdgps
+        fields = [
+            'id', 'nom', 'description', 'nature_ssdgps', 'nature_display',
+            'type_ssdgps', 'type_display', 'portee', 'portee_display', 'code_systeme',
+            'proprietaire_email', 'pieces', 'pieces_detail', 'nb_pieces', 'modifiable',
+            'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+            'created_by_email', 'updated_by_email', 'deleted_by_email',
+        ]
+        read_only_fields = ['id', 'code_systeme', 'created_at', 'updated_at',
+                            'is_deleted', 'deleted_at']
+
+    def get_pieces_detail(self, obj):
+        from pieces.catalog import PIECE_CATALOG
+        from .modeles import libelle_piece
+        return [{**p, 'nom': libelle_piece(p.get('type_piece'), p.get('numero')),
+                 'source': PIECE_CATALOG.get(p.get('type_piece'), {}).get('source', '')}
+                for p in (obj.pieces or [])]
+
+    def get_nb_pieces(self, obj) -> int:
+        return len(obj.pieces or [])
+
+    def get_modifiable(self, obj) -> bool:
+        request = self.context.get('request')
+        return bool(request) and peut_modifier_modele(request.user, obj)
+
+    def validate_portee(self, value):
+        from accounts.permissions import is_application_admin
+        request = self.context.get('request')
+        if value == ModeleSsdgps.Portee.SYSTEME and not (
+                request and is_application_admin(request.user)):
+            raise serializers.ValidationError(
+                "Seule l'administration de l'application peut créer un modèle partagé.")
+        return value
+
+    def validate(self, attrs):
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from .modeles import normaliser_pieces
+        nature = attrs.get('nature_ssdgps', getattr(self.instance, 'nature_ssdgps', None))
+        pieces = attrs.get('pieces', getattr(self.instance, 'pieces', None))
+        if 'pieces' in attrs or 'nature_ssdgps' in attrs or self.instance is None:
+            try:
+                attrs['pieces'] = normaliser_pieces(pieces, nature)
+            except DjangoValidationError as exc:
+                raise serializers.ValidationError({'pieces': exc.messages})
+        return attrs
+
+
+def peut_modifier_modele(user, modele) -> bool:
+    """Un modèle système ne se modifie que par l'administration de l'application ; un
+    modèle personnel, que par son propriétaire."""
+    from accounts.permissions import is_application_admin
+    if modele.portee == ModeleSsdgps.Portee.SYSTEME:
+        return is_application_admin(user)
+    return modele.proprietaire_id == user.id

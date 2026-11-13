@@ -125,6 +125,10 @@ export interface Ssdgps {
   verrouille?: boolean;
   /** Transitions réellement ouvertes à l'utilisateur courant (garde cosmétique). */
   transitions?: SsdgpsTransition[];
+  /** Modèle d'origine (assistant de création) et instantané de ses pièces. */
+  modele?: string | null;
+  modele_nom?: string;
+  pieces_prevues?: { type_piece: string; numero: number | null; obligatoire: boolean }[];
   nbr_total_sessions?: number;
   nbr_total_pieces?: number;
   created_at?: string;

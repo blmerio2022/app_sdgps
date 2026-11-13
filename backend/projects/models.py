@@ -257,6 +257,17 @@ class Ssdgps(BaseModel):
         blank=True, verbose_name="Motif du dernier changement de statut",
         help_text="Obligatoire pour un rejet : le rédacteur doit savoir quoi corriger.")
 
+    # Modèle qui a initialisé le dossier (assistant de création) et instantané de ses
+    # pièces : modifier le modèle ensuite ne change PAS la liste de contrôle des dossiers
+    # déjà créés — un dossier en cours ne doit pas voir ses exigences bouger sous lui.
+    modele = models.ForeignKey(
+        'ModeleSsdgps', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='ssdgps_crees', verbose_name="Modèle d'origine",
+    )
+    pieces_prevues = models.JSONField(
+        default=list, blank=True, verbose_name="Pièces prévues (instantané du modèle)",
+    )
+
     def est_verrouille(self) -> bool:
         """Le contenu du dossier est-il figé (plus aucune écriture sur ses pièces) ?"""
         return self.statut in self.STATUTS_VERROUILLES
@@ -302,3 +313,56 @@ class Session(BaseModel):
 
     def __str__(self):
         return f"Session {self.numero_session}"
+
+
+class ModeleSsdgps(BaseModel):
+    """Modèle (gabarit) de SDGPS : la liste ordonnée des pièces qu'un dossier d'une nature
+    donnée doit contenir.
+
+    Deux portées :
+    - **systeme** — modèles de l'application, un par nature (PDC, DDC, PLC, DLC), amorcés
+      depuis le catalogue des pièces (`projects/modeles.py::assurer_modeles_systeme`) et
+      modifiables par la seule administration de l'application ;
+    - **personnel** — modèles créés par un utilisateur dans son compte, visibles de lui
+      seul, réutilisables pour ses futurs dossiers.
+
+    `pieces` est une liste JSON ordonnée `[{type_piece, numero, obligatoire}, …]` validée
+    contre le catalogue (`modeles.normaliser_pieces`) : un modèle ne peut pas réclamer une
+    pièce que la nature du dossier n'admet pas.
+    """
+
+    class Portee(models.TextChoices):
+        SYSTEME = 'systeme', "Modèle de l'application"
+        PERSONNEL = 'personnel', "Modèle personnel"
+
+    nom = models.CharField(max_length=150, verbose_name="Nom du modèle")
+    description = models.TextField(blank=True, verbose_name="Description")
+    nature_ssdgps = models.CharField(
+        max_length=10, choices=Ssdgps.NatureSSDGPS.choices, verbose_name="Nature du SSDGPS",
+    )
+    type_ssdgps = models.CharField(
+        max_length=15, choices=Ssdgps.TypeSSDGPS.choices, default=Ssdgps.TypeSSDGPS.MONO,
+        verbose_name="Type du SSDGPS proposé",
+    )
+    portee = models.CharField(
+        max_length=10, choices=Portee.choices, default=Portee.PERSONNEL, db_index=True,
+        verbose_name="Portée",
+    )
+    proprietaire = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='modeles_ssdgps', verbose_name="Propriétaire (modèle personnel)",
+    )
+    code_systeme = models.CharField(
+        max_length=20, blank=True, db_index=True, verbose_name="Code du modèle système",
+        help_text="Identifie un modèle amorcé par l'application (amorçage idempotent).",
+    )
+    pieces = models.JSONField(default=list, blank=True, verbose_name="Pièces du modèle")
+
+    class Meta:
+        ordering = ['portee', 'nature_ssdgps', 'nom']
+        verbose_name = "Modèle de SDGPS"
+        verbose_name_plural = "Modèles de SDGPS"
+
+    def __str__(self):
+        return f"{self.nom} ({self.nature_ssdgps})"
+

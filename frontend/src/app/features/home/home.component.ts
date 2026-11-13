@@ -65,6 +65,7 @@ export class HomeComponent implements OnInit {
   };
 
   readonly quickActions: QuickAction[] = [
+    { label: 'Assistant SDGPS',      hint: 'Du projet au rapport, guidé',    icon: 'fa-wand-magic-sparkles', route: '/projets/assistant' },
     { label: 'Explorer les projets', hint: 'Projets, propriétés, affaires…', icon: 'fa-diagram-project', route: '/projets' },
     { label: 'Tri des pièces',       hint: 'Ordre par défaut des tableaux',  icon: 'fa-sort-amount-down', route: '/parametres/tri-pieces' },
     { label: 'Champs des pièces',    hint: 'Colonnes affichées par type',    icon: 'fa-table-columns',    route: '/parametres/champs-pieces' },

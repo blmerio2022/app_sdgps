@@ -66,6 +66,10 @@ export class PieceAddWizardComponent implements OnInit {
   @Input() defaultSessionId: string | null = null;
   /** Rendu inline (page dédiée) plutôt qu'en modale superposée. */
   @Input() embedded = false;
+  /** Type imposé par l'hôte (assistant de création d'un SDGPS : la pièce suivante de la
+   * liste de contrôle). Renseigné, l'étape « Type » est sautée et le parcours démarre
+   * directement sur la phase suivante. */
+  @Input() presetTypeCode: string | null = null;
   @Output() created = new EventEmitter<Piece>();
   @Output() cancelled = new EventEmitter<void>();
   /** Type en cours de création (`null` tant qu'aucun n'est choisi) — la page hôte s'en sert
@@ -125,6 +129,10 @@ export class PieceAddWizardComponent implements OnInit {
   ngOnInit(): void {
     this.sortConfigService.get().subscribe(cfg => this.sortConfig = cfg);
     this.fieldsConfigService.get().subscribe(cfg => this.fieldsConfig = cfg as PieceFieldsConfig);
+    if (this.presetTypeCode) {
+      const def = this.catalog.find(d => d.code === this.presetTypeCode);
+      if (def) this.selectType(def);
+    }
   }
 
   /** Champs de saisie de la grille manuelle = champs du type filtrés/réordonnés par la vue
@@ -339,6 +347,9 @@ export class PieceAddWizardComponent implements OnInit {
   }
 
   backToType(): void {
+    // Type imposé par l'hôte : il n'y a pas d'autre type à choisir ici — revenir en
+    // arrière, c'est rendre la main à l'hôte (la liste de contrôle de l'assistant).
+    if (this.presetTypeCode) { this.cancelled.emit(); return; }
     this.step = 'type'; this.selectedType = null; this.typeSelected.emit(null); this.resetSourceState();
   }
   /** Depuis la sous-étape « Méthode » : retour au choix de session quand cette étape existe,

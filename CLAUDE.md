@@ -252,6 +252,41 @@ par quiconque sans trace du contrôle.
 - tests : `backend/projects/tests_workflow_ssdgps.py` (34 cas) + specs
   `projects.service.spec.ts` / `piece-management-page.component.spec.ts`.
 
+**Assistant de création SDGPS + modèles de pièces.** Un seul parcours, du projet au
+rapport livrable, au lieu de traverser quatre listes (projet, propriété, affaire, SDGPS)
+puis de deviner pièce par pièce ce que la nature du dossier exige.
+- **Modèles** : `projects.models.ModeleSsdgps` (`nature_ssdgps`, `type_ssdgps`, `portee`
+  `systeme`|`personnel`, `proprietaire`, `pieces` = liste JSON ordonnée
+  `[{type_piece, numero, obligatoire}]`). Règles dans `backend/projects/modeles.py` :
+  `pieces_par_defaut(nature)` (dérivé du champ `natures` du catalogue, RDN avec n°1, sans
+  PGSDGPS), `normaliser_pieces` (type connu, applicable à la nature, pas de doublon, numéro
+  ssi répétable), `assurer_modeles_systeme()` (4 modèles PDC/DDC/PLC/DLC — amorcés par la
+  migration `projects/0009` **et** par `run_seed`, donc recréés après `reset_db` ; jamais
+  réécrits s'ils existent), `plan_du_ssdgps` (liste de contrôle) ;
+- **droits** : un modèle `systeme` ne se crée / modifie que par l'administration de
+  l'application (`IsApplicationAdmin`) ; un modèle `personnel` n'est **visible** et
+  modifiable que par son propriétaire. Suppression logique ;
+- **API** : `/api/v1/modeles-ssdgps/` (CRUD, `?nature=`, `<id>/dupliquer/`,
+  `depuis-ssdgps/`) ; `POST /api/v1/ssdgps/assistant/` crée projet → propriété → affaire →
+  SDGPS en **une transaction** (chaque niveau `{"id"}` existant ou `{"nouveau": {...}}`,
+  mêmes sérialiseurs et même portée RBAC que les vues CRUD ; erreurs rangées sous la clé du
+  niveau fautif ; numéro du SDGPS attribué ; `nb_sessions` pour un multi-session) ;
+  `GET ssdgps/<id>/plan/`, `POST ssdgps/<id>/appliquer-modele/`,
+  `POST ssdgps/<id>/valider-pieces/` (validation groupée via le **même** `PieceSerializer` —
+  règle des photos PPA/PPN comprise —, refusée sur un dossier figé) ;
+- le SDGPS garde `modele` + `pieces_prevues` (**instantané** : modifier le modèle ne change
+  pas les dossiers existants) ;
+- **front** : route `projets/assistant` (`SdgpsAssistantComponent`, 6 étapes ; reprise par
+  `?ssdgps=&projet=`, démarrage par `?modele=`), route `projets/modeles`
+  (`ModeleSsdgpsListComponent`), éditeur en modale `ModeleSsdgpsEditorComponent`. L'import
+  de chaque pièce réutilise `app-piece-add-wizard` avec `[presetTypeCode]` (étape « Type »
+  sautée). Entrées : bouton « Assistant SDGPS » de la liste des projets, bouton
+  « Assistant » de la page des pièces, raccourci du tableau de bord. Styles communs :
+  `features/projects/_sdgps-kit.scss` ;
+- tests : `backend/projects/tests_modeles_assistant.py` (48 cas) + specs
+  `modeles-ssdgps.service`, `sdgps-assistant`, `modele-ssdgps-editor`,
+  `modele-ssdgps-list`, `piece-add-wizard` (type imposé).
+
 **Journal d'audit (`accounts.models.AuditEvent`).** Les 7 colonnes d'audit disent qui a
 touché une ligne **en dernier** ; elles ne disent pas ce qui a changé et ne gardent aucune
 trace des actions qui ne modifient rien. Le journal, lui, enregistre QUI / QUOI / QUAND,

@@ -848,6 +848,19 @@ export class PieceManagementPageComponent implements OnInit {
   }
 
   /** Ouvre la modale en état « configuration » (choix du mode d'impression), sans générer. */
+  /** Ouvre ce dossier dans l'assistant de création, à l'étape « Pièces » : liste de
+   * contrôle du modèle, import pièce par pièce, validation groupée, génération. */
+  get assistantTitle(): string {
+    return this.ssdgps?.modele_nom
+      ? `Liste de contrôle du modèle « ${this.ssdgps.modele_nom} »`
+      : "Suivre ce dossier pièce par pièce à partir d'un modèle";
+  }
+
+  openInAssistant(): void {
+    const base = this.router.url.startsWith('/admin') ? '/admin/projets' : '/projets';
+    this.router.navigate([base, 'assistant'], { queryParams: { ssdgps: this.ssdgps.id, projet: this.projectId } });
+  }
+
   openReportModal(): void {
     if (this.reportGenerating) return;
     this.showReportModal = true;

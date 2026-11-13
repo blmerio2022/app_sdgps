@@ -82,6 +82,13 @@
           (resetToSource)="onResetSort()">
         </app-multi-level-sort>
 
+        <!-- Parcours guidé : projet → propriété → affaire → SDGPS → pièces → rapport. -->
+        <a class="btn btn-assistant" *ngIf="!showDeleted" routerLink="assistant"
+           title="Créer un SDGPS complet en un seul parcours guidé, à partir d'un modèle de pièces">
+          <i class="fas fa-wand-magic-sparkles"></i>
+          <span>Assistant SDGPS</span>
+        </a>
+
         <button class="btn btn-success btn-add-org" *ngIf="!showDeleted" (click)="openCreate()" title="Ajouter un nouveau projet">
           <i class="fas fa-plus-circle"></i>
           <span>Ajouter</span>

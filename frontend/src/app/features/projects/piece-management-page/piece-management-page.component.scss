@@ -507,6 +507,11 @@
 .lock-banner { border-color: rgba(90, 155, 213, 0.45); > i { color: #5a9bd5; } }
 .reject-banner { border-color: rgba(231, 76, 60, 0.45); > i { color: #e74c3c; } }
 
+.btn-assistant {
+  background: linear-gradient(135deg, #d46a6a, var(--accent-color)); color: #fff; border: none; font-weight: 600;
+  box-shadow: 0 2px 8px rgba(204, 88, 88, 0.25);
+  &:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(204, 88, 88, 0.4); }
+}
 .btn-workflow {
   background: linear-gradient(135deg, #1f6feb, #14396b); color: #fff; border: none;
   &:hover:not(:disabled) { filter: brightness(1.1); }

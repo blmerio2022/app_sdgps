@@ -471,6 +471,10 @@ def run_seed(stdout=None, data=None, business_data=None):
         data.get('organismes_niveau1', []), data.get('organismes_niveau2', []), summary, log)
     # Les données métier référencent utilisateurs, organisations et organismes déjà seedés.
     _seed_business_data(business_data, summary, log)
+    # Modèles de SDGPS de l'application (PDC, DDC, PLC, DLC) : données de RÉFÉRENCE,
+    # dérivées du catalogue des pièces — jamais réécrits s'ils existent déjà.
+    from projects.modeles import assurer_modeles_systeme
+    summary['modeles_ssdgps_created'] = assurer_modeles_systeme()
     log(
         f"Terminé : {summary['users_created']} utilisateur(s), "
         f"{summary['organizations_created']} organisation(s), "
