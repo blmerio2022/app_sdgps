@@ -282,10 +282,32 @@ puis de deviner pièce par pièce ce que la nature du dossier exige.
   de chaque pièce réutilise `app-piece-add-wizard` avec `[presetTypeCode]` (étape « Type »
   sautée). Entrées : bouton « Assistant SDGPS » de la liste des projets, bouton
   « Assistant » de la page des pièces, raccourci du tableau de bord. Styles communs :
-  `features/projects/_sdgps-kit.scss` ;
+  `features/projects/_sdgps-kit.scss`. La barre Précédent/Suivant (`.as-foot`) vit **hors**
+  de la zone défilante (`.as-scroll`) : elle reste ancrée en bas quelle que soit la hauteur
+  de l'étape — ne pas la remettre en `position: sticky` dans le contenu ;
 - tests : `backend/projects/tests_modeles_assistant.py` (48 cas) + specs
   `modeles-ssdgps.service`, `sdgps-assistant`, `modele-ssdgps-editor`,
   `modele-ssdgps-list`, `piece-add-wizard` (type imposé).
+
+**Import de PDF d'images (RDC, pièces à images, photos PPA/PPN).** Un PDF déposé là où
+l'on attend des images ouvre l'**éditeur de pages** `features/projects/pdf-page-editor/`
+(`<app-pdf-page-editor>`) : suppression / restauration, réorganisation (flèches et
+glisser-déposer), rotation, sélection multiple, aperçu, rognage des marges et — si
+`[points]` est fourni (PPA/PPN) — affectation de chaque page à un point (une par une, par
+lot, ou « dans l'ordre », n pages par point). Chaque page retenue est rendue en **JPEG**
+(`canvasToJpeg`, sous `maxBytes`) et suit le circuit d'images habituel : **aucun
+changement backend**, le PDF lui-même n'est jamais stocké.
+- rendu : `core/services/pdf-render.service.ts` — **pdf.js** (`pdfjs-dist` 3.x, build
+  `legacy`) chargé **à la demande** (import dynamique, bundle séparé) ; worker copié par
+  `angular.json` vers `assets/pdfjs/pdf.worker.min.js`. Rendu en intention `print` : le
+  mode `display` est cadencé par `requestAnimationFrame` et se fige dans un onglet en
+  arrière-plan. ⚠️ Après modification de `angular.json`, **relancer `ng serve`** (sinon le
+  worker répond 404 et le PDF est déclaré illisible) ;
+- branché dans `piece-add-wizard` (file d'attente si plusieurs PDF, ≤ 2 Mo par page),
+  `piece-image-gallery` et `piece-photo-points` (envoi groupé **par point** via
+  `addImages(pieceId, files, pointRef)`) ;
+- tests : `pdf-page-editor.component.spec.ts` (+ utilitaires), specs wizard / galerie /
+  photos par point.
 
 **Journal d'audit (`accounts.models.AuditEvent`).** Les 7 colonnes d'audit disent qui a
 touché une ligne **en dernier** ; elles ne disent pas ce qui a changé et ne gardent aucune

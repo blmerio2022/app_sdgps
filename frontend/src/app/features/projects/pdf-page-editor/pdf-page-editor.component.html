@@ -1,0 +1,126 @@
+<div class="pe-overlay">
+  <div class="pe-dialog" role="dialog" aria-modal="true" aria-labelledby="pe-title">
+    <header class="pe-head">
+      <span class="pe-icon"><i class="fas fa-file-pdf"></i></span>
+      <div class="pe-titles">
+        <h2 id="pe-title">Préparer les pages du PDF</h2>
+        <p><strong>{{ file.name }}</strong> — supprimez, réordonnez et faites pivoter les pages<ng-container *ngIf="pointMode">, puis affectez-les aux points</ng-container>. Chaque page retenue devient une image.</p>
+      </div>
+      <button class="pe-close" (click)="cancelled.emit()" [disabled]="exporting" aria-label="Fermer"><i class="fas fa-xmark"></i></button>
+    </header>
+
+    <!-- Barre d'outils -->
+    <div class="pe-toolbar" *ngIf="!loading && !error">
+      <div class="pe-group">
+        <label class="pe-check"><input type="checkbox" [checked]="allSelected" (change)="selectAll()"> Tout</label>
+        <button class="pe-tool" (click)="invertSelection()" title="Inverser la sélection"><i class="fas fa-right-left"></i></button>
+        <span class="pe-count" *ngIf="selection.length">{{ selection.length }} sélectionnée(s)</span>
+      </div>
+      <div class="pe-group" [class.disabled]="!selection.length">
+        <button class="pe-tool" (click)="rotateSelection(-90)" [disabled]="!selection.length" title="Pivoter à gauche"><i class="fas fa-rotate-left"></i></button>
+        <button class="pe-tool" (click)="rotateSelection(90)" [disabled]="!selection.length" title="Pivoter à droite"><i class="fas fa-rotate-right"></i></button>
+        <button class="pe-tool danger" (click)="removeSelection()" [disabled]="!selection.length" title="Supprimer les pages sélectionnées"><i class="fas fa-trash-can"></i></button>
+        <select class="pe-select" *ngIf="pointMode" [disabled]="!selection.length" #bulkPoint (change)="assignSelection(bulkPoint.value); bulkPoint.value = '__'">
+          <option value="__" selected disabled>Affecter la sélection à…</option>
+          <option value="">— À assigner plus tard —</option>
+          <option *ngFor="let pt of points" [value]="pt.ref">{{ pt.label }}</option>
+        </select>
+      </div>
+      <div class="pe-group" *ngIf="pointMode">
+        <span class="pe-label">Dans l'ordre :</span>
+        <input class="pe-num" type="number" min="1" [(ngModel)]="pagesPerPoint" title="Pages par point" />
+        <span class="pe-label">page(s)/point</span>
+        <button class="pe-tool text" (click)="assignInOrder()" title="Page 1 → 1er point, page 2 → 2e point…"><i class="fas fa-list-ol"></i> Affecter</button>
+        <button class="pe-tool" (click)="clearAssignments()" title="Retirer toutes les affectations"><i class="fas fa-eraser"></i></button>
+      </div>
+      <div class="pe-group end">
+        <button class="pe-tool text" (click)="resetOrder()" title="Revenir à l'ordre du PDF"><i class="fas fa-arrow-down-1-9"></i> Ordre d'origine</button>
+        <label class="pe-check" title="Rogne les marges blanches autour du contenu de chaque page"><input type="checkbox" [(ngModel)]="trimMargins"> Rogner les marges</label>
+      </div>
+    </div>
+
+    <div class="pe-body">
+      <div class="pe-state" *ngIf="loading">
+        <i class="fas fa-spinner fa-spin"></i>
+        <span>Lecture du PDF… {{ loadedCount }}<ng-container *ngIf="totalCount"> / {{ totalCount }}</ng-container> page(s)</span>
+      </div>
+      <div class="pe-state error" *ngIf="error"><i class="fas fa-triangle-exclamation"></i><span>{{ error }}</span></div>
+
+      <div class="pe-grid" *ngIf="!loading && !error">
+        <div class="pe-page" *ngFor="let p of kept; let i = index; let first = first; let last = last; trackBy: trackPage"
+             [class.selected]="p.selected" [class.dragging]="dragIndex === i" [class.drop-target]="dropIndex === i && dragIndex !== i"
+             draggable="true" (dragstart)="onDragStart(i, $event)" (dragover)="onDragOver(i, $event)"
+             (drop)="onDrop(i, $event)" (dragend)="onDragEnd()" (click)="toggleSelect(p)">
+          <div class="pe-thumb">
+            <img [src]="p.thumb" [alt]="'Page ' + p.source" draggable="false" />
+            <span class="pe-rank">{{ i + 1 }}</span>
+            <span class="pe-origin" *ngIf="p.source !== i + 1 || p.rotation" title="Page d'origine / rotation">
+              p.{{ p.source }}<ng-container *ngIf="p.rotation"> · {{ p.rotation }}°</ng-container></span>
+            <span class="pe-checkmark"><i class="fas fa-check"></i></span>
+            <button class="pe-zoom" (click)="$event.stopPropagation(); openPreview(p)" title="Aperçu"><i class="fas fa-magnifying-glass-plus"></i></button>
+          </div>
+          <div class="pe-actions" (click)="$event.stopPropagation()">
+            <button (click)="move(p, -1)" [disabled]="first" title="Avancer"><i class="fas fa-chevron-left"></i></button>
+            <button (click)="move(p, 1)" [disabled]="last" title="Reculer"><i class="fas fa-chevron-right"></i></button>
+            <button (click)="rotate(p, -90)" title="Pivoter à gauche"><i class="fas fa-rotate-left"></i></button>
+            <button (click)="rotate(p, 90)" title="Pivoter à droite"><i class="fas fa-rotate-right"></i></button>
+            <button class="danger" (click)="remove(p)" title="Supprimer la page"><i class="fas fa-trash-can"></i></button>
+          </div>
+          <select class="pe-point" *ngIf="pointMode" [ngModel]="p.pointRef" (ngModelChange)="assign(p, $event)"
+                  (click)="$event.stopPropagation()" [class.unassigned]="!p.pointRef">
+            <option value="">— À assigner —</option>
+            <option *ngFor="let pt of points" [value]="pt.ref">{{ pt.label }}</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Pages retirées : restaurables -->
+      <div class="pe-bin" *ngIf="deletedPages.length">
+        <div class="pe-bin-head">
+          <span><i class="fas fa-trash-can"></i> {{ deletedPages.length }} page(s) retirée(s)</span>
+          <button class="pe-tool text" (click)="restoreAll()"><i class="fas fa-rotate-left"></i> Tout restaurer</button>
+        </div>
+        <div class="pe-bin-list">
+          <button class="pe-bin-item" *ngFor="let p of deletedPages" (click)="restore(p)" title="Restaurer la page {{ p.source }}">
+            <img [src]="p.thumb" alt="" /><span>p.{{ p.source }}</span><i class="fas fa-rotate-left"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <footer class="pe-foot">
+      <div class="pe-summary">
+        <span><strong>{{ kept.length }}</strong> page(s) retenue(s)</span>
+        <span *ngIf="deletedPages.length">· {{ deletedPages.length }} retirée(s)</span>
+        <span *ngIf="pointMode" [class.warn]="assignedCount < kept.length">· {{ assignedCount }}/{{ kept.length }} affectée(s) à un point</span>
+      </div>
+      <div class="pe-progress" *ngIf="exporting">
+        <div class="pe-bar"><span [style.width.%]="kept.length ? (100 * exportDone / kept.length) : 0"></span></div>
+        <small>Conversion {{ exportDone }}/{{ kept.length }}</small>
+      </div>
+      <button class="btn-ghost" (click)="cancelled.emit()" [disabled]="exporting">Annuler</button>
+      <button class="btn-primary" (click)="confirm()" [disabled]="!canConfirm">
+        <i class="fas" [ngClass]="exporting ? 'fa-spinner fa-spin' : 'fa-file-import'"></i>
+        Importer {{ kept.length }} page(s)
+      </button>
+    </footer>
+  </div>
+
+  <!-- Aperçu en grand -->
+  <div class="pe-preview" *ngIf="previewPage" (click)="closePreview()">
+    <div class="pe-preview-box" (click)="$event.stopPropagation()">
+      <div class="pe-preview-head">
+        <strong>Page {{ rank(previewPage) }} <small>(p.{{ previewPage.source }} du PDF)</small></strong>
+        <span class="pe-preview-tools">
+          <button (click)="previewStep(-1)" title="Page précédente"><i class="fas fa-chevron-left"></i></button>
+          <button (click)="previewStep(1)" title="Page suivante"><i class="fas fa-chevron-right"></i></button>
+          <button (click)="rotate(previewPage, -90)" title="Pivoter à gauche"><i class="fas fa-rotate-left"></i></button>
+          <button (click)="rotate(previewPage, 90)" title="Pivoter à droite"><i class="fas fa-rotate-right"></i></button>
+          <button class="danger" (click)="remove(previewPage)" title="Supprimer"><i class="fas fa-trash-can"></i></button>
+          <button (click)="closePreview()" title="Fermer"><i class="fas fa-xmark"></i></button>
+        </span>
+      </div>
+      <img [src]="previewUrl" alt="Aperçu de la page" />
+    </div>
+  </div>
+</div>

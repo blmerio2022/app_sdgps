@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { forkJoin, of, Subscription, timer } from 'rxjs';
 import { catchError, switchMap, takeWhile } from 'rxjs/operators';
@@ -69,6 +69,8 @@ export class SdgpsAssistantComponent implements OnInit, OnDestroy {
   readonly natures = NATURES_PRESENTATION;
 
   step: StepKey = 'projet';
+  /** Zone qui défile (la barre d'actions, elle, reste hors de cette zone). */
+  @ViewChild('scrollArea') scrollArea?: ElementRef<HTMLElement>;
   loading = true;
   creating = false;
   /** Erreur de création renvoyée par le serveur, affichée sur l'étape fautive. */
@@ -244,6 +246,9 @@ export class SdgpsAssistantComponent implements OnInit, OnDestroy {
   goTo(key: StepKey): void {
     if (!this.canGoTo(key)) return;
     this.step = key;
+    // Chaque étape repart du haut : sans cela, on arrivait sur la nouvelle étape au
+    // niveau de défilement de la précédente.
+    this.scrollArea?.nativeElement.scrollTo({ top: 0 });
     if (key === 'rapport') this.runCoherence();
   }
 
@@ -258,6 +263,29 @@ export class SdgpsAssistantComponent implements OnInit, OnDestroy {
   previous(): void {
     const prev = this.steps[this.stepIndex - 1]?.key;
     if (prev && this.canGoTo(prev)) this.goTo(prev);
+  }
+
+  /** Ce que dit la barre d'actions : ce qui manque pour continuer, ou que tout est prêt. */
+  get footerHint(): { text: string; ok: boolean } | null {
+    if (this.created) {
+      if (!this.plan || !this.plan.total) return null;
+      if (this.step === 'pieces') {
+        return this.plan.pret
+          ? { text: 'Toutes les pièces sont validées.', ok: true }
+          : { text: `${this.plan.validees}/${this.plan.total} pièces validées.`, ok: false };
+      }
+      return this.reportBlob ? { text: 'Rapport prêt à être livré.', ok: true } : null;
+    }
+    if (this.stepValid(this.step)) {
+      return { text: this.step === 'dossier' ? 'Tout est prêt : le dossier peut être créé.' : 'Étape complète.', ok: true };
+    }
+    const manque: Record<string, string> = {
+      projet: this.projetMode === 'existant' ? 'Choisissez un projet.' : 'Renseignez le nom et le code du projet.',
+      propriete: this.proprieteMode === 'existant' ? 'Choisissez une propriété.' : 'Complétez la propriété (identifiant, organismes).',
+      affaire: this.affaireMode === 'existant' ? 'Choisissez une affaire.' : 'Complétez l’affaire (procédure, nature, date).',
+      dossier: this.modeleId ? 'Nombre de sessions invalide (1 à 50).' : 'Choisissez un modèle de pièces.',
+    };
+    return { text: manque[this.step] || '', ok: false };
   }
 
   stepValid(key: StepKey): boolean {

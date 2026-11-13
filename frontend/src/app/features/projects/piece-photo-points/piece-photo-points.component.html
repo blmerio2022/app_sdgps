@@ -22,8 +22,8 @@
       <span><i class="fas fa-inbox"></i> Photos à assigner ({{ unassigned.length }})</span>
       <label class="pp-upload" *ngIf="editable" [class.disabled]="busy"
              title="Rendu optimal dans le rapport PDF : photos carrées (rapport 1:1), résolution ≥ 1200×1200 px. Chaque photo remplit une cellule carrée pleine page.">
-        <input type="file" accept=".png,.jpg,.jpeg,.tif,.tiff,.webp" multiple hidden [disabled]="busy" (change)="onFilesUnassigned($event)">
-        <i class="fas" [ngClass]="busy ? 'fa-spinner fa-spin' : 'fa-plus'"></i> Déposer des photos
+        <input type="file" accept=".png,.jpg,.jpeg,.tif,.tiff,.webp,.pdf" multiple hidden [disabled]="busy" (change)="onFilesUnassigned($event)">
+        <i class="fas" [ngClass]="busy ? 'fa-spinner fa-spin' : 'fa-plus'"></i> Déposer des photos ou un PDF
       </label>
     </div>
 
@@ -86,7 +86,7 @@
         <span class="pp-point-count" [class.zero]="!countOf(row)">{{ countOf(row) }} photo(s)</span>
         <label class="pp-upload sm" *ngIf="editable" (click)="$event.stopPropagation()" [class.disabled]="busy"
                title="Rendu optimal dans le rapport PDF : photos carrées (rapport 1:1), résolution ≥ 1200×1200 px. Chaque photo remplit une cellule carrée pleine page.">
-          <input type="file" accept=".png,.jpg,.jpeg,.tif,.tiff,.webp" multiple hidden [disabled]="busy" (change)="onFilesForPoint($event, row)">
+          <input type="file" accept=".png,.jpg,.jpeg,.tif,.tiff,.webp,.pdf" multiple hidden [disabled]="busy" (change)="onFilesForPoint($event, row)">
           <i class="fas fa-plus"></i> Photos
         </label>
       </div>
@@ -129,3 +129,9 @@
   <button class="pp-lightbox-close" (click)="closeLightbox()"><i class="fas fa-times"></i></button>
   <img [src]="lightboxUrl" alt="Photo agrandie" (click)="$event.stopPropagation()">
 </div>
+
+<!-- PDF de photos : tri, rotation et affectation des pages aux points avant import. -->
+<app-pdf-page-editor *ngIf="pdfEditing" [file]="pdfEditing" [points]="pdfPoints"
+  [defaultPointRef]="pdfDefaultPoint" [maxBytes]="5 * 1024 * 1024"
+  (confirmed)="onPdfPages($event)" (cancelled)="pdfEditing = null">
+</app-pdf-page-editor>

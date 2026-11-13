@@ -91,3 +91,20 @@ describe('PieceImageGalleryComponent', () => {
     });
   });
 });
+
+describe('PieceImageGalleryComponent — import d’un PDF', () => {
+  it('un PDF ouvre l’éditeur ; ses pages sont émises comme images', () => {
+    const cmp = new PieceImageGalleryComponent();
+    const emitted = jasmine.createSpy('add');
+    cmp.add.subscribe(emitted);
+    const pdf = new File(['%PDF'], 'rdc.pdf', { type: 'application/pdf' });
+    const png = new File(['x'], 'a.png', { type: 'image/png' });
+    cmp.onFilesSelected({ target: { files: [pdf, png], value: 'x' } } as any);
+    expect(cmp.pdfEditing).toBe(pdf);
+    expect(emitted).toHaveBeenCalledWith([png]);              // les images passent directement
+    const page = new File(['y'], 'rdc-p01.jpg', { type: 'image/jpeg' });
+    cmp.onPdfPages([{ file: page, pointRef: '' }]);
+    expect(cmp.pdfEditing).toBeNull();
+    expect(emitted).toHaveBeenCalledWith([page]);
+  });
+});

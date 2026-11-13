@@ -1,8 +1,11 @@
 import { Component, EventEmitter, HostListener, Input, Output } from '@angular/core';
-import { forkJoin } from 'rxjs';
+import { forkJoin, from } from 'rxjs';
+import { concatMap } from 'rxjs/operators';
 import { PiecesService } from '../../../core/services/pieces.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { Piece, PieceImage } from '../../../core/models/piece.model';
+import { PdfRenderService } from '../../../core/services/pdf-render.service';
+import { PdfPageResult, PdfPoint } from '../pdf-page-editor/pdf-page-editor.component';
 
 /**
  * PPA / PPN : rattachement manuel des photos aux points.
@@ -78,10 +81,49 @@ export class PiecePhotoPointsComponent {
     const files = Array.from(input.files ?? []); input.value = '';
     if (files.length) this.addPhotos(files, '');
   }
+  // --- PDF de photos : pages triées puis affectées aux points ------------------------
+  pdfEditing: File | null = null;
+  /** Point d'où l'import a été lancé : pré-affecte toutes les pages à ce point. */
+  pdfDefaultPoint = '';
+
+  /** Points proposés à l'éditeur de pages (même clé que l'affectation des photos). */
+  get pdfPoints(): PdfPoint[] {
+    return this.validRows.map(r => ({ ref: this.pointKey(r), label: this.pointLabel(r) }));
+  }
+
+  /** Pages retenues : un envoi PAR POINT (l'API affecte un lot d'images à un point), en
+   * séquence pour garder l'ordre des pages et un seul `busy`. */
+  onPdfPages(results: PdfPageResult[]): void {
+    this.pdfEditing = null;
+    if (!results.length) return;
+    const groups = new Map<string, File[]>();
+    results.forEach(r => groups.set(r.pointRef, [...(groups.get(r.pointRef) || []), r.file]));
+    this.busy = true;
+    from([...groups.entries()]).pipe(
+      concatMap(([ref, files]) => this.pieces.addImages(this.pieceId, files, ref || undefined)),
+    ).subscribe({
+      next: p => this.apply(p),
+      error: e => { this.busy = false; this.toast.error('Échec', e?.error?.detail || 'Ajout des pages impossible'); },
+      complete: () => {
+        this.busy = false;
+        const assigned = results.filter(r => r.pointRef).length;
+        this.toast.success('PDF importé', `${results.length} page(s) ajoutée(s), dont ${assigned} affectée(s) à un point.`);
+      },
+    });
+  }
+
   private addPhotos(files: File[], pointRef: string): void {
+    // Un PDF passe d'abord par l'éditeur de pages (tri, rotation, affectation aux points).
+    const pdf = files.find(f => PdfRenderService.isPdf(f));
+    if (pdf) {
+      this.pdfDefaultPoint = pointRef;
+      this.pdfEditing = pdf;
+      files = files.filter(f => !PdfRenderService.isPdf(f));
+      if (!files.length) return;
+    }
     const valid = files.filter(f => /\.(png|jpe?g|tiff?|webp)$/i.test(f.name) && f.size <= 20 * 1024 * 1024);
     if (valid.length < files.length) {
-      this.toast.error('Fichier(s) ignoré(s)', 'Formats : png/jpg/jpeg/tiff/webp, max 20 Mo.');
+      this.toast.error('Fichier(s) ignoré(s)', 'Formats : png/jpg/jpeg/tiff/webp/pdf, max 20 Mo.');
     }
     if (!valid.length || this.busy) return;
     this.busy = true;

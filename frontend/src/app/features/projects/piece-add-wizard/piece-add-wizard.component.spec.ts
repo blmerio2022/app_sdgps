@@ -777,3 +777,29 @@ describe('PieceAddWizardComponent — type imposé par l’hôte (assistant SDGP
     expect(cancelled).toHaveBeenCalled();
   });
 });
+
+describe('PieceAddWizardComponent — PDF d’images', () => {
+  let cmp: PieceAddWizardComponent;
+  let toast: jasmine.SpyObj<any>;
+
+  beforeEach(() => {
+    toast = jasmine.createSpyObj('ToastService', ['success', 'error']);
+    cmp = new PieceAddWizardComponent({} as any, toast, new FormBuilder(), {} as any, {} as any);
+  });
+
+  it('les PDF passent un par un par l’éditeur, les images entrent directement', () => {
+    const a = new File(['%PDF'], 'a.pdf', { type: 'application/pdf' });
+    const b = new File(['%PDF'], 'b.pdf', { type: 'application/pdf' });
+    const png = new File(['x'], 'img.png', { type: 'image/png' });
+    cmp.onImagesSelected({ target: { files: [a, png, b], value: 'x' } } as any);
+    expect(cmp.pdfEditing).toBe(a);
+    expect(cmp.localImages.map(li => li.file.name)).toEqual(['img.png']);
+
+    const page = new File(['y'], 'a-p01.jpg', { type: 'image/jpeg' });
+    cmp.onPdfPages([{ file: page, pointRef: '' }]);
+    expect(cmp.localImages.map(li => li.file.name)).toEqual(['img.png', 'a-p01.jpg']);
+    expect(cmp.pdfEditing).toBe(b);                            // PDF suivant
+    cmp.onPdfCancelled();
+    expect(cmp.pdfEditing).toBeNull();
+  });
+});

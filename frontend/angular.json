@@ -28,7 +28,8 @@
             "assets": [
               "src/favicon.ico",
               "src/favicon.svg",
-              "src/assets"
+              "src/assets",
+              { "glob": "pdf.worker.min.js", "input": "node_modules/pdfjs-dist/legacy/build/", "output": "assets/pdfjs/" }
             ],
             "styles": [
               "node_modules/@fortawesome/fontawesome-free/css/all.min.css",
@@ -38,7 +39,8 @@
             ],
             "scripts": [],
             "allowedCommonJsDependencies": [
-              "localforage"
+              "localforage",
+              "pdfjs-dist"
             ]
           },
           "configurations": {
@@ -156,7 +158,8 @@
             "assets": [
               "src/favicon.ico",
               "src/favicon.svg",
-              "src/assets"
+              "src/assets",
+              { "glob": "pdf.worker.min.js", "input": "node_modules/pdfjs-dist/legacy/build/", "output": "assets/pdfjs/" }
             ],
             "styles": [
               "node_modules/@fortawesome/fontawesome-free/css/all.min.css",

@@ -1,6 +1,8 @@
 import { formatDateTime } from '../../../shared/utils/date-format.util';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { PieceImage } from '../../../core/models/piece.model';
+import { PdfRenderService } from '../../../core/services/pdf-render.service';
+import { PdfPageResult } from '../pdf-page-editor/pdf-page-editor.component';
 
 /**
  * Galerie d'images d'une pièce : vignettes, agrandissement (lightbox), panneau de
@@ -45,9 +47,22 @@ export class PieceImageGalleryComponent {
 
   onFilesSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
-    const files = Array.from(input.files ?? []);
+    let files = Array.from(input.files ?? []);
     input.value = '';
+    // Un PDF passe d'abord par l'éditeur de pages ; ses pages retenues sont émises comme
+    // des images ordinaires, par le même `add` que les images déposées.
+    const pdf = files.find(f => PdfRenderService.isPdf(f));
+    if (pdf) {
+      this.pdfEditing = pdf;
+      files = files.filter(f => !PdfRenderService.isPdf(f));
+    }
     if (files.length) this.add.emit(files);
+  }
+
+  pdfEditing: File | null = null;
+  onPdfPages(results: PdfPageResult[]): void {
+    this.pdfEditing = null;
+    if (results.length) this.add.emit(results.map(r => r.file));
   }
 
   confirmRemove(img: PieceImage, ev: Event): void {

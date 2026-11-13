@@ -1,3 +1,4 @@
+import { of } from 'rxjs';
 import { PiecePhotoPointsComponent } from './piece-photo-points.component';
 import { PieceImage } from '../../../core/models/piece.model';
 
@@ -135,5 +136,44 @@ describe('PiecePhotoPointsComponent (logique)', () => {
       cmp.openLightbox(img({ apercu_url: undefined, format: 'tiff' }));
       expect(cmp.lightboxUrl).toBeNull();
     });
+  });
+});
+
+describe('PiecePhotoPointsComponent — import d’un PDF de photos', () => {
+  let cmp: PiecePhotoPointsComponent;
+  let pieces: jasmine.SpyObj<any>;
+  let toast: jasmine.SpyObj<any>;
+  const pdf = new File(['%PDF'], 'photos.pdf', { type: 'application/pdf' });
+  const jpg = (n: string) => new File(['x'], n, { type: 'image/jpeg' });
+
+  beforeEach(() => {
+    pieces = jasmine.createSpyObj('PiecesService', ['addImages']);
+    toast = jasmine.createSpyObj('ToastService', ['success', 'error']);
+    cmp = new PiecePhotoPointsComponent(pieces, toast);
+    cmp.pieceId = 'pc1';
+    cmp.rows = [{ id: 'B1', nom_point: 'Borne 1' }, { id: 'B2', nom_point: 'Borne 2' }];
+  });
+
+  it('un PDF ouvre l’éditeur de pages, avec les points et le point d’origine', () => {
+    const input = { files: [pdf], value: 'x' } as any;
+    cmp.onFilesForPoint({ target: input } as any, cmp.rows[1]);
+    expect(cmp.pdfEditing).toBe(pdf);
+    expect(cmp.pdfDefaultPoint).toBe('B2');
+    expect(cmp.pdfPoints).toEqual([{ ref: 'B1', label: 'Borne 1' }, { ref: 'B2', label: 'Borne 2' }]);
+    expect(pieces.addImages).not.toHaveBeenCalled();
+  });
+
+  it('les pages retenues partent en un envoi par point, dans l’ordre', () => {
+    pieces.addImages.and.callFake(() => of({ id: 'pc1', images: [], payload: { rows: cmp.rows } }));
+    cmp.pdfEditing = pdf;
+    cmp.onPdfPages([
+      { file: jpg('p1.jpg'), pointRef: 'B1' }, { file: jpg('p2.jpg'), pointRef: 'B2' },
+      { file: jpg('p3.jpg'), pointRef: 'B1' }, { file: jpg('p4.jpg'), pointRef: '' },
+    ]);
+    expect(cmp.pdfEditing).toBeNull();
+    const calls = pieces.addImages.calls.allArgs().map((a: any[]) => [a[2], a[1].map((f: File) => f.name)]);
+    expect(calls).toEqual([['B1', ['p1.jpg', 'p3.jpg']], ['B2', ['p2.jpg']], [undefined, ['p4.jpg']]]);
+    expect(cmp.busy).toBeFalse();
+    expect(toast.success).toHaveBeenCalled();
   });
 });

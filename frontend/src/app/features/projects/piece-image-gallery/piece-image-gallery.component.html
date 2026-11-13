@@ -3,9 +3,9 @@
   <div class="gallery-toolbar">
     <label class="btn-upload" *ngIf="editable" [class.disabled]="busy"
            title="Ces images sont affichées en pleine page portrait (A4) dans le rapport PDF. Une orientation portrait proche du A4 (rapport ≈ 3:4) évite les bandes blanches ; résolution conseillée ≥ 1240×1754 px (150 dpi).">
-      <input type="file" accept=".png,.jpg,.jpeg,.tif,.tiff,.webp" multiple hidden
+      <input type="file" accept=".png,.jpg,.jpeg,.tif,.tiff,.webp,.pdf" multiple hidden
              [disabled]="busy" (change)="onFilesSelected($event)">
-      <i class="fas" [ngClass]="busy ? 'fa-spinner fa-spin' : 'fa-plus'"></i> Ajouter des images
+      <i class="fas" [ngClass]="busy ? 'fa-spinner fa-spin' : 'fa-plus'"></i> Ajouter des images ou un PDF
     </label>
     <span class="gallery-count">{{ images.length }} image(s)</span>
     <div class="view-toggle" *ngIf="images.length">
@@ -105,3 +105,8 @@
   <button class="lightbox-close" (click)="closeLightbox()"><i class="fas fa-times"></i></button>
   <img [src]="previewUrl(selected)" alt="Image agrandie" (click)="$event.stopPropagation()">
 </div>
+
+<!-- PDF d'images : tri, rotation et suppression des pages avant import. -->
+<app-pdf-page-editor *ngIf="pdfEditing" [file]="pdfEditing" [maxBytes]="5 * 1024 * 1024"
+  (confirmed)="onPdfPages($event)" (cancelled)="pdfEditing = null">
+</app-pdf-page-editor>

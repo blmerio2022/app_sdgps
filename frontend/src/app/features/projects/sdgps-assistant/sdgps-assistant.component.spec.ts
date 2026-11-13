@@ -291,3 +291,21 @@ describe('SdgpsAssistantComponent (logique)', () => {
     });
   });
 });
+
+describe('SdgpsAssistantComponent — barre d’actions', () => {
+  it('footerHint dit ce qui manque, puis que l’étape est complète', () => {
+    const auth = jasmine.createSpyObj('AuthService', ['isPlatformAdmin']);
+    const cmp = new SdgpsAssistantComponent({} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
+      {} as any, { url: '/projets/assistant' } as any, {} as any, jasmine.createSpyObj('B', ['set', 'clear']), auth);
+    cmp.projetMode = 'existant';
+    expect(cmp.footerHint).toEqual({ text: 'Choisissez un projet.', ok: false });
+    cmp.projetId = 'p1';
+    expect(cmp.footerHint?.ok).toBeTrue();
+    cmp.step = 'dossier';
+    expect(cmp.footerHint?.text).toContain('modèle');
+    cmp.ssdgps = { id: 's1' } as any;
+    cmp.step = 'pieces';
+    cmp.plan = { total: 4, validees: 1, pret: false } as any;
+    expect(cmp.footerHint).toEqual({ text: '1/4 pièces validées.', ok: false });
+  });
+});

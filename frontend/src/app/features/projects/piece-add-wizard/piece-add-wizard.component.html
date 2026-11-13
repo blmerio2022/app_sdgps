@@ -193,10 +193,10 @@
         <div class="source-form" *ngIf="selectedSource==='image'">
           <label class="dropzone" [class.dragging]="dragOver"
                  (dragover)="onDragOver($event)" (dragleave)="onDragLeave($event)" (drop)="onImagesDrop($event)">
-            <input type="file" accept=".png,.jpg,.jpeg,.tif,.tiff,.webp" multiple hidden (change)="onImagesSelected($event)">
+            <input type="file" accept=".png,.jpg,.jpeg,.tif,.tiff,.webp,.pdf" multiple hidden (change)="onImagesSelected($event)">
             <span class="dropzone-icon"><i class="fas fa-cloud-arrow-up"></i></span>
-            <span class="dropzone-title">Déposez des images ou <span class="dropzone-link">parcourez</span></span>
-            <span class="dropzone-hint">png, jpg, jpeg, tiff, webp — <strong>2 Mo max</strong> par image</span>
+            <span class="dropzone-title">Déposez des images ou un PDF, ou <span class="dropzone-link">parcourez</span></span>
+            <span class="dropzone-hint">png, jpg, jpeg, tiff, webp — <strong>2 Mo max</strong> par image · <strong>pdf</strong> : pages à trier, pivoter et supprimer avant import</span>
           </label>
           <!-- Recommandation ADAPTÉE à l'orientation automatique de la pièce (déduite des images). -->
           <p class="upload-hint">
@@ -787,3 +787,8 @@
     </div>
   </div>
 </div>
+
+<!-- ========== PDF d'images : préparation des pages avant import ========== -->
+<app-pdf-page-editor *ngIf="pdfEditing" [file]="pdfEditing" [maxBytes]="2 * 1024 * 1024"
+  (confirmed)="onPdfPages($event)" (cancelled)="onPdfCancelled()">
+</app-pdf-page-editor>

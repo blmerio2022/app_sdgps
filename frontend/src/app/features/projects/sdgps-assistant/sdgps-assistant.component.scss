@@ -2,10 +2,15 @@
 
 :host { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 
+/* La page ne défile pas : seule `.as-scroll` défile, la barre d'actions reste en bas. */
 .as-page {
+  flex: 1; min-height: 0; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.as-scroll {
   flex: 1; min-height: 0; overflow-y: auto;
   display: flex; flex-direction: column; gap: 14px;
-  padding: 16px 22px 0;
+  padding: 16px 22px 20px;
 }
 
 /* ------------------------------------------------------------------ En-tête */
@@ -319,13 +324,35 @@
 .as-job { display: flex; flex-direction: column; gap: 5px; small { font-size: 11.5px; color: var(--text-muted); } }
 .as-gen-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
-/* ------------------------------------------------------------------ Pied */
+/* ------------------------------------------------------------------ Barre d'actions
+   Hors de la zone défilante : une barre pleine largeur, ancrée en bas, alignée sur les
+   marges du contenu. Trois zones : retour à gauche, état au centre, action principale à
+   droite — la même grammaire à chaque étape. */
 .as-foot {
-  position: sticky; bottom: 0; z-index: 5;
-  display: flex; justify-content: space-between; align-items: center; gap: 10px;
-  margin: 0 -22px; padding: 12px 22px;
-  background: var(--content-bg); border-top: 1px solid var(--border-color);
-  box-shadow: 0 -6px 16px var(--shadow-color);
+  flex-shrink: 0;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 14px;
+  padding: 11px 22px;
+  background: var(--secondary-color);
+  border-top: 1px solid var(--border-color);
+  box-shadow: 0 -4px 14px var(--shadow-color);
+  @media (max-width: 760px) {
+    grid-template-columns: 1fr 1fr;
+    .as-foot-status { grid-column: 1 / -1; grid-row: 1; }
+  }
+}
+.as-foot-side {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  &.end { justify-content: flex-end; }
+}
+.as-foot-status {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; min-width: 0;
+  .as-foot-step { font-size: 12px; color: var(--text-muted);
+    strong { color: var(--text-color); font-weight: 600; } }
+  .as-foot-hint {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: $warning;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+    &.ok { color: $success; }
+  }
 }
 
 /* ------------------------------------------------------------------ Mini-modale */

@@ -1,4 +1,5 @@
 <div class="as-page">
+  <div class="as-scroll" #scrollArea>
   <!-- ================================================================== EN-TÊTE -->
   <header class="as-hero">
     <span class="as-hero-icon"><i class="fas fa-wand-magic-sparkles"></i></span>
@@ -448,21 +449,40 @@
     </aside>
   </div>
 
-  <!-- ================================================================== PIED -->
+  </div>
+
+  <!-- ================================================================== BARRE D'ACTIONS
+       Hors de la zone qui défile : toujours ancrée en bas de la page, quelle que soit la
+       hauteur de l'étape (une barre « sticky » dans le contenu remontait au milieu de
+       l'écran sur les étapes courtes). -->
   <footer class="as-foot" *ngIf="!loading">
-    <ng-container *ngIf="!created">
-      <button class="btn-ghost" (click)="previous()" [disabled]="stepIndex === 0"><i class="fas fa-arrow-left"></i> Précédent</button>
-      <button class="btn-primary" (click)="next()" [disabled]="!stepValid(step) || creating">
+    <div class="as-foot-side">
+      <button class="btn-ghost" *ngIf="!created" (click)="previous()" [disabled]="stepIndex === 0">
+        <i class="fas fa-arrow-left"></i> Précédent</button>
+      <button class="btn-ghost" *ngIf="created && step === 'rapport'" (click)="goTo('pieces')">
+        <i class="fas fa-arrow-left"></i> Retour aux pièces</button>
+      <button class="btn-ghost" *ngIf="created && step === 'pieces'" (click)="openDossier()" [disabled]="!createdProjetId">
+        <i class="fas fa-folder-open"></i> Page des pièces</button>
+    </div>
+
+    <div class="as-foot-status">
+      <span class="as-foot-step">Étape {{ stepIndex + 1 }} / {{ steps.length }} · <strong>{{ steps[stepIndex].label }}</strong></span>
+      <span class="as-foot-hint" *ngIf="footerHint as h" [class.ok]="h.ok">
+        <i class="fas" [ngClass]="h.ok ? 'fa-circle-check' : 'fa-circle-info'"></i>{{ h.text }}</span>
+    </div>
+
+    <div class="as-foot-side end">
+      <button class="btn-primary" *ngIf="!created" (click)="next()" [disabled]="!stepValid(step) || creating">
         <ng-container *ngIf="step !== 'dossier'">Continuer <i class="fas fa-arrow-right"></i></ng-container>
         <ng-container *ngIf="step === 'dossier'"><i class="fas" [ngClass]="creating ? 'fa-spinner fa-spin' : 'fa-circle-plus'"></i> Créer le dossier</ng-container>
       </button>
-    </ng-container>
-    <ng-container *ngIf="created">
-      <button class="btn-ghost" *ngIf="step === 'rapport'" (click)="goTo('pieces')"><i class="fas fa-arrow-left"></i> Retour aux pièces</button>
-      <span></span>
-      <button class="btn-primary" *ngIf="step === 'pieces'" (click)="goTo('rapport')">
+      <button class="btn-primary" *ngIf="created && step === 'pieces'" (click)="goTo('rapport')">
         Continuer vers le rapport <i class="fas fa-arrow-right"></i></button>
-    </ng-container>
+      <button class="btn-success" *ngIf="created && step === 'rapport' && reportBlob" (click)="download()">
+        <i class="fas fa-download"></i> Télécharger le rapport</button>
+      <button class="btn-primary" *ngIf="created && step === 'rapport' && !reportBlob" (click)="generate()" [disabled]="generating">
+        <i class="fas" [ngClass]="generating ? 'fa-spinner fa-spin' : 'fa-gears'"></i> Générer le rapport</button>
+    </div>
   </footer>
 
   <app-modele-ssdgps-editor *ngIf="editorOpen"

@@ -9,6 +9,8 @@ import { Ssdgps, Session } from '../../../core/models/project.model';
 import { formatFieldDate, formatDateTime } from '../../../shared/utils/date-format.util';
 import { classifyColorMode, compressionLabel, readExifDate } from '../piece-image-meta.util';
 import { findTbcReports, TbcReportCandidate } from '../tbc-report.util';
+import { PdfRenderService } from '../../../core/services/pdf-render.service';
+import { PdfPageResult } from '../pdf-page-editor/pdf-page-editor.component';
 import { assembleDeterminationRows, sortDeterminationItems, relabelDeterminationItems,
          fixesLabel, DeterminationFileItem, DetSortKey } from '../rdia.util';
 
@@ -613,12 +615,36 @@ export class PieceAddWizardComponent implements OnInit {
 
   /** Ajoute des images (dépôt ou parcours) après filtrage format ET taille (≤ 2 Mo). Lit les
    * dimensions côté client pour le panneau de détails et l'orientation recommandée. */
+  // --- PDF d'images : édition des pages avant import -------------------------------
+  /** PDF en cours d'édition (un à la fois) et ceux qui attendent leur tour. */
+  pdfEditing: File | null = null;
+  private pdfQueue: File[] = [];
+
+  /** Pages retenues d'un PDF : ce sont désormais des images ordinaires (JPEG ≤ 2 Mo). */
+  onPdfPages(results: PdfPageResult[]): void {
+    this.pdfEditing = null;
+    this.ingestImages(results.map(r => r.file));
+    if (results.length) this.toast.success('PDF importé', `${results.length} page(s) ajoutée(s) comme images.`);
+    this.nextPdf();
+  }
+  onPdfCancelled(): void { this.pdfEditing = null; this.nextPdf(); }
+  private nextPdf(): void { this.pdfEditing = this.pdfQueue.shift() || null; }
+
   private ingestImages(files: File[]): void {
+    // Un PDF n'est pas importé tel quel : ses pages passent d'abord par l'éditeur de pages
+    // (suppression, ordre, rotation), qui les rend en images.
+    const pdfs = files.filter(f => PdfRenderService.isPdf(f));
+    if (pdfs.length) {
+      this.pdfQueue.push(...pdfs);
+      if (!this.pdfEditing) this.nextPdf();
+      files = files.filter(f => !PdfRenderService.isPdf(f));
+      if (!files.length) return;
+    }
     const wellFormatted = files.filter(f => /\.(png|jpe?g|tiff?|webp)$/i.test(f.name));
     const tooBig = wellFormatted.filter(f => f.size > PieceAddWizardComponent.MAX_IMAGE_BYTES);
     const valid = wellFormatted.filter(f => f.size <= PieceAddWizardComponent.MAX_IMAGE_BYTES);
     if (wellFormatted.length < files.length) {
-      this.toast.error('Fichier(s) ignoré(s)', 'Formats acceptés : png, jpg, jpeg, tiff, webp.');
+      this.toast.error('Fichier(s) ignoré(s)', 'Formats acceptés : png, jpg, jpeg, tiff, webp, pdf.');
     }
     if (tooBig.length) {
       this.toast.error('Image(s) trop lourde(s)', `${tooBig.length} image(s) > 2 Mo ignorée(s). Chaque image doit peser 2 Mo au maximum.`);
