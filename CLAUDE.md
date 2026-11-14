@@ -114,12 +114,15 @@ change-password/logout.
 - `organizations/` — CRUD des organisations, membres, métadonnées, suppression en masse.
 - `platform_admin/` — profil self-service du super-admin + mot de passe (pas de modèles,
   uniquement des vues).
+- `reseaux/` — conception de réseaux de triangulation GPS (pas de modèles ; voir
+  « Réseau de triangulation GPS » ci-dessous).
 - Racines des URL (`backend/urls.py`) :
   - `/api/auth/` → accounts (login, forgot/verify/reset/change password, `me/`) — **pas de
     `register/`** : voir « Création de comptes » ci-dessous
   - `/api/v1/users/` → gestion des utilisateurs
   - `/api/v1/organizations/` → organisations
   - `/api/v1/platform-admin/` → profil super-admin
+  - `/api/v1/reseau-gps/` → réseau de triangulation GPS (tous rôles)
 
 **Contrôle d'accès :** le défaut DRF est **`IsAuthenticated`** — toute vue est fermée tant
 qu'elle ne déclare pas le contraire. Les seules vues publiques sont les quatre flux
@@ -362,6 +365,38 @@ changement backend**, le PDF lui-même n'est jamais stocké.
   `addImages(pieceId, files, pointRef)`) ;
 - tests : `pdf-page-editor.component.spec.ts` (+ utilitaires), specs wizard / galerie /
   photos par point.
+
+**Réseau de triangulation GPS (module indépendant, TOUS les rôles).** Conçoit la géométrie
+d'un réseau GNSS avant le terrain, à partir d'une liste de points au format LPA. Les règles
+viennent de `docs/normes-reseau-triangulation-gps.md` (codes **N1…N10** : angles 30°–120°,
+triangles équilatéraux, 100 % des lignes en boucle, ≥ 2 liaisons par station, lignes ≤ 10/15 km
+selon l'Instruction GPS ANCFCC 2007, règle des stations voisines, ≥ 3 quadrants, ≥ 3 anciens).
+- backend : app **`reseaux/`**, **sans modèle ni migration** (rien n'est enregistré, tout est
+  recalculé). `normes.py` (seuils — modifier ici modifie l'algorithme ET les contrôles),
+  `geometrie.py` (Delaunay Bowyer-Watson en Python pur), `generation.py` (variantes
+  `delaunay`, `delaunay_toleree`, `delaunay_stricte`, `quadrilateres`, + `rattachement` en
+  réseau mixte ; contrôles par norme avec gravité bloquant/majeur/mineur ; `score` sur 100 ;
+  `recommander` + `justifier` ; variante **parfaite** = raffinement glouton type Ruppert qui
+  suggère des emplacements où rechercher des points anciens, avec rayon de recherche),
+  `projection.py` (Lambert Maroc zones Nord/Sud/Sahara Nord/Sahara Sud, Clarke 1880 IGN +
+  Helmert Merchich→WGS84 31/146/47, **vérifié contre PROJ**, sans dépendance) ;
+- API (`IsAuthenticated`, tous rôles) : `GET /api/v1/reseau-gps/referentiel/`,
+  `POST /api/v1/reseau-gps/generer/` (`points`, `type_reseau` `anciens`|`mixte`, `zone`,
+  `longueur_max_km`, `nb_suggestions_max`), `GET sources-lpa/` et `sources-lpa/<ssdgps>/`
+  (reprise de la LPA d'un SDGPS — **filtrée par `scope_queryset`**, zone proposée d'après la
+  « Zone Projection » des PPA/PPN) ;
+- front : module lazy `features/reseau-gps/` monté à `/reseau-gps` (opérateur) **et**
+  `/admin/reseau-gps` (admins), entrée « Réseau GPS » des deux menus. Carte **Leaflet**
+  (`reseau-carte`) ; fonds intégrés OSM / Esri imagerie & topo / OpenTopoMap / CARTO —
+  **Google Satellite volontairement absent** (conditions des API Google Maps) ; fonds
+  personnels XYZ/WMS enregistrés dans le **navigateur** (`localStorage`, `fonds-carte.ts`).
+  Import CSV/Excel par `points-import.util.ts` (en-têtes LPA techniques ou libellés, colonne
+  facultative `statut`). Les deux tableaux de la page (saisie des points, comparaison des
+  variantes) ne sont **pas** des listes d'entités persistées : ils sont hors du périmètre des
+  règles colonnes d'audit / configuration des colonnes / tri multi-niveaux ;
+- tests : `backend/reseaux/tests.py` (projection vs PROJ, Delaunay, algorithme, API, RBAC) +
+  specs `reseau-gps.service`, `points-import.util`, `fonds-carte`, `reseau-carte`,
+  `reseau-gps-page`, `menu.config`.
 
 **Journal d'audit (`accounts.models.AuditEvent`).** Les 7 colonnes d'audit disent qui a
 touché une ligne **en dernier** ; elles ne disent pas ce qui a changé et ne gardent aucune

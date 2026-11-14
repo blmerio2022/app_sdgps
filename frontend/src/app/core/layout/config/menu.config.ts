@@ -22,6 +22,15 @@ export const USER_MENU: MenuItem[] = [
     description: 'Projets, propriétés, affaires, SSDGPS & sessions'
   },
   {
+    // Réseau de triangulation GPS — module indépendant, ouvert à tous les rôles.
+    id: 'reseau-gps',
+    title: 'Réseau GPS',
+    icon: 'fas fa-draw-polygon',
+    route: '/reseau-gps',
+    type: 'link',
+    description: 'Conception de réseaux de triangulation GPS (variantes, carte, normes)'
+  },
+  {
     // Regroupement « Paramètres » (route hors AdminGuard, accessible à l'agent).
     id: 'parametres',
     title: 'Paramètres',
@@ -136,6 +145,15 @@ export const ADMIN_MENU: MenuItem[] = [
     route: '/admin/projets',
     type: 'link',
     description: 'Projets, propriétés, affaires, SSDGPS & sessions',
+    roles: ALL_ADMIN_ROLES,
+  },
+  {
+    id: 'reseau-gps',
+    title: 'Réseau GPS',
+    icon: 'fas fa-draw-polygon',
+    route: '/admin/reseau-gps',
+    type: 'link',
+    description: 'Conception de réseaux de triangulation GPS (variantes, carte, normes)',
     roles: ALL_ADMIN_ROLES,
   },
   {

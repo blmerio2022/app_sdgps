@@ -29,7 +29,8 @@ urlpatterns = [
     path('api/v1/audit-events/', include('accounts.audit_urls')),  # Journal d'audit (lecture seule)
     path('api/v1/', include('projects.urls')),  # ← AJOUT: Domaine métier (projets, propriétés, affaires, ssdgps, sessions)
     path('api/v1/', include('pieces.urls')),  # ← AJOUT: Pièces SSDGPS/Session (Phase 6.5)
-    path('api/v1/analytics/', include('analytics.urls')),  # ← AJOUT: Analytique de stockage (admin)
+    path('api/v1/analytics/', include('analytics.urls')),
+    path('api/v1/reseau-gps/', include('reseaux.urls')),  # Réseau de triangulation GPS (tous rôles)
 ]
 
 # Fichiers médias (uploads). En DEBUG, Django les sert nativement. En production (DEBUG=False),

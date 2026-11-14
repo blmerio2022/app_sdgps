@@ -160,6 +160,7 @@ export class TopBarComponent implements OnInit {
       'maintenance': 'Maintenance',
       'profile': 'Mon profil',
       'parametres': 'Paramètres',
+      'reseau-gps': 'Réseau GPS',
     };
     // Segments à ne jamais afficher (déjà couverts par « Accueil » ou non signifiants).
     const skip = new Set(['dashboard', 'home']);

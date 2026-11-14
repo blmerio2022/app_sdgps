@@ -51,3 +51,17 @@ describe('menu.config — entrées supprimées / restructurées', () => {
     expect(item?.children).toBeFalsy();
   });
 });
+
+describe('menu.config — Réseau GPS ouvert à tous les rôles', () => {
+  it('entrée opérateur (Agent) vers /reseau-gps', () => {
+    const item = USER_MENU.find(i => i.id === 'reseau-gps');
+    expect(item?.route).toBe('/reseau-gps');
+    expect(item?.roles).toBeFalsy();
+  });
+
+  it('entrée admin vers /admin/reseau-gps pour les 3 rôles admin', () => {
+    const item = ADMIN_MENU.find(i => i.id === 'reseau-gps');
+    expect(item?.route).toBe('/admin/reseau-gps');
+    expect(item?.roles).toEqual(['ROLE_SUPER_ADMIN', 'ROLE_ADMIN_SYSTEME', 'ROLE_ORGANISATION_ADMIN']);
+  });
+});

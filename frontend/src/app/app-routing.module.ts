@@ -129,6 +129,12 @@ export const routes: Routes = [
         data: { title: 'Projets' }
       },
       {
+        // Réseau de triangulation GPS — module indépendant, ouvert à TOUS les rôles.
+        path: 'reseau-gps',
+        loadChildren: () => import('./features/reseau-gps/reseau-gps.module').then(m => m.ReseauGpsModule),
+        data: { title: 'Réseau GPS' }
+      },
+      {
         // Profil accessible à TOUT opérateur authentifié (hors AdminGuard).
         path: 'profile',
         loadChildren: () => import('./features/profile/profile.module').then(m => m.ProfileModule),
@@ -181,6 +187,12 @@ export const routes: Routes = [
         path: 'profile',
         loadChildren: () => import('./features/profile/profile.module').then(m => m.ProfileModule),
         data: { title: 'Mon Profil' }
+      },
+      {
+        // Réseau de triangulation GPS — module indépendant, ouvert à TOUS les rôles.
+        path: 'reseau-gps',
+        loadChildren: () => import('./features/reseau-gps/reseau-gps.module').then(m => m.ReseauGpsModule),
+        data: { title: 'Réseau GPS' }
       },
       {
         // Paramètres (tri + champs des pièces) — URL /parametres/… (sans « profile/ »).

@@ -90,6 +90,7 @@ INSTALLED_APPS = [
     'projects',  # ← AJOUT: Domaine métier (Projet→Propriété→Affaire→SSDGPS→Session)
     'pieces',  # ← AJOUT: Pièces SSDGPS/Session (Phase 6.5)
     'analytics',  # ← AJOUT: Analytique de stockage (dashboard admin)
+    'reseaux',  # Conception de réseaux de triangulation GPS (module indépendant, sans modèle)
 ]
 
 MIDDLEWARE = [
