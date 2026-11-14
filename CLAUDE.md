@@ -217,6 +217,29 @@ synchrone : `request.user` ; tâche de fond : `generation.created_by`). Ajouter 
 une entrée dans `DEFAUTS` + `LIBELLES`, sa validation dans `normaliser`, son cas dans
 `evaluer`. Tests : `pieces/tests_tolerances.py`, `tolerances-settings.component.spec.ts`.
 
+**Rapport de contrôle (RC) : points de contrôle = TOUS les points anciens recalculés.**
+`pieces/rc.py::compute_rapport_controle` croise la LPA (coordonnées connues) et les
+déterminations (RDN, ou blocs d'une RDIA). Pour chaque détermination tenue fixe sur F, le
+tableau porte une ligne par **point ancien de la LPA recalculé dans au moins une
+détermination** — et non plus par point ancien *tenu fixe quelque part*.
+- pourquoi : un point ancien recalculé mais jamais tenu fixe portait un contrôle réel et
+  disparaissait en silence. Sur le PDC de référence (15 points anciens, 10 déterminations),
+  il manquait 5 points à chaque point fixe : 100 lignes au lieu de 150, et **14 lignes hors
+  tolérance affichées sur 28**. C'est aussi ce dont la recherche des points homogènes
+  (norme **N12**) a besoin ;
+- une détermination peut tenir **plusieurs** points fixes : tous valent « -- » (ils ne se
+  contrôlent pas contre eux-mêmes) ; le **premier** nomme la détermination dans la colonne
+  « Nom Point Fixe » (`reseaux/ecarts.py` y lit un nom de point unique) ;
+- un point ancien absent d'une détermination garde sa ligne, **vide** : un trou qui se voit
+  vaut mieux qu'un tableau qui rétrécit sans rien dire. Un point ancien jamais recalculé
+  n'apparaît pas (rien à contrôler) ;
+- les noms sont rapprochés **sans tenir compte de la casse ni des espaces** (`_cle`) — la
+  LPA et les déterminations viennent de sources distinctes ; le libellé affiché est celui
+  de la **LPA**, référence officielle du point ancien ;
+- ⚠️ les pièces RC **déjà enregistrées** gardent leurs lignes : il faut les **régénérer**
+  pour bénéficier du correctif ;
+- tests : `backend/pieces/tests_rc.py` (17 cas).
+
 **Vues « à plat » entre niveaux.** Depuis un projet, une propriété, une affaire ou un SSDGPS
 multi-session, le menu `<app-sous-niveaux-menu>` (icône *sitemap* dans les actions des
 lignes ; bouton « À plat » dans l'en-tête de l'explorateur) ouvre la liste de TOUS les
