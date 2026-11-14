@@ -102,9 +102,11 @@ class RepartitionDesCouplesTests(EnteteDeuxColonnesBaseTest):
         return [bloc.count('class="lbl"') for bloc in self._colonnes(html)]
 
     def test_trois_couples_a_gauche_trois_a_droite(self):
-        ssdgps = self._ssdgps('mono-session')          # session implicite → libellé présent
-        Session.objects.filter(ssdgps=ssdgps).update(
-            date_session=datetime(2024, 1, 14, tzinfo=dt_timezone.utc))
+        # Session unique NOMMÉE : multi-session à une seule session. (Un mono-session
+        # n'affiche plus aucune session — cf. tests_report_session.MonoSessionSansSessionTests.)
+        ssdgps = self._ssdgps('multi-session')
+        Session.objects.create(ssdgps=ssdgps, numero_session=1,
+                               date_session=datetime(2024, 1, 14, tzinfo=dt_timezone.utc))
         self.assertEqual(self._couples_par_colonne(self._rendu_partiel(ssdgps)), [3, 3])
 
     def test_colonne_droite_a_deux_couples_sans_session(self):
@@ -234,3 +236,86 @@ class LargeurBoiteDeMargeTests(EnteteDeuxColonnesBaseTest):
             'duplex': False, 'piece': rendu})
         haut = re.search(r'@top-center \{ content: element\(chead\);([^}]*)\}', css)
         self.assertIn('287mm', haut.group(1))
+
+
+class MargeHauteAdaptativeTests(EnteteDeuxColonnesBaseTest):
+    """L'en-tête répété vit dans la marge haute des pages de contenu : il ne repousse
+    jamais le tableau. Quand il est plus haut que la marge (titre long + mention de
+    version, ligne de session, organismes au nom long), il le recouvrait — constaté sur
+    le RDIA d'un SDGPS réel. `render_report_pdf` mesure désormais l'en-tête dans la mise
+    en page et relève la marge de la pièce si besoin."""
+
+    def _doc(self, ssdgps, pieces, marge=None):
+        from weasyprint import HTML
+        from pieces.report import flat_blocks, _group_versions
+        ctx = build_report_context(ssdgps, None, pieces)
+        p = ctx['pieces'][0]
+        blocks = flat_blocks(p['content'].get('tables') or [])
+        piece = {**p, 'content': {**p['content'], 'blocks': blocks,
+                                  'versions': _group_versions(blocks)}}
+        extra = {'content_margin_top': marge} if marge else {}
+        html = render_to_string(GABARIT, {'header': ctx['header'], 'mode': 'piece',
+                                          'foot_prefix': '', 'duplex': False,
+                                          'piece': piece, **extra})
+        return HTML(string=html).render()
+
+    def _ecarts(self, doc):
+        """(bas de l'en-tête, haut du premier tableau) en mm, par page de contenu."""
+        from pieces.report import _walk_boxes, _PX_PER_MM
+        mesures = []
+        for page in doc.pages:
+            bas = haut = None
+            for b in _walk_boxes(page._page_box):
+                el = getattr(b, 'element', None)
+                cls = (el.get('class') or '').split() if el is not None else []
+                if 'content-head' in cls:
+                    bas = (b.position_y + b.margin_height()) / _PX_PER_MM
+                if el is not None and el.tag == 'table' and 'data' in cls and haut is None:
+                    haut = b.position_y / _PX_PER_MM
+            if bas is not None and haut is not None:
+                mesures.append((bas, haut))
+        return mesures
+
+    def _entete_haut(self):
+        """SDGPS dont l'en-tête dépasse la marge par défaut : organismes au nom long et
+        session nommée (multi-session à une seule session)."""
+        from organismes.models import OrganismeNiveau1, OrganismeNiveau2
+        # Noms volontairement très longs : la colonne gauche de l'encadré (150 px, 7 pt)
+        # passe sur de nombreuses lignes et l'en-tête dépasse les 43 mm de marge.
+        long = ('AGENCE NATIONALE DE LA CONSERVATION FONCIÈRE, DU CADASTRE ET DE LA '
+                'CARTOGRAPHIE — DIRECTION RÉGIONALE ')
+        n1 = OrganismeNiveau1.objects.create(code='L1', nom=long * 2)
+        n2 = OrganismeNiveau2.objects.create(code='L2', niveau1=n1, nom=long * 2)
+        self.affaire.propriete.organisme_niveau1 = n1
+        self.affaire.propriete.organisme_niveau2 = n2
+        self.affaire.propriete.save()
+        ssdgps = self._ssdgps('multi-session')
+        Session.objects.create(ssdgps=ssdgps, numero_session=1,
+                               date_session=datetime(2024, 1, 14, tzinfo=dt_timezone.utc))
+        piece = Piece.objects.create(
+            ssdgps=ssdgps, type_piece='RDL', statut='valide', ordre=1, source_saisie='manuel',
+            payload={'rows': [{'id': i, 'nom_point': f'B{i}', 'x_m': 1, 'y_m': 2,
+                               'sigma_x_m': 0.01, 'sigma_y_m': 0.01} for i in range(60)]})
+        return ssdgps, [piece]
+
+    def test_marge_par_defaut_suffisante_pour_un_entete_ordinaire(self):
+        from pieces.report import required_content_margin_mm
+        ssdgps = self._ssdgps()
+        self.assertIsNone(required_content_margin_mm(self._doc(ssdgps, [self._piece(ssdgps)])))
+
+    def test_entete_trop_haut_detecte_puis_corrige(self):
+        from pieces.report import required_content_margin_mm, CONTENT_MARGIN_TOP_MM, HEADER_GAP_MM
+        ssdgps, pieces = self._entete_haut()
+        avant = self._doc(ssdgps, pieces)
+        marge = required_content_margin_mm(avant)
+        self.assertIsNotNone(marge, "l'en-tête long devrait déborder de la marge par défaut")
+        self.assertGreater(marge, CONTENT_MARGIN_TOP_MM)
+        # Avant : l'en-tête descend sous le début du tableau (ou à moins de l'écart minimal).
+        self.assertTrue(any(haut - bas < HEADER_GAP_MM for bas, haut in self._ecarts(avant)))
+
+        apres = self._doc(ssdgps, pieces, marge)
+        self.assertIsNone(required_content_margin_mm(apres))
+        ecarts = self._ecarts(apres)
+        self.assertTrue(ecarts)
+        for bas, haut in ecarts:   # sur CHAQUE page de contenu, pas seulement la première
+            self.assertGreaterEqual(haut - bas, HEADER_GAP_MM - 0.1)

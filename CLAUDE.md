@@ -179,6 +179,22 @@ serveur sur un gros SDGPS, et ne pouvait afficher qu'une barre **simulée** bloq
   n'a jamais pu fonctionner) ;
 - tests : `backend/pieces/tests_rapport_async.py`.
 
+**Rapport d'un SDGPS mono-session : AUCUNE mention de session (règle stricte).** Sa
+session n°1 est structurelle (`autocreate_mono_session`) : ni en-tête, ni pied, ni page de
+garde, ni nom de fichier ne la nomment, même si l'appelant la passe en portée ou si des
+pièces anciennes y sont rattachées. Règle portée par `pieces/report.py` :
+`est_mono_session` → `resolve_report_session` renvoie `None`, `report_filename` sans
+suffixe, jamais de « synthèse ». Un multi-session à session unique, lui, la nomme.
+Tests : `tests_report_session.MonoSessionSansSessionTests`.
+
+**En-tête répété des pages de contenu : marge haute ADAPTATIVE.** L'encadré d'en-tête vit
+dans la marge haute (`@page contenu` → `@top-center`, 43 mm par défaut) et ne repousse
+jamais le contenu : plus haut que la marge (titre + mention de version du RDIA, organismes
+longs…), il recouvrait le tableau. `render_report_pdf` mesure le bas de `.content-head`
+dans la mise en page réelle (`required_content_margin_mm`) et, s'il manque de la place,
+re-rend la pièce avec `content_margin_top` relevé (écart minimal `HEADER_GAP_MM`). Tests :
+`tests_report_header_layout.MargeHauteAdaptativeTests`.
+
 **Aperçu de la page de garde (avant génération).** `GET /api/v1/pieces/report-cover/`
 rend la **seule** page de garde en PDF, avec les mêmes paramètres, la même portée et les
 mêmes contrôles que `report/` (c'est la même `_resoudre_portee_rapport`). Elle est la
@@ -276,6 +292,11 @@ puis de deviner pièce par pièce ce que la nature du dossier exige.
   règle des photos PPA/PPN comprise —, refusée sur un dossier figé) ;
 - le SDGPS garde `modele` + `pieces_prevues` (**instantané** : modifier le modèle ne change
   pas les dossiers existants) ;
+- **propriété réutilisée sans organismes** (données anciennes : 35 sur 38 en dev) :
+  l'assistant la signale et fait compléter les deux organismes sur place
+  (`{"id": …, "complement": {organisme_niveau1, organisme_niveau2}}`, validé par
+  `ProprieteSerializer` partiel, enregistré dans la même transaction) ; sans eux, le
+  serveur refuse (`propriete.organismes`) — ils figurent dans l'en-tête de chaque page ;
 - **front** : route `projets/assistant` (`SdgpsAssistantComponent`, 6 étapes ; reprise par
   `?ssdgps=&projet=`, démarrage par `?modele=`), route `projets/modeles`
   (`ModeleSsdgpsListComponent`), éditeur en modale `ModeleSsdgpsEditorComponent`. L'import

@@ -309,3 +309,45 @@ describe('SdgpsAssistantComponent — barre d’actions', () => {
     expect(cmp.footerHint).toEqual({ text: '1/4 pièces validées.', ok: false });
   });
 });
+
+describe('SdgpsAssistantComponent — propriété existante sans organismes', () => {
+  let cmp: SdgpsAssistantComponent;
+
+  beforeEach(() => {
+    const projects = jasmine.createSpyObj('ProjectsService', ['getAffaires']);
+    projects.getAffaires.and.returnValue({ subscribe: () => {} });
+    cmp = new SdgpsAssistantComponent(projects, {} as any, {} as any, {} as any, {} as any, {} as any,
+      {} as any, { url: '/projets/assistant' } as any, {} as any, jasmine.createSpyObj('B', ['set', 'clear']),
+      jasmine.createSpyObj('AuthService', ['isPlatformAdmin']));
+    cmp.proprieteMode = 'existant';
+    cmp.proprietes = [
+      { id: 'old', nom_propriete: 'Ancienne', projet: 'p' } as any,
+      { id: 'ok', nom_propriete: 'Complète', projet: 'p', organisme_niveau1: 'n1', organisme_niveau2: 'n2' } as any,
+    ];
+    cmp.organismesN2 = [{ id: 'n2', niveau1: 'n1' } as any, { id: 'x2', niveau1: 'x1' } as any];
+  });
+
+  it('bloque l’étape tant que les organismes ne sont pas complétés', () => {
+    cmp.step = 'propriete';
+    cmp.selectPropriete('old');
+    expect(cmp.selectedProprieteSansOrganismes).toBeTrue();
+    expect(cmp.stepValid('propriete')).toBeFalse();
+    expect(cmp.footerHint?.text).toContain('organismes');
+    cmp.proprieteComplement.organisme_niveau1 = 'n1';
+    cmp.onComplementN1Change();
+    expect(cmp.proprieteComplement.organisme_niveau2).toBe('n2');   // seul choix possible
+    expect(cmp.stepValid('propriete')).toBeTrue();
+  });
+
+  it('envoie le complément avec la propriété', () => {
+    cmp.selectPropriete('old');
+    cmp.proprieteComplement = { organisme_niveau1: 'n1', organisme_niveau2: 'n2' };
+    expect((cmp.buildPayload() as any).propriete).toEqual({ id: 'old', complement: { organisme_niveau1: 'n1', organisme_niveau2: 'n2' } });
+  });
+
+  it('une propriété complète passe sans complément', () => {
+    cmp.selectPropriete('ok');
+    expect(cmp.stepValid('propriete')).toBeTrue();
+    expect((cmp.buildPayload() as any).propriete).toEqual({ id: 'ok' });
+  });
+});

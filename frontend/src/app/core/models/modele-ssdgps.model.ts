@@ -71,7 +71,8 @@ export interface PlanSsdgps {
 }
 
 /** Un niveau de la chaîne : élément existant OU nouvel élément à créer. */
-export type NiveauAssistant<T> = { id: string } | { nouveau: Partial<T> };
+/** `complement` : champs manquants à poser sur un élément existant (organismes d'une propriété ancienne). */
+export type NiveauAssistant<T> = { id: string; complement?: Partial<T> } | { nouveau: Partial<T> };
 
 export interface AssistantPayload {
   projet: NiveauAssistant<any>;

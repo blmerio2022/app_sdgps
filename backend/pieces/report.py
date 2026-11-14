@@ -15,6 +15,7 @@ importable même sans les bibliothèques natives GTK, l'erreur n'apparaît qu'à
 génération effective). Seules les pièces `statut == 'valide'` et non supprimées
 sont incluses, dans l'ordre `ordre` du rapport.
 """
+import math
 import re
 from datetime import datetime, timezone as dt_timezone
 from pathlib import Path
@@ -193,6 +194,9 @@ def report_filename(ssdgps, session=None, sessions=None) -> str:
     parts.append(f'SD{affaire.numero_sd_affaire}')
     parts.append(f'SDGPS-N{ssdgps.numero_ssdgps}')
     parts.append(_slug(ssdgps.nature_ssdgps))
+    if est_mono_session(ssdgps):
+        # Aucune session dans le nom d'un rapport mono-session (cf. resolve_report_session).
+        sessions, session = None, None
     if sessions:
         numeros = sorted(s.numero_session for s in sessions)
         parts.append(f'SESSION-N{numeros[0]}' if len(numeros) == 1
@@ -708,6 +712,11 @@ def _piece_content(piece, landscape=False, sort_config=None, fields_config=None)
     return content
 
 
+def est_mono_session(ssdgps) -> bool:
+    """Le SDGPS est-il mono-session ? (Aucune mention de session dans son rapport.)"""
+    return getattr(ssdgps, 'type_ssdgps', None) == 'mono-session'
+
+
 def resolve_report_session(ssdgps, session=None):
     """Session à identifier dans l'en-tête et le pied de page du rapport, ou `None`.
 
@@ -723,6 +732,14 @@ def resolve_report_session(ssdgps, session=None):
     il n'y a pas UNE session à nommer, et la fonction renvoie `None` — mieux vaut ne
     rien afficher que d'afficher arbitrairement la première.
     """
+    # Règle métier : un SDGPS MONO-SESSION n'a pas de session à nommer. Sa session n°1
+    # est structurelle (créée par `autocreate_mono_session`, invisible dans l'app) :
+    # l'afficher dans le rapport — « Session N°1 » dans l'en-tête, le pied, la page de
+    # garde ou le nom du fichier — laisserait croire à un dossier multi-session. C'est
+    # vrai même si l'appelant passe cette session (la page des pièces le fait) ou si des
+    # pièces anciennes y sont rattachées.
+    if est_mono_session(ssdgps):
+        return None
     if session is not None:
         return session
     # `is_deleted` n'est filtré par aucun manager sur ce modèle : l'exclusion est
@@ -877,7 +894,9 @@ def build_report_context(ssdgps, session, pieces, sort_config=None, fields_confi
     # — sans quoi quatre « Rapport de traitement » successifs seraient indiscernables.
     # En rapport mono-session, cette annotation serait redondante : on l'omet.
     sessions_presentes = {p.session_id for p in pieces if p.session_id}
-    synthese = len(sessions_presentes) > 1
+    # Jamais pour un mono-session : même si des pièces anciennes y sont rattachées à
+    # plusieurs sessions, son rapport ne mentionne aucune session.
+    synthese = not est_mono_session(ssdgps) and len(sessions_presentes) > 1
 
     # Numéro de la PIÈCE LOGIQUE (groupe `(type_piece, numero)`). En synthèse, les
     # occurrences d'une même pièce — une par session — partagent ce numéro et se
@@ -1004,6 +1023,47 @@ def render_cover_pdf(ssdgps, session, pieces, duplex=False):
     return HTML(string=html).write_pdf()
 
 
+#: Marge haute par défaut des pages de contenu (mm), qui loge l'en-tête répété.
+CONTENT_MARGIN_TOP_MM = 43
+#: Espace minimal entre le bas de l'en-tête répété et le début du contenu (mm).
+HEADER_GAP_MM = 3
+_PX_PER_MM = 96 / 25.4
+
+
+def _walk_boxes(box):
+    yield box
+    for child in getattr(box, 'children', ()) or ():
+        yield from _walk_boxes(child)
+
+
+def required_content_margin_mm(doc):
+    """Marge haute (mm) nécessaire pour que l'en-tête répété ne chevauche pas le contenu,
+    ou `None` si la marge actuelle suffit sur toutes les pages.
+
+    L'en-tête des pages de contenu est un élément « running » logé DANS la marge haute
+    (`@page contenu` → `@top-center`). Une marge de boîte ne repousse jamais le contenu :
+    si l'en-tête est plus haut que la marge (titre long sur deux lignes, mention de
+    version « brute / écarts », organismes au nom long…), il déborde PAR-DESSUS le
+    tableau. On mesure donc, dans la mise en page réelle, le bas de l'encadré
+    `.content-head` et le haut de la zone de contenu de la même page."""
+    besoin = None
+    for page in doc.pages:
+        page_box = page._page_box
+        haut_contenu = page_box.content_box_y()
+        bas_entete = None
+        for box in _walk_boxes(page_box):
+            el = getattr(box, 'element', None)
+            if el is not None and 'content-head' in (el.get('class') or '').split():
+                bas = box.position_y + box.margin_height()
+                bas_entete = bas if bas_entete is None else max(bas_entete, bas)
+        if bas_entete is None:
+            continue
+        if bas_entete + HEADER_GAP_MM * _PX_PER_MM > haut_contenu:
+            mm = math.ceil(bas_entete / _PX_PER_MM + HEADER_GAP_MM)
+            besoin = mm if besoin is None else max(besoin, mm)
+    return besoin
+
+
 def render_report_pdf(ssdgps, session, pieces, sort_config=None, fields_config=None,
                       duplex=False, on_progress=None):
     """Rend le rapport en PDF (bytes). Lève `RuntimeError` si une dépendance de la
@@ -1070,14 +1130,24 @@ def render_report_pdf(ssdgps, session, pieces, sort_config=None, fields_config=N
         def _wrap(blocks):
             return {**content, 'blocks': blocks, 'versions': _group_versions(blocks)}
 
-        if content.get('kind') == 'table' and any(t['merged'] for t in tables):
-            probe = _render('piece', foot_prefix,
-                            {'piece': {**piece, 'content': _wrap(flat_blocks(tables))}})
-            blocks = paged_blocks(tables, _probe_row_pages(probe))
-        else:
-            blocks = flat_blocks(tables)
-        return _render('piece', foot_prefix,
-                       {'piece': {**piece, 'content': _wrap(blocks)}})
+        def _passe(marge):
+            extra = {'content_margin_top': marge} if marge else {}
+            if content.get('kind') == 'table' and any(t['merged'] for t in tables):
+                probe = _render('piece', foot_prefix,
+                                {'piece': {**piece, 'content': _wrap(flat_blocks(tables))}, **extra})
+                blocks = paged_blocks(tables, _probe_row_pages(probe))
+            else:
+                blocks = flat_blocks(tables)
+            return _render('piece', foot_prefix,
+                           {'piece': {**piece, 'content': _wrap(blocks)}, **extra})
+
+        doc = _passe(None)
+        # L'en-tête répété vit dans la marge haute et ne repousse jamais le contenu : s'il
+        # est plus haut qu'elle, il recouvre le tableau. On le mesure dans la mise en page
+        # réelle et, si besoin, on rend à nouveau la pièce avec une marge suffisante (la
+        # pagination change avec la marge : toute la pièce est refaite, sonde comprise).
+        marge = required_content_margin_mm(doc)
+        return _passe(marge) if marge else doc
 
     # (1) Les PIÈCES d'abord — contrairement à l'ordre du document final. La page de
     # garde affiche désormais le n° de page de chaque pièce : on ne peut la rendre

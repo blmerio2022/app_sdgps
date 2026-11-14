@@ -78,9 +78,9 @@ class ResolutionSessionTests(RapportSessionBaseTest):
         self.assertEqual(resolve_report_session(ssdgps, s1), s1)
 
     def test_session_unique_deduite_sans_portee(self):
-        """Un SSDGPS à session unique nomme sa session même si l'appelant n'en passe
-        aucune — c'est le cas de génération le plus courant."""
-        ssdgps = self._ssdgps('mono-session')
+        """Un SSDGPS MULTI-session qui ne compte qu'une session la nomme même si
+        l'appelant n'en passe aucune."""
+        ssdgps = self._ssdgps('multi-session')
         session = self._session(ssdgps, 1)
         self.assertEqual(resolve_report_session(ssdgps, None), session)
 
@@ -95,13 +95,20 @@ class ResolutionSessionTests(RapportSessionBaseTest):
         ne peut pas être dans cet état : le signal lui crée sa session n°1.)"""
         self.assertIsNone(resolve_report_session(self._ssdgps('multi-session'), None))
 
-    def test_mono_session_a_toujours_sa_session_auto(self):
-        """Conséquence du signal `autocreate_mono_session` : tout SSDGPS mono-session
-        nomme sa session, sans qu'aucune session n'ait été créée explicitement."""
+    def test_mono_session_ne_nomme_jamais_de_session(self):
+        """Règle métier : un SDGPS mono-session n'affiche AUCUNE session dans son rapport.
+        Sa session n°1 (créée par `autocreate_mono_session`) est structurelle : la
+        nommer laissait croire à un dossier multi-session. (Ce test remplace l'ancien
+        `test_mono_session_a_toujours_sa_session_auto`, qui figeait la règle inverse.)"""
         ssdgps = self._ssdgps('mono-session')
-        resolue = resolve_report_session(ssdgps, None)
-        self.assertIsNotNone(resolue)
-        self.assertEqual(resolue.numero_session, 1)
+        self.assertEqual(ssdgps.sessions.count(), 1)
+        self.assertIsNone(resolve_report_session(ssdgps, None))
+
+    def test_mono_session_ignore_la_session_passee(self):
+        """Même portée explicitement sur sa session implicite (la page des pièces la
+        transmet), un mono-session ne nomme pas de session."""
+        ssdgps = self._ssdgps('mono-session')
+        self.assertIsNone(resolve_report_session(ssdgps, ssdgps.sessions.first()))
 
     def test_session_supprimee_ignoree(self):
         """`is_deleted` n'est filtré par aucun manager : sans exclusion explicite, une
@@ -113,10 +120,9 @@ class ResolutionSessionTests(RapportSessionBaseTest):
         supprimee.save(update_fields=['is_deleted'])
         self.assertEqual(resolve_report_session(ssdgps, None), vivante)
 
-    def test_resolution_ne_depend_pas_du_type_declare(self):
+    def test_mono_session_incoherent_ne_nomme_rien(self):
         """Des SSDGPS marqués « mono-session » portent en base PLUSIEURS sessions
-        (constaté sur les données réelles). La résolution compte donc les sessions
-        existantes, et ne se fie pas à `type_ssdgps`."""
+        (constaté sur les données réelles) : aucune session n'est nommée non plus."""
         ssdgps = self._ssdgps('mono-session')
         self._session(ssdgps, 1)
         self._session(ssdgps, 2)
@@ -163,7 +169,7 @@ class EnteteSessionTests(RapportSessionBaseTest):
     def test_la_date_est_sans_heure(self):
         """`date_session` est l'une des deux dates sans heure de l'app (cf.
         `tests_report_dates.py`) : l'en-tête ne doit jamais afficher d'heure."""
-        ssdgps = self._ssdgps('mono-session')
+        ssdgps = self._ssdgps('multi-session')
         self._session(ssdgps, 1, datetime(2024, 1, 14, 16, 45, tzinfo=dt_timezone.utc))
         self.assertEqual(self._header(ssdgps)['session_date'], '14/01/2024')
         self.assertNotIn(':', self._header(ssdgps)['session_label'])
@@ -210,7 +216,7 @@ class RenduTemplateSessionTests(RapportSessionBaseTest):
             'total': context['total'], 'piece': piece, **extra})
 
     def test_page_de_garde_affiche_la_session_apres_la_nature(self):
-        ssdgps = self._ssdgps('mono-session')
+        ssdgps = self._ssdgps('multi-session')
         self._session(ssdgps, 1)
         html = self._html('cover', ssdgps)
         self.assertIn('N°1 du 14/01/2024', html)
@@ -221,7 +227,7 @@ class RenduTemplateSessionTests(RapportSessionBaseTest):
     def test_separateur_et_entete_courant_affichent_la_session(self):
         """Le séparateur de pièce ET l'en-tête courant des pages de contenu — c'est ce
         dernier qui se répète sur toutes les pages de tableaux, images et photos."""
-        ssdgps = self._ssdgps('mono-session')
+        ssdgps = self._ssdgps('multi-session')
         self._session(ssdgps, 1)
         html = self._html('piece', ssdgps)
         self.assertGreaterEqual(html.count('N°1 du 14/01/2024'), 2)
@@ -233,3 +239,58 @@ class RenduTemplateSessionTests(RapportSessionBaseTest):
         for mode in ('cover', 'piece'):
             html = self._html(mode, ssdgps)
             self.assertNotIn('du 14/01/2024', html)
+
+
+class MonoSessionSansSessionTests(RapportSessionBaseTest):
+    """Un rapport de SDGPS mono-session ne mentionne la session NULLE PART : en-tête,
+    pied de page, page de garde, séparateurs de pièce, nom du fichier."""
+
+    def _mono(self):
+        ssdgps = self._ssdgps('mono-session', numero=4)
+        session = ssdgps.sessions.get()
+        session.date_session = datetime(2024, 1, 14, tzinfo=dt_timezone.utc)
+        session.save(update_fields=['date_session'])
+        return ssdgps, session
+
+    def test_entete_sans_session(self):
+        ssdgps, session = self._mono()
+        for portee in (None, session):
+            header = build_report_context(ssdgps, portee, [self._piece(ssdgps)])['header']
+            self.assertIsNone(header['session_numero'])
+            self.assertEqual(header['session_label'], '')
+
+    def test_rendu_html_sans_session(self):
+        from django.template.loader import render_to_string
+        ssdgps, session = self._mono()
+        context = build_report_context(ssdgps, session, [self._piece(ssdgps)])
+        for mode in ('cover', 'piece'):
+            html = render_to_string('pieces/report.html', {
+                'header': context['header'], 'mode': mode, 'foot_prefix': '',
+                'duplex': False, 'cover_rows': context['cover_rows'],
+                'total': context['total'], 'piece': context['pieces'][0]})
+            self.assertNotIn('14/01/2024', html)
+            self.assertNotIn('N°1 du', html)
+
+    def test_pied_de_page_sans_session(self):
+        ssdgps, session = self._mono()
+        header = build_report_context(ssdgps, session, [self._piece(ssdgps)])['header']
+        self.assertEqual(report_foot_prefix(ssdgps, header['session_numero']),
+                         'T9000/A SD1 SDGPS N°4')
+
+    def test_nom_de_fichier_sans_session(self):
+        from pieces.report import report_filename
+        ssdgps, session = self._mono()
+        self.assertNotIn('SESSION', report_filename(ssdgps, session))
+        self.assertNotIn('SESSION', report_filename(ssdgps, None, sessions=[session]))
+
+    def test_pas_de_synthese_meme_avec_des_pieces_sur_plusieurs_sessions(self):
+        """Données anciennes : pièces d'un mono-session rattachées à deux sessions.
+        Aucune annotation de session par pièce ne doit apparaître."""
+        ssdgps, session = self._mono()
+        autre = self._session(ssdgps, 2)
+        p1, p2 = (Piece.objects.create(ssdgps=ssdgps, session=sess, type_piece='ROB',
+                                       statut='valide', ordre=i, source_saisie='manuel',
+                                       payload={'rows': []}) for i, sess in ((1, session), (2, autre)))
+        context = build_report_context(ssdgps, None, [p1, p2])
+        self.assertTrue(all(not r['session_label'] for r in context['pieces']))
+        self.assertTrue(all('Session' not in r['designation'] for r in context['cover_rows']))

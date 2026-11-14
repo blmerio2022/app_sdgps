@@ -96,6 +96,9 @@ export class SdgpsAssistantComponent implements OnInit, OnDestroy {
   proprietes: Propriete[] = [];
   proprieteId: string | null = null;
   proprieteNew = { nom_propriete: '', id_titre: '', id_requisition: '', organisme_niveau1: '', organisme_niveau2: '' };
+  /** Organismes à compléter sur une propriété EXISTANTE qui n'en a pas (données anciennes) :
+   * ils figurent dans l'en-tête de chaque page du rapport, qui n'a aucun repli. */
+  proprieteComplement = { organisme_niveau1: '', organisme_niveau2: '' };
 
   // --- Étape Affaire ---
   affaireMode: Mode = 'nouveau';
@@ -281,7 +284,9 @@ export class SdgpsAssistantComponent implements OnInit, OnDestroy {
     }
     const manque: Record<string, string> = {
       projet: this.projetMode === 'existant' ? 'Choisissez un projet.' : 'Renseignez le nom et le code du projet.',
-      propriete: this.proprieteMode === 'existant' ? 'Choisissez une propriété.' : 'Complétez la propriété (identifiant, organismes).',
+      propriete: this.proprieteMode === 'existant'
+        ? (this.proprieteId ? 'Renseignez les organismes de la propriété.' : 'Choisissez une propriété.')
+        : 'Complétez la propriété (identifiant, organismes).',
       affaire: this.affaireMode === 'existant' ? 'Choisissez une affaire.' : 'Complétez l’affaire (procédure, nature, date).',
       dossier: this.modeleId ? 'Nombre de sessions invalide (1 à 50).' : 'Choisissez un modèle de pièces.',
     };
@@ -296,7 +301,10 @@ export class SdgpsAssistantComponent implements OnInit, OnDestroy {
           : !!this.projetNew.nom_projet.trim() && !!this.projetNew.code_projet.trim()
             && (!!this.currentOrgId || !!this.projetNew.organization);
       case 'propriete':
-        return this.proprieteMode === 'existant' ? !!this.proprieteId : !this.proprieteErrors().length;
+        return this.proprieteMode === 'existant'
+          ? !!this.proprieteId && (!this.selectedProprieteSansOrganismes
+              || (!!this.proprieteComplement.organisme_niveau1 && !!this.proprieteComplement.organisme_niveau2))
+          : !this.proprieteErrors().length;
       case 'affaire':
         return this.affaireMode === 'existant' ? !!this.affaireId : !this.affaireErrors().length;
       case 'dossier':
@@ -352,9 +360,22 @@ export class SdgpsAssistantComponent implements OnInit, OnDestroy {
   // Étape 2 — Propriété
   // =====================================================================================
 
-  get organismesN2Filtres(): OrganismeNiveau2[] {
-    const n1 = this.proprieteNew.organisme_niveau1;
-    return n1 ? this.organismesN2.filter(o => o.niveau1 === n1) : [];
+  get organismesN2Filtres(): OrganismeNiveau2[] { return this.n2Of(this.proprieteNew.organisme_niveau1); }
+  get complementN2Filtres(): OrganismeNiveau2[] { return this.n2Of(this.proprieteComplement.organisme_niveau1); }
+  private n2Of(n1: string): OrganismeNiveau2[] { return n1 ? this.organismesN2.filter(o => o.niveau1 === n1) : []; }
+
+  /** La propriété existante choisie n'a-t-elle pas ses deux organismes ? */
+  get selectedProprieteSansOrganismes(): boolean {
+    const p = this.proprietes.find(x => x.id === this.proprieteId);
+    return !!p && (!p.organisme_niveau1 || !p.organisme_niveau2);
+  }
+  sansOrganismes(p: Propriete): boolean { return !p.organisme_niveau1 || !p.organisme_niveau2; }
+
+  onComplementN1Change(): void {
+    const opts = this.complementN2Filtres;
+    if (!opts.some(o => o.id === this.proprieteComplement.organisme_niveau2)) {
+      this.proprieteComplement.organisme_niveau2 = opts.length === 1 ? opts[0].id : '';
+    }
   }
 
   onOrganismeN1Change(): void {
@@ -380,6 +401,11 @@ export class SdgpsAssistantComponent implements OnInit, OnDestroy {
   selectPropriete(id: string): void {
     if (this.proprieteId === id) return;
     this.proprieteId = id;
+    // Pré-remplit le complément avec ce que la propriété porte déjà (un seul niveau parfois).
+    const p = this.proprietes.find(x => x.id === id);
+    this.proprieteComplement = {
+      organisme_niveau1: p?.organisme_niveau1 || '', organisme_niveau2: p?.organisme_niveau2 || '',
+    };
     this.resetBelowPropriete();
     this.projects.getAffaires(id).subscribe({
       next: list => {
@@ -541,7 +567,9 @@ export class SdgpsAssistantComponent implements OnInit, OnDestroy {
           ...(this.currentOrgId ? {} : { organization: this.projetNew.organization }),
         } };
     const propriete = this.proprieteMode === 'existant'
-      ? { id: this.proprieteId! }
+      ? (this.selectedProprieteSansOrganismes
+          ? { id: this.proprieteId!, complement: { ...this.proprieteComplement } }
+          : { id: this.proprieteId! })
       : { nouveau: {
           nom_propriete: this.proprieteNew.nom_propriete.trim(),
           id_titre: this.proprieteNew.id_titre.trim(), id_requisition: this.proprieteNew.id_requisition.trim(),

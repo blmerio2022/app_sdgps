@@ -91,6 +91,25 @@ def _enfant(model, parent_field, parent, niveau, bloc, serializer_class, user, c
     return _creer(serializer_class, niveau, donnees, context, created_by=user), True
 
 
+def _completer_organismes(propriete, complement, user, context):
+    """Une propriété réutilisée doit porter ses deux organismes : ils figurent dans
+    l'en-tête de CHAQUE page du rapport, et le rapport n'a aucun repli. Les propriétés
+    anciennes (créées avant que les organismes deviennent obligatoires) en sont souvent
+    dépourvues : l'assistant les fait compléter ici (`{"id": …, "complement": {…}}`),
+    avec les mêmes contrôles que l'écran de modification de la propriété."""
+    if isinstance(complement, dict) and complement:
+        champs = {k: complement[k] for k in ('organisme_niveau1', 'organisme_niveau2')
+                  if k in complement}
+        ser = ProprieteSerializer(propriete, data=champs, partial=True, context=context)
+        if not ser.is_valid():
+            raise _erreur('propriete', ser.errors)
+        propriete = ser.save(updated_by=user)
+    if not propriete.organisme_niveau1_id or not propriete.organisme_niveau2_id:
+        raise _erreur('propriete', {'organismes': [
+            "Cette propriété n'a pas d'organismes de premier et de deuxième niveau : "
+            "renseignez-les, ils figurent dans l'en-tête de chaque page du rapport."]})
+
+
 @transaction.atomic
 def creer_dossier(user, data, request=None):
     """Crée (ou réutilise) projet, propriété, affaire, puis crée le SDGPS rattaché au
@@ -106,8 +125,11 @@ def creer_dossier(user, data, request=None):
 
     projet, projet_cree = _projet(user, _bloc(data, 'projet'), context)
     _verifier_portee_projet(user, projet)
+    bloc_propriete = _bloc(data, 'propriete')
     propriete, prop_creee = _enfant(Propriete, 'projet', projet, 'propriete',
-                                    _bloc(data, 'propriete'), ProprieteSerializer, user, context)
+                                    bloc_propriete, ProprieteSerializer, user, context)
+    if not prop_creee:
+        _completer_organismes(propriete, bloc_propriete.get('complement'), user, context)
     affaire, aff_creee = _enfant(Affaire, 'propriete', propriete, 'affaire',
                                  _bloc(data, 'affaire'), AffaireSerializer, user, context)
 

@@ -32,7 +32,10 @@
        Orientation du CONTENU pilotée par `piece.content_landscape` (le séparateur et la
        page de garde restent en portrait). En paysage, la largeur utile passe à 287 mm. */
     size: A4{% if piece.content_landscape %} landscape{% endif %};
-    margin: 43mm 5mm 10mm 5mm;   /* contenu : 0,5 cm côtés, 1 cm bas, en-tête répété en haut */
+    /* Marge haute ADAPTATIVE : 43 mm par défaut, relevée par `render_report_pdf` quand
+       l'en-tête répété mesuré est plus haut (cf. `required_content_margin_mm`) — sinon il
+       déborde de la marge et recouvre le tableau. */
+    margin: {{ content_margin_top|default:43 }}mm 5mm 10mm 5mm;   /* contenu : 0,5 cm côtés, 1 cm bas, en-tête répété en haut */
     /* `width` EXPLICITE, comme pour @bottom-center : sans elle, WeasyPrint résout
        la largeur de cette boîte de marge à ZÉRO et l'encadré d'en-tête (200/287 mm)
        y débord, centré sur un point — il empiétait alors sur le tableau de données. */
@@ -47,7 +50,7 @@
        l'en-tête écarts sur la dernière page brute lors du saut de page forcé, cette page
        reste une page `contenu` qui ne tire QUE `element(chead)`. Isolation stricte. */
     size: A4{% if piece.content_landscape %} landscape{% endif %};
-    margin: 43mm 5mm 10mm 5mm;
+    margin: {{ content_margin_top|default:43 }}mm 5mm 10mm 5mm;
     @top-center { content: element(chead2); vertical-align: top; padding-top: 5mm;
                   width: {% if piece.content_landscape %}287mm{% else %}200mm{% endif %}; }
     @bottom-center { width: {% if piece.content_landscape %}287mm{% else %}200mm{% endif %}; }

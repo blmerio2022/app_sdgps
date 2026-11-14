@@ -114,9 +114,31 @@
               <strong>{{ proprieteLabel(p) }}</strong>
               <small>{{ p.nom_propriete }}</small>
               <small class="as-card-meta">{{ p.nbr_total_affaires || 0 }} affaire(s) · {{ p.organisme_niveau2_nom || '—' }}</small>
+              <small class="as-card-warn" *ngIf="sansOrganismes(p)"><i class="fas fa-triangle-exclamation"></i> Organismes à renseigner</small>
             </span>
             <i class="fas fa-circle-check as-card-check"></i>
           </button>
+        </div>
+
+        <!-- Propriété existante sans organismes : complétée ici, enregistrée avec le dossier. -->
+        <div class="as-complement" *ngIf="proprieteMode === 'existant' && selectedProprieteSansOrganismes">
+          <div class="as-complement-head">
+            <i class="fas fa-triangle-exclamation"></i>
+            <div><strong>Organismes manquants sur cette propriété</strong>
+              <p>Ils figurent dans l'en-tête de chaque page du rapport. Ils seront enregistrés sur la propriété à la création du dossier.</p></div>
+          </div>
+          <div class="as-form">
+            <label class="field"><span>Organisme de 1er niveau <em>*</em></span>
+              <select [(ngModel)]="proprieteComplement.organisme_niveau1" (ngModelChange)="onComplementN1Change()">
+                <option value="">— Choisir —</option>
+                <option *ngFor="let o of organismesN1" [value]="o.id">{{ o.sigle || o.nom }}</option>
+              </select></label>
+            <label class="field"><span>Organisme de 2e niveau <em>*</em></span>
+              <select [(ngModel)]="proprieteComplement.organisme_niveau2" [disabled]="!proprieteComplement.organisme_niveau1">
+                <option value="">— Choisir —</option>
+                <option *ngFor="let o of complementN2Filtres" [value]="o.id">{{ o.nom }}</option>
+              </select></label>
+          </div>
         </div>
 
         <div class="as-form" *ngIf="proprieteMode === 'nouveau'">

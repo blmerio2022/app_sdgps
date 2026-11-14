@@ -262,7 +262,8 @@ class AssistantTests(BaseTest):
     def test_reutilise_projet_propriete_affaire_existants(self):
         projet = Projet.objects.create(nom_projet='P', code_projet='P-EX', organization=self.org,
                                        created_by=self.agent)
-        propriete = Propriete.objects.create(nom_propriete='X', id_titre='T1/A', projet=projet)
+        propriete = Propriete.objects.create(nom_propriete='X', id_titre='T1/A', projet=projet,
+                                             organisme_niveau1=self.n1, organisme_niveau2=self.n2)
         affaire = Affaire.objects.create(
             numero_sd_affaire=3, nature_procedure_affaire='IFF', nature_affaire='BI',
             date_bornage=datetime(2024, 1, 1, tzinfo=dt_timezone.utc), propriete=propriete)
@@ -275,6 +276,49 @@ class AssistantTests(BaseTest):
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(resp.data['crees'], ['ssdgps'])
         self.assertEqual(resp.data['ssdgps']['numero_ssdgps'], 5)   # suivant le dernier
+
+    # --- Propriété existante sans organismes (données anciennes) -------------------
+
+    def _propriete_sans_organismes(self):
+        projet = Projet.objects.create(nom_projet='P', code_projet='P-OR', organization=self.org,
+                                       created_by=self.agent)
+        return projet, Propriete.objects.create(nom_propriete='Ancienne', id_titre='T7/A',
+                                                projet=projet)
+
+    def test_propriete_existante_sans_organismes_refusee(self):
+        projet, propriete = self._propriete_sans_organismes()
+        resp = self.client.post(URL_ASSISTANT, self.corps(
+            projet={'id': str(projet.pk)}, propriete={'id': str(propriete.pk)}), format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('organismes', resp.data['propriete'])
+        self.assertFalse(Affaire.objects.filter(propriete=propriete).exists())
+
+    def test_organismes_completes_par_l_assistant(self):
+        projet, propriete = self._propriete_sans_organismes()
+        resp = self.client.post(URL_ASSISTANT, self.corps(
+            projet={'id': str(projet.pk)},
+            propriete={'id': str(propriete.pk), 'complement': {
+                'organisme_niveau1': str(self.n1.pk), 'organisme_niveau2': str(self.n2.pk)}}),
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        propriete.refresh_from_db()
+        self.assertEqual(propriete.organisme_niveau1, self.n1)
+        self.assertEqual(propriete.organisme_niveau2, self.n2)
+        self.assertEqual(propriete.updated_by, self.agent)
+        self.assertNotIn('propriete', resp.data['crees'])
+
+    def test_complement_incoherent_refuse_sans_rien_ecrire(self):
+        autre_n1 = OrganismeNiveau1.objects.create(code='N1B', nom='Autre')
+        projet, propriete = self._propriete_sans_organismes()
+        resp = self.client.post(URL_ASSISTANT, self.corps(
+            projet={'id': str(projet.pk)},
+            propriete={'id': str(propriete.pk), 'complement': {
+                'organisme_niveau1': str(autre_n1.pk), 'organisme_niveau2': str(self.n2.pk)}}),
+            format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('propriete', resp.data)
+        propriete.refresh_from_db()
+        self.assertIsNone(propriete.organisme_niveau1)
 
     def test_propriete_d_un_autre_projet_refusee(self):
         projet = Projet.objects.create(nom_projet='P', code_projet='P-EX', organization=self.org)
