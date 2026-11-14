@@ -368,9 +368,24 @@ changement backend**, le PDF lui-même n'est jamais stocké.
 
 **Réseau de triangulation GPS (module indépendant, TOUS les rôles).** Conçoit la géométrie
 d'un réseau GNSS avant le terrain, à partir d'une liste de points au format LPA. Les règles
-viennent de `docs/normes-reseau-triangulation-gps.md` (codes **N1…N10** : angles 30°–120°,
+viennent de `docs/normes-reseau-triangulation-gps.md` (codes **N1…N12** : angles 30°–120°,
 triangles équilatéraux, 100 % des lignes en boucle, ≥ 2 liaisons par station, lignes ≤ 10/15 km
-selon l'Instruction GPS ANCFCC 2007, règle des stations voisines, ≥ 3 quadrants, ≥ 3 anciens).
+selon l'Instruction GPS ANCFCC 2007, règle des stations voisines, ≥ 3 quadrants, ≥ 3 anciens,
+**N11** tout point de la zone à ≤ 5 km de 3 points de densification, **N12** points anciens
+homogènes à ΔD ≤ 15 cm). L'écran suit le **workflow de densification** en onglets numérotés :
+1 Points anciens → 2 Réseau de contrôle (points à rechercher / à écarter) → 3 Contrôle des
+écarts (RC, points homogènes) → 4 Densification (points nouveaux), + Fonds de carte.
+- backend (suite) : `optimisation.py` (points anciens à écarter : doublons, points
+  pénalisants ; jamais sous 3 anciens), `ecarts.py` (analyse du RC, compatibilité ΔD ≤
+  tolérance par paire, points homogènes = clique maximale), `densification.py` (zone =
+  enveloppe des anciens homogènes, couverture N11 sur grille, placement glouton + déplacements
+  locaux, points manuels conservés ; score de densification = 0,8 × réseau + 20 ×
+  couverture), `fonds.py` (**catalogue de fonds** construit par l'application, par catégorie,
+  avec licence ; aide pour le fond personnalisé) ;
+- API (suite) : `POST analyser-ecarts/` (tolérance par défaut = `rc_ecarts` de l'opérateur),
+  `GET sources-rc/` + `sources-rc/<ssdgps>/` (pièce RC, **portée RBAC**), `POST densifier/`
+  (`proposer=true` propose, `false` évalue les points tels que l'opérateur les a modifiés),
+  `generer/` renvoie aussi `suppressions` ; le référentiel expose `fonds` et les défauts ;
 - backend : app **`reseaux/`**, **sans modèle ni migration** (rien n'est enregistré, tout est
   recalculé). `normes.py` (seuils — modifier ici modifie l'algorithme ET les contrôles),
   `geometrie.py` (Delaunay Bowyer-Watson en Python pur), `generation.py` (variantes
@@ -386,17 +401,22 @@ selon l'Instruction GPS ANCFCC 2007, règle des stations voisines, ≥ 3 quadran
   (reprise de la LPA d'un SDGPS — **filtrée par `scope_queryset`**, zone proposée d'après la
   « Zone Projection » des PPA/PPN) ;
 - front : module lazy `features/reseau-gps/` monté à `/reseau-gps` (opérateur) **et**
-  `/admin/reseau-gps` (admins), entrée « Réseau GPS » des deux menus. Carte **Leaflet**
-  (`reseau-carte`) ; fonds intégrés OSM / Esri imagerie & topo / OpenTopoMap / CARTO —
-  **Google Satellite volontairement absent** (conditions des API Google Maps) ; fonds
-  personnels XYZ/WMS enregistrés dans le **navigateur** (`localStorage`, `fonds-carte.ts`).
-  Import CSV/Excel par `points-import.util.ts` (en-têtes LPA techniques ou libellés, colonne
-  facultative `statut`). Les deux tableaux de la page (saisie des points, comparaison des
-  variantes) ne sont **pas** des listes d'entités persistées : ils sont hors du périmètre des
-  règles colonnes d'audit / configuration des colonnes / tri multi-niveaux ;
+  `/admin/reseau-gps` (admins), entrée « Réseau GPS » des deux menus. État partagé par
+  `ReseauGpsStore` (fourni par la page) ; un composant par onglet (`onglets/`) ; sections
+  **dépliables** `<app-rg-section>` (état mémorisé par clé dans le navigateur) ; carte
+  **Leaflet** persistante (`reseau-carte`, clic → point nouveau en mode placement) ; projection
+  Lambert↔WGS84 portée en TS (`lambert-maroc.ts`, mêmes valeurs de référence que le backend).
+  « Mes fonds » = sélection dans le catalogue + fonds personnalisés XYZ/WMS, **retirables**,
+  enregistrés dans le **navigateur** (`fonds-carte.ts`). **Google Satellite volontairement
+  absent** du catalogue (conditions des API Google Maps). Import CSV/Excel des points (LPA) et
+  du RC par `points-import.util.ts` (en-têtes techniques ou libellés des pièces). Les tableaux
+  de la page (saisie, comparaison, écarts) ne sont **pas** des listes d'entités persistées :
+  hors du périmètre des règles colonnes d'audit / configuration des colonnes / tri
+  multi-niveaux ;
 - tests : `backend/reseaux/tests.py` (projection vs PROJ, Delaunay, algorithme, API, RBAC) +
-  specs `reseau-gps.service`, `points-import.util`, `fonds-carte`, `reseau-carte`,
-  `reseau-gps-page`, `menu.config`.
+  `tests_densification.py` (suppressions, écarts/homogènes, couverture N11, catalogue, API) ;
+  specs `reseau-gps.service`, `points-import.util`, `fonds-carte`, `lambert-maroc`,
+  `reseau-gps.store`, `reseau-carte`, `reseau-gps-page`, `onglets`, `menu.config`.
 
 **Journal d'audit (`accounts.models.AuditEvent`).** Les 7 colonnes d'audit disent qui a
 touché une ligne **en dernier** ; elles ne disent pas ce qui a changé et ne gardent aucune

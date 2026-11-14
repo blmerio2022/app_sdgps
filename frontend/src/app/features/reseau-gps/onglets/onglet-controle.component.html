@@ -1,0 +1,124 @@
+<p class="intro">Construisez le <strong>réseau de contrôle de stabilité</strong> des points anciens retenus. L'application
+  compare plusieurs variantes, recommande la meilleure et propose d'<strong>écarter</strong> les points inutiles ou de
+  <strong>rechercher</strong> d'autres points anciens pour se rapprocher d'un score de 100.</p>
+
+<app-rg-section titre="Paramètres et calcul" icone="fas fa-sliders-h" cle="controle.parametres">
+  <div class="rg-grille">
+    <label class="field">
+      <span>Ligne de base max. (km) — N7</span>
+      <input type="number" min="0.1" max="50" step="0.5" [(ngModel)]="store.longueurMaxKm" (ngModelChange)="store.toutInvalider()">
+      <span class="hint">10 km statique rapide · 15 km statique</span>
+    </label>
+    <label class="field">
+      <span>Points à rechercher (max.)</span>
+      <input type="number" min="0" [max]="store.referentiel?.defauts?.suggestions_max || 15"
+             [(ngModel)]="store.nbSuggestionsMax" (ngModelChange)="store.toutInvalider()">
+    </label>
+  </div>
+  <div class="rg-actions">
+    <button type="button" class="btn-primary" [disabled]="!!store.blocageControle || store.calculControle" (click)="store.genererControle()">
+      <i class="fas" [ngClass]="store.calculControle ? 'fa-spinner fa-spin' : 'fa-project-diagram'"></i>
+      {{ store.controle ? 'Recalculer le réseau' : 'Générer le réseau' }}</button>
+    <span class="hint" *ngIf="store.blocageControle">{{ store.blocageControle }}</span>
+    <span class="rg-perime" *ngIf="store.controlePerime"><i class="fas fa-exclamation-triangle"></i> Données modifiées : recalculez.</span>
+  </div>
+  <div class="rg-erreur" *ngIf="store.erreurControle">{{ store.erreurControle }}</div>
+</app-rg-section>
+
+<ng-container *ngIf="store.controle as r">
+  <app-rg-section titre="Variantes et recommandation" icone="fas fa-award" cle="controle.variantes"
+                  [badge]="scoreRecommande !== null ? fr(scoreRecommande) + '/100' : null">
+    <div class="rg-variantes">
+      <button type="button" class="rg-variante" *ngFor="let v of toutesVariantes"
+              [class.active]="v.code === store.varianteActive" [class.reco]="v.recommandee"
+              [class.parfaite]="v.code === 'parfaite'" (click)="store.choisirVariante(v.code)">
+        <span class="rg-v-nom">{{ v.nom }}</span>
+        <span class="rg-v-score">{{ fr(v.indicateurs.score) }}<small>/100</small></span>
+        <span class="rg-badge ok" *ngIf="v.recommandee"><i class="fas fa-star"></i> Recommandée</span>
+        <span class="rg-badge ko" *ngIf="!v.admissible && v.code !== 'parfaite'"><i class="fas fa-ban"></i> Non recommandable</span>
+        <span class="rg-badge warn" *ngIf="v.code === 'parfaite'"><i class="fas fa-magic"></i> {{ r.parfaite.suggestions.length }} point(s) à rechercher</span>
+        <span class="rg-v-meta">{{ v.indicateurs.nb_lignes_base }} lignes · angle min {{ fr(v.indicateurs.angle_min) }}°</span>
+      </button>
+    </div>
+    <div class="rg-justif" *ngIf="r.justification.length">
+      <h3><i class="fas fa-award"></i> Pourquoi cette recommandation ?</h3>
+      <ul><li *ngFor="let j of r.justification">{{ j }}</li></ul>
+    </div>
+    <div class="rg-detail" *ngIf="variante as v">
+      <h3>{{ v.nom }}</h3>
+      <p class="hint">{{ v.description }}</p>
+      <ul class="rg-controles">
+        <li *ngFor="let c of v.controles" [class.ok]="c.ok" [ngClass]="c.gravite">
+          <i class="fas" [ngClass]="c.ok ? 'fa-check-circle' : (c.gravite === 'bloquant' ? 'fa-times-circle' : 'fa-exclamation-circle')"></i>
+          <span class="code-token">{{ c.norme }}</span> {{ c.message }}
+        </li>
+      </ul>
+    </div>
+  </app-rg-section>
+
+  <app-rg-section titre="Optimisation : points à écarter" icone="fas fa-user-minus" cle="controle.ecarter"
+                  [badge]="r.suppressions.length || null">
+    <p class="hint" *ngIf="!r.suppressions.length">Aucun point ancien n'est inutile ou pénalisant : tous servent le réseau.</p>
+    <ul class="rg-propositions" *ngIf="r.suppressions.length">
+      <li *ngFor="let s of r.suppressions">
+        <div class="tete">
+          <strong>{{ s.nom_point }}</strong>
+          <span class="rg-badge" [ngClass]="s.type === 'proximite' ? 'warn' : 'neutre'">
+            {{ s.type === 'proximite' ? 'Doublon' : 'Pénalisant' }}</span>
+          <span class="rg-badge ok">+{{ fr(s.score_apres - s.score_avant) }} pts</span>
+          <span class="spacer"></span>
+          <button type="button" class="btn-ghost btn-sm" (click)="store.ecarterSuggestion(s)">
+            <i class="fas fa-user-minus"></i> Écarter</button>
+        </div>
+        <div class="corps">{{ s.justification }}</div>
+      </li>
+    </ul>
+  </app-rg-section>
+
+  <app-rg-section titre="Optimisation : points anciens à rechercher" icone="fas fa-search-location" cle="controle.rechercher"
+                  [badge]="r.parfaite.suggestions.length || null">
+    <p class="hint">{{ r.parfaite.conclusion }}</p>
+    <ul class="rg-propositions" *ngIf="r.parfaite.suggestions.length">
+      <li *ngFor="let s of r.parfaite.suggestions">
+        <div class="tete">
+          <strong>{{ s.nom_point }}</strong>
+          <span class="hint">X {{ fr(s.x_m, 0) }} · Y {{ fr(s.y_m, 0) }} · rayon ≈ {{ fr(s.rayon_recherche_m, 0) }} m</span>
+        </div>
+        <div class="corps">{{ s.justification }}</div>
+      </li>
+    </ul>
+    <div class="rg-actions" *ngIf="r.parfaite.suggestions.length">
+      <button type="button" class="btn-ghost btn-sm" (click)="store.choisirVariante('parfaite')">
+        <i class="fas fa-map"></i> Voir sur la carte</button>
+      <span class="hint">Un point ancien retrouvé près d'un emplacement s'ajoute dans l'onglet « Points anciens ».</span>
+    </div>
+  </app-rg-section>
+
+  <app-rg-section titre="Comparaison des variantes" icone="fas fa-table" cle="controle.comparaison" [ouvert]="false">
+    <div class="rg-table-wrap">
+      <table class="rg-table rg-comparaison">
+        <thead>
+          <tr><th>Indicateur</th>
+            <th *ngFor="let v of toutesVariantes" [class.active]="v.code === store.varianteActive">{{ v.nom }}</th></tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let l of comparaison">
+            <td>{{ l.libelle }} <span class="code-token" *ngIf="l.norme">{{ l.norme }}</span></td>
+            <td *ngFor="let v of toutesVariantes" class="num" [class.meilleur]="estMeilleure(l, v)"
+                [class.active]="v.code === store.varianteActive">{{ l.valeur(v) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </app-rg-section>
+</ng-container>
+
+<app-rg-section titre="Normes appliquées" icone="fas fa-book" cle="controle.normes" [ouvert]="false"
+                [badge]="store.referentiel?.normes?.length || null">
+  <ul class="rg-normes">
+    <li *ngFor="let n of store.referentiel?.normes">
+      <span class="code-token">{{ n.code }}</span> <strong>{{ n.titre }}</strong>
+      <div class="hint">{{ n.detail }} — <em>{{ n.source }}</em></div>
+    </li>
+  </ul>
+</app-rg-section>

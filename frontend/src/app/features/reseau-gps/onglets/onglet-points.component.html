@@ -1,0 +1,83 @@
+<p class="intro">Première étape d'une densification : rassembler la liste des <strong>points anciens</strong>
+  disponibles dans la zone (pièce LPA). Vous pourrez ensuite écarter ceux qui ne servent pas le réseau.</p>
+
+<app-rg-section titre="Source des points anciens" icone="fas fa-file-import" cle="points.source">
+  <div class="segment rg-segment">
+    <button type="button" [class.active]="source === 'import'" (click)="choisirSource('import')">
+      <i class="fas fa-file-import"></i> Fichier CSV / Excel</button>
+    <button type="button" [class.active]="source === 'lpa'" (click)="choisirSource('lpa')">
+      <i class="fas fa-list-ol"></i> LPA d'un SDGPS</button>
+    <button type="button" [class.active]="source === 'saisie'" (click)="choisirSource('saisie')">
+      <i class="fas fa-keyboard"></i> Saisie</button>
+  </div>
+  <ng-container *ngIf="source === 'import'">
+    <label class="btn-ghost btn-sm rg-fichier">
+      <i class="fas" [ngClass]="importEnCours ? 'fa-spinner fa-spin' : 'fa-upload'"></i> Choisir un fichier
+      <input type="file" accept=".csv,.txt,.xlsx,.xls" (change)="importer($event)" hidden>
+    </label>
+    <p class="hint">Colonnes de la LPA : <code>id ; nom_point ; x_m ; y_m ; reference ; nature_materialisation ;
+      nature_signalisation</code> (les libellés « Nom Point », « X(m) »… sont reconnus).</p>
+  </ng-container>
+  <ng-container *ngIf="source === 'lpa'">
+    <label class="field">
+      <span>SDGPS ayant une LPA</span>
+      <select [(ngModel)]="ssdgpsChoisi">
+        <option value="">— Choisir —</option>
+        <option *ngFor="let s of sourcesLpa" [value]="s.ssdgps_id">{{ s.libelle }} — {{ s.nb_points }} pt(s)</option>
+      </select>
+    </label>
+    <p class="hint" *ngIf="sourcesChargees && !sourcesLpa.length">Aucune LPA accessible.</p>
+    <div class="rg-actions">
+      <button type="button" class="btn-ghost btn-sm" [disabled]="!ssdgpsChoisi" (click)="chargerLpa()">
+        <i class="fas fa-download"></i> Reprendre les points</button>
+    </div>
+  </ng-container>
+  <p class="hint" *ngIf="source === 'saisie'">Ajoutez les points un par un avec le bouton « Ajouter » de la liste.</p>
+</app-rg-section>
+
+<app-rg-section titre="Projection" icone="fas fa-globe-africa" cle="points.projection">
+  <label class="field">
+    <span>Zone Lambert des coordonnées</span>
+    <select [(ngModel)]="store.zone" (ngModelChange)="store.toutInvalider()">
+      <option *ngFor="let z of store.referentiel?.zones" [value]="z.code">{{ z.libelle }} — EPSG:{{ z.epsg }}</option>
+    </select>
+    <span class="hint">Proposée automatiquement quand la pièce PPA/PPN du SDGPS renseigne la zone.</span>
+  </label>
+</app-rg-section>
+
+<app-rg-section titre="Liste des points anciens" icone="fas fa-map-marker-alt" cle="points.liste"
+                [badge]="store.anciens.length ? store.anciensRetenus.length + ' / ' + store.anciens.length : null">
+  <div class="rg-ligne-outils">
+    <span class="rg-compte">{{ store.anciensRetenus.length }} retenu(s)<ng-container *ngIf="store.nbEcartes">,
+      {{ store.nbEcartes }} écarté(s)</ng-container><em *ngIf="store.libelleSource"> · {{ store.libelleSource }}</em></span>
+    <span class="spacer"></span>
+    <button type="button" class="btn-ghost btn-sm" (click)="store.ajouterAncien()"><i class="fas fa-plus"></i> Ajouter</button>
+    <button type="button" class="btn-ghost btn-sm" *ngIf="store.anciens.length" (click)="store.viderAnciens()"
+            title="Vider la liste"><i class="fas fa-trash"></i></button>
+  </div>
+  <p class="hint" *ngIf="!store.anciens.length">Aucun point pour l'instant.</p>
+  <div class="rg-table-wrap" *ngIf="store.anciens.length">
+    <table class="rg-table">
+      <thead>
+        <tr><th title="Retenu dans le réseau">Retenu</th><th>Nom</th><th>X (m)</th><th>Y (m)</th>
+          <th>Référence</th><th>Matérialisation</th><th>Signalisation</th><th></th></tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let p of store.anciens; let i = index; trackBy: trackIndex" [class.attenue]="!p.retenu">
+          <td><input type="checkbox" [checked]="p.retenu" (change)="basculer(p)"
+                     [title]="p.retenu ? 'Écarter ce point du réseau' : (p.motifEcart || 'Réintégrer ce point')"></td>
+          <td><input [(ngModel)]="p.nom_point" (ngModelChange)="store.toutInvalider()" class="w-nom"></td>
+          <td><input type="number" step="0.01" [(ngModel)]="p.x_m" (ngModelChange)="store.toutInvalider()" class="w-coord"></td>
+          <td><input type="number" step="0.01" [(ngModel)]="p.y_m" (ngModelChange)="store.toutInvalider()" class="w-coord"></td>
+          <td><input [(ngModel)]="p.reference" class="w-txt"></td>
+          <td><input [(ngModel)]="p.nature_materialisation" class="w-txt"></td>
+          <td><input [(ngModel)]="p.nature_signalisation" class="w-txt"></td>
+          <td><button type="button" class="rg-icone" title="Supprimer" (click)="store.supprimerAncien(i)">
+            <i class="fas fa-times"></i></button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="hint" *ngIf="store.nbEcartes">Un point écarté reste dans la liste (grisé), son motif en info-bulle ;
+    cochez-le pour le réintégrer.</p>
+</app-rg-section>

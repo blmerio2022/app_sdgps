@@ -2,7 +2,7 @@
 
 Référentiel qui **pilote l'algorithme** du module « Réseau GPS »
 (`backend/reseaux/normes.py`, `backend/reseaux/generation.py`). Chaque règle porte un code
-(`N1`…`N10`) repris tel quel dans les contrôles de conformité renvoyés par l'API et affichés
+(`N1`…`N12`) repris tel quel dans les contrôles de conformité renvoyés par l'API et affichés
 à l'écran.
 
 > **Statut des sources.** Le texte officiel marocain applicable est l'*Instruction sur le GPS*
@@ -38,6 +38,8 @@ ils sont « épluchés » par les variantes épurées.
 | **N8** | **Règle des stations voisines** (*adjacent station rule*) : deux stations dont la distance directe est inférieure à **20 %** du plus court chemin qui les relie dans le réseau doivent être **reliées directement**. | nombre de violations (pénalisé) | Caltrans §6A.3 et tableau 6A : « Direct connection between survey stations which are closer than 20 percent of the distance between those stations traced along existing or new connections ». |
 | **N9** | **Rattachement aux points anciens** : les points de contrôle de référence **entourent** la zone de travail — présents dans **au moins 3 quadrants** autour du centre du projet ; les points nouveaux sont à l'**intérieur** de l'enveloppe des points anciens. | réseau mixte : quadrants occupés par les anciens autour du barycentre des nouveaux ; nouveaux hors enveloppe | Caltrans, tableau 6A : « Location of reference network control (relative to center of project); minimum number of quadrants : 3 » ; RTK : « the project area shall be surrounded and enclosed with control stations ». |
 | **N10** | **Nombre minimal de points anciens** : **3** (deux pour déterminer, un pour contrôler). Chaque point nouveau est rattaché à **au moins 2** points du réseau, idéalement à 3 points anciens. | bloquant si < 3 anciens ; indicateur rattachement | Pratique courante du rattachement planimétrique (**choix du module**, le texte ANCFCC public ne donne pas ce chiffre) ; cohérent avec N5 et N9. |
+| **N11** | **Couverture du lever de détail** : tout point de la zone intérieure au réseau est à moins de **5 km** d'au moins **3 points de densification** (anciens homogènes ou nouveaux), depuis lesquels les points de détail sont levés (stop and go / RTK). | taux de couverture de la zone (paramétrable : rayon, nombre de points) | **Prescription de l'utilisateur (service du cadastre)**, transmise le 14/11/2026 ; non retrouvée dans les textes publics. |
+| **N12** | **Homogénéité des points anciens** : seuls les points anciens dont les écarts du rapport de contrôle (ΔD entre coordonnées connues et calculées) restent **≤ 15 cm** entre eux servent d'appui à la densification. | tolérance paramétrable, 15 cm par défaut (Paramètres › Tolérances, `rc_ecarts`) | Tolérance cadastrale en distance indiquée par l'utilisateur ; déjà appliquée par l'application au rapport de contrôle (pièce RC). |
 
 ### Notions utilisées pour les indicateurs
 
@@ -91,6 +93,37 @@ RTLB, RFB… et des *Tolérances* déjà gérées par l'application. Le module c
    que tous les triangles soient conformes ou que le nombre maximal de suggestions soit
    atteint. Chaque emplacement est accompagné d'un **rayon de recherche** (où chercher un
    point ancien existant) et de sa justification.
+6. **Points à écarter** (`optimisation.py`) : un point ancien est proposé à l'écart quand il
+   fait double emploi avec un voisin plus proche que le seuil de proximité (15 % de la
+   longueur médiane des lignes, 50 m au moins), ou quand son retrait fait gagner au moins
+   1 point de score (triangles mieux conformés, N1/N2). Jamais en dessous de 3 anciens
+   (N10) ; c'est l'opérateur qui décide.
+
+## 3 bis. Workflow de densification
+
+L'écran suit l'ordre du travail du service du cadastre :
+
+1. **Points anciens** — rassembler les points anciens disponibles dans la zone (import de la
+   LPA : fichier ou pièce d'un SDGPS) ; l'opérateur peut écarter un point (avec motif).
+2. **Réseau de contrôle de stabilité** — variantes, recommandation, points anciens à
+   **rechercher** (variante parfaite) et à **écarter** (§ 3, point 6), jusqu'au score le plus
+   proche de 100.
+3. **Contrôle des écarts** (`ecarts.py`) — import du rapport de contrôle (pièce RC du SDGPS
+   PDC ou fichier). Pour une détermination tenue fixe sur F, l'écart ΔD d'un point de
+   contrôle P mesure la cohérence de F et P : la paire est **compatible** si ΔD ≤ tolérance
+   (N12 ; quand les deux sens existent, le pire est retenu). Les **points homogènes** sont la
+   plus grande clique de points deux à deux compatibles (Bron–Kerbosch ; à taille égale, la
+   plus faible somme d'écarts). L'opérateur ajuste la sélection à la main.
+4. **Densification** (`densification.py`) — zone = enveloppe convexe des anciens homogènes,
+   échantillonnée sur une grille. Ajout glouton du candidat (grille, centres des triangles
+   mal conformés, zones non couvertes, pré-filtrés sur le gain de couverture) qui maximise
+   le score de densification augmenté d'un crédit de couverture progressif ; puis
+   déplacements locaux des points proposés. Nombre de points paramétrable (0 = automatique :
+   jusqu'à couverture complète, tant que le score progresse). Les points placés par
+   l'opérateur sont conservés ; il peut en ajouter (saisie ou clic sur la carte), en
+   supprimer et **recalculer le score**.
+   **Score de densification** = 0,8 × score du réseau (§ 3, point 3) + 20 × taux de
+   couverture N11 : un réseau parfait qui laisse des zones sans appui n'atteint pas 100.
 
 ## 4. Projection — Lambert Maroc → WGS84
 

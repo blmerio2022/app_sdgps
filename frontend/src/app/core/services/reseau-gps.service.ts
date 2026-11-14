@@ -17,6 +17,8 @@ export interface PointReseau {
   nature_materialisation?: string;
   nature_signalisation?: string;
   statut?: StatutPoint;
+  /** Point nouveau : placé par l'opérateur ou proposé par l'application. */
+  origine?: 'manuel' | 'propose';
 }
 
 export interface PointResultat extends PointReseau {
@@ -86,6 +88,62 @@ export interface ResultatReseau {
   recommandee: string | null;
   justification: string[];
   parfaite: VarianteParfaite;
+  suppressions: SuggestionSuppression[];
+}
+
+/** Point ancien dont l'abandon est conseillé (doublon ou point pénalisant). */
+export interface SuggestionSuppression {
+  index: number; nom_point: string; type: 'proximite' | 'penalisant';
+  score_avant: number; score_apres: number; motif: string; justification: string;
+}
+
+/** Ligne d'un rapport de contrôle (pièce RC). */
+export interface LigneRc {
+  id?: string; nom_point_fixe: string; nom_point_calcule: string;
+  x_m_fixe?: string | number; y_m_fixe?: string | number; x_m_calcule?: string | number; y_m_calcule?: string | number;
+  delta_x_m?: string | number | null; delta_y_m?: string | number | null; delta_d_m?: string | number | null;
+}
+
+export interface AnalyseEcarts {
+  tolerance_m: number;
+  lignes: (LigneRc & { hors_tolerance: boolean })[];
+  points: {
+    nom_point: string; nb_controles: number; ecart_max_m: number | null; ecart_moyen_m: number | null;
+    nb_hors_tolerance: number; incompatible_avec: string[]; homogene: boolean;
+  }[];
+  homogenes: string[]; non_homogenes: string[]; non_controles: string[];
+  nb_lignes: number; nb_hors_tolerance: number; conclusion: string;
+}
+
+export interface SourceRc { ssdgps_id: string; piece_id: string; libelle: string; nature_ssdgps: string; nb_lignes: number; }
+
+export interface DemandeDensification {
+  anciens: PointReseau[];
+  nouveaux: PointReseau[];
+  nb_nouveaux: number;
+  proposer: boolean;
+  zone: string;
+  longueur_max_km: number;
+  rayon_couverture_km: number;
+  points_couverture_min: number;
+}
+
+export interface ResultatDensification {
+  zone: string;
+  points: PointResultat[];
+  proposes: number[];
+  reseau: Pick<VarianteReseau, 'indicateurs' | 'controles' | 'admissible' | 'lignes' | 'triangles' | 'violations_stations_voisines'>;
+  score_reseau: number;
+  score: number;
+  couverture: { taux: number; rayon_km: number; points_min: number; nb_echantillons: number; pas_m: number; non_couverts: number[][] };
+  zone_polygone: number[][];
+  conclusion: string;
+}
+
+/** Fond de carte du catalogue fourni par l'application. */
+export interface FondCatalogue {
+  id: string; nom: string; categorie: string; type: 'xyz' | 'wms'; url: string; max_zoom?: number;
+  attribution: string; licence: string; description: string; couches?: string; format?: string;
 }
 
 export interface NormeReseau { code: string; titre: string; detail: string; source: string; }
@@ -96,7 +154,16 @@ export interface ReferentielReseau {
   types_reseau: { code: TypeReseau; libelle: string }[];
   variantes: { code: string; nom: string; description: string }[];
   normes: NormeReseau[];
-  defauts: { longueur_max_km: number; nb_suggestions_max: number; points_max: number; suggestions_max: number };
+  fonds: {
+    categories: { code: string; libelle: string; icone: string }[];
+    catalogue: FondCatalogue[];
+    par_defaut: string[];
+    aide_personnalise: string[];
+  };
+  defauts: {
+    longueur_max_km: number; nb_suggestions_max: number; points_max: number; suggestions_max: number;
+    tolerance_rc_m: number; rayon_couverture_km: number; points_couverture_min: number; nouveaux_max: number;
+  };
 }
 
 export interface SourceLpa { ssdgps_id: string; piece_id: string; libelle: string; nature_ssdgps: string; nb_points: number; }
@@ -133,5 +200,22 @@ export class ReseauGpsService {
 
   sourceLpa(ssdgpsId: string): Observable<SourceLpaDetail> {
     return this.http.get<SourceLpaDetail>(`${this.url}sources-lpa/${ssdgpsId}/`);
+  }
+
+  analyserEcarts(lignes: LigneRc[], toleranceM: number, nomsReseau: string[] = []): Observable<AnalyseEcarts> {
+    return this.http.post<AnalyseEcarts>(`${this.url}analyser-ecarts/`,
+      { lignes, tolerance_m: toleranceM, noms_reseau: nomsReseau });
+  }
+
+  sourcesRc(): Observable<SourceRc[]> {
+    return this.http.get<SourceRc[]>(`${this.url}sources-rc/`);
+  }
+
+  sourceRc(ssdgpsId: string): Observable<{ ssdgps_id: string; libelle: string; lignes: LigneRc[] }> {
+    return this.http.get<{ ssdgps_id: string; libelle: string; lignes: LigneRc[] }>(`${this.url}sources-rc/${ssdgpsId}/`);
+  }
+
+  densifier(demande: DemandeDensification): Observable<ResultatDensification> {
+    return this.http.post<ResultatDensification>(`${this.url}densifier/`, demande);
   }
 }

@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 import {
   detecterSeparateur, lignesCsv, lireFichierPoints, lireNombre, lireStatut, normaliserEntete,
-  pointsDepuisLignes,
+  pointsDepuisLignes, lignesRcDepuisTableau,
 } from './points-import.util';
 
 describe('points-import.util', () => {
@@ -65,5 +65,26 @@ describe('points-import.util', () => {
   it('lit un fichier CSV', async () => {
     const pts = await lireFichierPoints(new File(['nom,x,y\nA,1,2\n'], 'pts.csv'));
     expect(pts.length).toBe(1);
+  });
+});
+
+describe('points-import.util — rapport de contrôle', () => {
+  it('lit un RC avec les libellés de la pièce (ΔD(m), X(m) Fixe…)', () => {
+    const lignes = lignesRcDepuisTableau([
+      ['ID', 'Nom Point Fixe', 'Nom Point Calculé', 'X(m) Fixe', 'Y(m) Fixe', 'X(m) Calculé', 'Y(m) Calculé',
+       'ΔX(m)', 'ΔY(m)', 'ΔD(m)'],
+      ['1', 'B1', 'B2', '1', '2', '1.1', '2', '0,10', '0', '0,10'],
+      ['', '', '', '', '', '', '', '', '', ''],
+    ]);
+    expect(lignes.length).toBe(1);
+    expect(lignes[0].nom_point_fixe).toBe('B1');
+    expect(lignes[0].nom_point_calcule).toBe('B2');
+    expect(lignes[0].delta_d_m).toBe('0,10');
+    expect(lignes[0].x_m_calcule).toBe('1.1');
+  });
+
+  it('applique l\'ordre des colonnes du RC sans en-tête', () => {
+    const lignes = lignesRcDepuisTableau([['1', 'A', 'B', '', '', '', '', '', '', '0.2']]);
+    expect(lignes[0].delta_d_m).toBe('0.2');
   });
 });

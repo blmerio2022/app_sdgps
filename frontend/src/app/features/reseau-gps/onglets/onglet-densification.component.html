@@ -1,0 +1,91 @@
+<p class="intro">À partir des <strong>points anciens homogènes</strong>, l'application propose l'emplacement des
+  <strong>points nouveaux</strong> pour un réseau optimisé (objectif : score de 100) qui respecte la règle du lever de
+  détail : tout point de la zone à moins de {{ store.rayonCouvertureKm }} km d'au moins {{ store.pointsCouvertureMin }}
+  points de densification (N11). Vous gardez la main : ajoutez, modifiez ou supprimez des points, puis recalculez.</p>
+
+<p class="rg-info" *ngIf="store.sansControleEcarts && store.anciensRetenus.length">
+  <i class="fas fa-exclamation-triangle"></i>Aucun contrôle des écarts n'a été fait : tous les points anciens retenus
+  servent d'appui. Faites l'analyse de l'onglet « Contrôle des écarts » pour ne garder que les points homogènes.</p>
+
+<app-rg-section titre="Paramètres" icone="fas fa-sliders-h" cle="densif.parametres"
+                [badge]="store.anciensDensification.length + ' ancien(s) d’appui'">
+  <div class="rg-grille">
+    <label class="field">
+      <span>Points nouveaux à proposer</span>
+      <input type="number" min="0" [max]="store.referentiel?.defauts?.nouveaux_max || 50" [(ngModel)]="store.nbNouveaux">
+      <span class="hint">0 = automatique (jusqu'à couverture complète)</span>
+    </label>
+    <label class="field">
+      <span>Rayon de couverture (km) — N11</span>
+      <input type="number" min="0.1" max="50" step="0.5" [(ngModel)]="store.rayonCouvertureKm" (ngModelChange)="store.nouveauxModifies()">
+    </label>
+    <label class="field">
+      <span>Points de densification min.</span>
+      <input type="number" min="1" max="10" [(ngModel)]="store.pointsCouvertureMin" (ngModelChange)="store.nouveauxModifies()">
+    </label>
+    <label class="field">
+      <span>Ligne de base max. (km) — N7</span>
+      <input type="number" min="0.1" max="50" step="0.5" [(ngModel)]="store.longueurMaxKm" (ngModelChange)="store.nouveauxModifies()">
+    </label>
+  </div>
+  <div class="rg-actions">
+    <button type="button" class="btn-primary" [disabled]="!!store.blocageDensification || store.calculDensification"
+            (click)="store.proposerNouveaux()">
+      <i class="fas" [ngClass]="store.calculDensification ? 'fa-spinner fa-spin' : 'fa-magic'"></i> Proposer les emplacements</button>
+    <span class="hint" *ngIf="store.blocageDensification">{{ store.blocageDensification }}</span>
+    <span class="hint" *ngIf="store.calculDensification">Calcul en cours… (quelques secondes pour une grande zone)</span>
+  </div>
+  <div class="rg-erreur" *ngIf="store.erreurDensification">{{ store.erreurDensification }}</div>
+</app-rg-section>
+
+<app-rg-section titre="Points nouveaux" icone="fas fa-map-pin" cle="densif.nouveaux" [badge]="store.nouveaux.length || null">
+  <div class="rg-ligne-outils">
+    <button type="button" class="btn-ghost btn-sm" [class.actif]="store.modeAjoutCarte" (click)="basculerModeAjout()">
+      <i class="fas fa-crosshairs"></i> {{ store.modeAjoutCarte ? 'Terminer le placement' : 'Placer sur la carte' }}</button>
+    <button type="button" class="btn-ghost btn-sm" (click)="store.ajouterNouveau()"><i class="fas fa-plus"></i> Saisir</button>
+    <span class="spacer"></span>
+    <button type="button" class="btn-ghost btn-sm" [disabled]="!!store.blocageDensification || store.calculDensification"
+            (click)="store.recalculerDensification()"><i class="fas fa-calculator"></i> Recalculer le score</button>
+  </div>
+  <p class="rg-info" *ngIf="store.modeAjoutCarte"><i class="fas fa-crosshairs"></i>Cliquez sur la carte pour placer un point
+    nouveau (ses coordonnées Lambert sont calculées dans la zone choisie).</p>
+  <p class="hint" *ngIf="!store.nouveaux.length">Aucun point nouveau : lancez la proposition automatique ou placez-les vous-même.</p>
+  <div class="rg-table-wrap" *ngIf="store.nouveaux.length">
+    <table class="rg-table">
+      <thead><tr><th>Nom</th><th>X (m)</th><th>Y (m)</th><th>Origine</th><th></th></tr></thead>
+      <tbody>
+        <tr *ngFor="let n of store.nouveaux; let i = index; trackBy: trackIndex">
+          <td><input [(ngModel)]="n.nom_point" class="w-nom"></td>
+          <td><input type="number" step="0.01" [(ngModel)]="n.x_m" (ngModelChange)="store.nouveauxModifies()" class="w-coord"></td>
+          <td><input type="number" step="0.01" [(ngModel)]="n.y_m" (ngModelChange)="store.nouveauxModifies()" class="w-coord"></td>
+          <td><span class="rg-badge" [ngClass]="n.origine === 'propose' ? 'violet' : 'ko'">
+            {{ n.origine === 'propose' ? 'Proposé' : 'Manuel' }}</span></td>
+          <td><button type="button" class="rg-icone" title="Supprimer ce point" (click)="store.supprimerNouveau(i)">
+            <i class="fas fa-times"></i></button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="rg-perime" *ngIf="store.densificationPerimee"><i class="fas fa-exclamation-triangle"></i>
+    Points modifiés : recalculez le score.</p>
+</app-rg-section>
+
+<app-rg-section *ngIf="store.densification as d" titre="Évaluation du réseau densifié" icone="fas fa-chart-line"
+                cle="densif.evaluation" [badge]="fr(d.score) + '/100'">
+  <div class="rg-kpis">
+    <div class="rg-kpi"><div class="val">{{ fr(d.score) }}<small>/100</small></div><div class="lib">Score de densification</div></div>
+    <div class="rg-kpi"><div class="val">{{ fr(d.score_reseau) }}<small>/100</small></div><div class="lib">Conformité du réseau</div></div>
+    <div class="rg-kpi"><div class="val">{{ fr(d.couverture.taux * 100, 0) }}<small> %</small></div><div class="lib">Couverture N11</div></div>
+    <div class="rg-kpi"><div class="val">{{ d.reseau.indicateurs.nb_lignes_base }}</div><div class="lib">Lignes de base</div></div>
+  </div>
+  <p class="rg-info"><i class="fas fa-info-circle"></i>{{ d.conclusion }} Score de densification = 0,8 × conformité du
+    réseau + 20 × couverture.</p>
+  <ul class="rg-controles">
+    <li *ngFor="let c of d.reseau.controles" [class.ok]="c.ok" [ngClass]="c.gravite">
+      <i class="fas" [ngClass]="c.ok ? 'fa-check-circle' : (c.gravite === 'bloquant' ? 'fa-times-circle' : 'fa-exclamation-circle')"></i>
+      <span class="code-token">{{ c.norme }}</span> {{ c.message }}
+    </li>
+  </ul>
+  <p class="hint">Sur la carte : zone à densifier en pointillés violets, points rouges = endroits à plus de
+    {{ d.couverture.rayon_km }} km de {{ d.couverture.points_min }} points de densification.</p>
+</app-rg-section>

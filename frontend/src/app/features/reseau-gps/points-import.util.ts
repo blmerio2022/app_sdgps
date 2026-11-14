@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { PointReseau } from '../../core/services/reseau-gps.service';
+import { LigneRc, PointReseau } from '../../core/services/reseau-gps.service';
 
 /**
  * Lecture d'une liste de points (CSV / Excel) au format de la pièce LPA :
@@ -85,14 +85,55 @@ export function pointsDepuisLignes(lignes: unknown[][]): PointReseau[] {
   return points;
 }
 
-/** Lit un fichier CSV / TXT / XLSX / XLS. */
-export async function lireFichierPoints(fichier: File): Promise<PointReseau[]> {
+/** Lit la première feuille d'un fichier CSV / TXT / XLSX / XLS en tableau de lignes. */
+export async function lireTableau(fichier: File): Promise<unknown[][]> {
   const nom = fichier.name.toLowerCase();
-  if (nom.endsWith('.csv') || nom.endsWith('.txt')) {
-    return pointsDepuisLignes(lignesCsv(await fichier.text()));
-  }
+  if (nom.endsWith('.csv') || nom.endsWith('.txt')) return lignesCsv(await fichier.text());
   const classeur = XLSX.read(await fichier.arrayBuffer(), { type: 'array' });
   const feuille = classeur.Sheets[classeur.SheetNames[0]];
-  const lignes = XLSX.utils.sheet_to_json<unknown[]>(feuille, { header: 1, raw: true, blankrows: false });
-  return pointsDepuisLignes(lignes);
+  return XLSX.utils.sheet_to_json<unknown[]>(feuille, { header: 1, raw: true, blankrows: false });
+}
+
+/** Lit un fichier de points (format LPA). */
+export async function lireFichierPoints(fichier: File): Promise<PointReseau[]> {
+  return pointsDepuisLignes(await lireTableau(fichier));
+}
+
+// ------------------------------------------------------------------ rapport de contrôle (RC)
+
+type ChampRc = keyof LigneRc;
+
+/**
+ * En-têtes du RC, techniques (`delta_d_m`) ou libellés de la pièce (« ΔD(m) », « X(m) Fixe »).
+ * Après normalisation, « ΔX(m) » devient « xm » (le Δ n'est pas une lettre latine).
+ */
+const ALIAS_RC: Record<string, ChampRc> = {
+  id: 'id',
+  nompointfixe: 'nom_point_fixe', pointfixe: 'nom_point_fixe', fixe: 'nom_point_fixe',
+  nompointcalcule: 'nom_point_calcule', pointcalcule: 'nom_point_calcule', calcule: 'nom_point_calcule',
+  xmfixe: 'x_m_fixe', ymfixe: 'y_m_fixe', xmcalcule: 'x_m_calcule', ymcalcule: 'y_m_calcule',
+  deltaxm: 'delta_x_m', dxm: 'delta_x_m', xm: 'delta_x_m', dx: 'delta_x_m',
+  deltaym: 'delta_y_m', dym: 'delta_y_m', ym: 'delta_y_m', dy: 'delta_y_m',
+  deltadm: 'delta_d_m', ddm: 'delta_d_m', dm: 'delta_d_m', dd: 'delta_d_m', ecart: 'delta_d_m',
+};
+
+const ORDRE_RC: ChampRc[] = ['id', 'nom_point_fixe', 'nom_point_calcule', 'x_m_fixe', 'y_m_fixe',
+  'x_m_calcule', 'y_m_calcule', 'delta_x_m', 'delta_y_m', 'delta_d_m'];
+
+export function lignesRcDepuisTableau(lignes: unknown[][]): LigneRc[] {
+  if (!lignes.length) return [];
+  const mapping = lignes[0].map(h => ALIAS_RC[normaliserEntete(h)] ?? null);
+  const avecEntete = mapping.includes('nom_point_fixe') && mapping.includes('nom_point_calcule');
+  const colonnes = avecEntete ? mapping : ORDRE_RC;
+  const sortie: LigneRc[] = [];
+  (avecEntete ? lignes.slice(1) : lignes).forEach(ligne => {
+    const r: any = {};
+    colonnes.forEach((champ, i) => { if (champ && i < ligne.length) r[champ] = String(ligne[i] ?? '').trim(); });
+    if (r.nom_point_fixe && r.nom_point_calcule) sortie.push(r as LigneRc);
+  });
+  return sortie;
+}
+
+export async function lireFichierRc(fichier: File): Promise<LigneRc[]> {
+  return lignesRcDepuisTableau(await lireTableau(fichier));
 }

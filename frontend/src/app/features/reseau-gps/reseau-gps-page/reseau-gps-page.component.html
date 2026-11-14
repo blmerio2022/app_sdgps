@@ -1,277 +1,79 @@
 <div class="rg-page">
   <header class="page-header">
     <h1><i class="fas fa-draw-polygon"></i> Réseau de triangulation GPS</h1>
-    <p class="subtitle">
-      Concevez la géométrie d'un réseau GNSS à partir d'une liste de points (format LPA) : plusieurs
-      variantes sont calculées selon les normes de triangulation et de réseaux GPS, comparées, et la
-      meilleure est recommandée avec sa justification.
-    </p>
+    <p class="subtitle">Densification par triangulation GPS : des points anciens disponibles au réseau de points anciens
+      et nouveaux le plus optimisé possible, selon les normes de triangulation et de réseaux GPS.</p>
   </header>
 
+  <nav class="rg-onglets" role="tablist">
+    <button type="button" role="tab" *ngFor="let o of onglets" class="rg-onglet" [class.actif]="store.onglet === o.code"
+            [class.termine]="termine(o.code)" [class.annexe]="o.etape === null" [attr.aria-selected]="store.onglet === o.code"
+            (click)="store.choisirOnglet(o.code)">
+      <span class="rg-etape" *ngIf="o.etape !== null">
+        <i class="fas fa-check" *ngIf="termine(o.code); else numero"></i><ng-template #numero>{{ o.etape }}</ng-template>
+      </span>
+      <i *ngIf="o.etape === null" [ngClass]="o.icone" class="rg-onglet-icone"></i>
+      <span class="rg-onglet-texte">
+        <span class="rg-onglet-titre">{{ o.titre }}</span>
+        <span class="rg-onglet-resume">{{ resume(o.code) }}</span>
+      </span>
+    </button>
+  </nav>
+
   <div class="rg-layout">
-    <!-- ================================================================ PANNEAU GAUCHE -->
-    <section class="rg-panneau">
-      <!-- 1. Points -->
-      <div class="rg-carte-bloc">
-        <h2><span class="num">1</span> Points</h2>
-        <div class="segment rg-segment">
-          <button type="button" [class.active]="source === 'saisie'" (click)="choisirSource('saisie')">
-            <i class="fas fa-keyboard"></i> Saisie</button>
-          <button type="button" [class.active]="source === 'import'" (click)="choisirSource('import')">
-            <i class="fas fa-file-import"></i> Import</button>
-          <button type="button" [class.active]="source === 'lpa'" (click)="choisirSource('lpa')">
-            <i class="fas fa-list-ol"></i> LPA d'un SDGPS</button>
-        </div>
-
-        <div class="rg-source" *ngIf="source === 'import'">
-          <label class="btn-ghost btn-sm rg-fichier">
-            <i class="fas" [ngClass]="importEnCours ? 'fa-spinner fa-spin' : 'fa-upload'"></i>
-            Choisir un fichier CSV / Excel
-            <input type="file" accept=".csv,.txt,.xlsx,.xls" (change)="importerFichier($event)" hidden>
-          </label>
-          <p class="hint">Colonnes de la LPA : <code>id ; nom_point ; x_m ; y_m ; reference ;
-            nature_materialisation ; nature_signalisation</code> (libellés « Nom Point », « X(m) »… acceptés),
-            plus une colonne facultative <code>statut</code> (ancien / nouveau).</p>
-        </div>
-
-        <div class="rg-source" *ngIf="source === 'lpa'">
-          <label class="field">
-            <span>SDGPS ayant une LPA</span>
-            <select [(ngModel)]="ssdgpsChoisi">
-              <option value="">— Choisir —</option>
-              <option *ngFor="let s of sourcesLpa" [value]="s.ssdgps_id">{{ s.libelle }} — {{ s.nb_points }} pt(s)</option>
-            </select>
-          </label>
-          <p class="hint" *ngIf="sourcesChargees && !sourcesLpa.length">Aucune LPA accessible.</p>
-          <button type="button" class="btn-ghost btn-sm" [disabled]="!ssdgpsChoisi" (click)="chargerLpa()">
-            <i class="fas fa-download"></i> Reprendre les points</button>
-        </div>
-
-        <div class="rg-points-entete">
-          <span class="rg-compte">{{ points.length }} point(s)
-            <ng-container *ngIf="typeReseau === 'mixte'"> — {{ nbAnciens }} ancien(s), {{ nbNouveaux }} nouveau(x)</ng-container>
-            <em *ngIf="libelleLpa"> · {{ libelleLpa }}</em></span>
-          <span class="spacer"></span>
-          <button type="button" class="btn-ghost btn-sm" (click)="ajouterPoint()"><i class="fas fa-plus"></i> Ajouter</button>
-          <button type="button" class="btn-ghost btn-sm" *ngIf="points.length" (click)="viderPoints()" title="Vider la liste">
-            <i class="fas fa-trash"></i></button>
-        </div>
-
-        <div class="rg-table-wrap" *ngIf="points.length">
-          <table class="rg-table rg-points">
-            <thead>
-              <tr>
-                <th>Nom</th><th>X (m)</th><th>Y (m)</th>
-                <th *ngIf="typeReseau === 'mixte'">Statut</th>
-                <th>Référence</th><th>Matérialisation</th><th>Signalisation</th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let p of points; let i = index; trackBy: trackIndex">
-                <td><input [(ngModel)]="p.nom_point" (ngModelChange)="marquerPerime()" class="w-nom"></td>
-                <td><input type="number" step="0.01" [(ngModel)]="p.x_m" (ngModelChange)="marquerPerime()" class="w-coord"></td>
-                <td><input type="number" step="0.01" [(ngModel)]="p.y_m" (ngModelChange)="marquerPerime()" class="w-coord"></td>
-                <td *ngIf="typeReseau === 'mixte'">
-                  <select [(ngModel)]="p.statut" (ngModelChange)="marquerPerime()">
-                    <option value="ancien">Ancien</option>
-                    <option value="nouveau">Nouveau</option>
-                  </select>
-                </td>
-                <td><input [(ngModel)]="p.reference" class="w-txt"></td>
-                <td><input [(ngModel)]="p.nature_materialisation" class="w-txt"></td>
-                <td><input [(ngModel)]="p.nature_signalisation" class="w-txt"></td>
-                <td><button type="button" class="rg-icone" title="Supprimer" (click)="supprimerPoint(i)">
-                  <i class="fas fa-times"></i></button></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- 2. Paramètres -->
-      <div class="rg-carte-bloc">
-        <h2><span class="num">2</span> Paramètres</h2>
-        <div class="segment rg-segment">
-          <button type="button" [class.active]="typeReseau === 'anciens'" (click)="typeReseau = 'anciens'; marquerPerime()">
-            Points anciens</button>
-          <button type="button" [class.active]="typeReseau === 'mixte'" (click)="typeReseau = 'mixte'; marquerPerime()">
-            Anciens + nouveaux (DDC)</button>
-        </div>
-        <div class="rg-grille">
-          <label class="field">
-            <span>Zone Lambert</span>
-            <select [(ngModel)]="zone" (ngModelChange)="marquerPerime()">
-              <option *ngFor="let z of referentiel?.zones" [value]="z.code">{{ z.libelle }} — EPSG:{{ z.epsg }}</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>Ligne de base max. (km) — N7</span>
-            <input type="number" min="0.1" max="50" step="0.5" [(ngModel)]="longueurMaxKm" (ngModelChange)="marquerPerime()">
-            <span class="hint">10 km statique rapide · 15 km statique</span>
-          </label>
-          <label class="field">
-            <span>Emplacements suggérés max.</span>
-            <input type="number" min="0" [max]="referentiel?.defauts?.suggestions_max || 15" [(ngModel)]="nbSuggestionsMax"
-                   (ngModelChange)="marquerPerime()">
-          </label>
-        </div>
-        <div class="rg-actions">
-          <button type="button" class="btn-primary" [disabled]="!!blocage || calcul" (click)="generer()">
-            <i class="fas" [ngClass]="calcul ? 'fa-spinner fa-spin' : 'fa-project-diagram'"></i>
-            {{ resultat ? 'Recalculer le réseau' : 'Générer le réseau' }}</button>
-          <span class="hint" *ngIf="blocage">{{ blocage }}</span>
-          <span class="rg-perime" *ngIf="resultatPerime"><i class="fas fa-exclamation-triangle"></i> Données modifiées : recalculez.</span>
-        </div>
-        <div class="rg-erreur" *ngIf="erreur">{{ erreur }}</div>
-      </div>
-
-      <!-- 3. Variantes -->
-      <div class="rg-carte-bloc" *ngIf="resultat">
-        <h2><span class="num">3</span> Variantes</h2>
-        <div class="rg-variantes">
-          <button type="button" class="rg-variante" *ngFor="let v of toutesVariantes"
-                  [class.active]="v.code === varianteActive" [class.reco]="v.recommandee"
-                  [class.parfaite]="v.code === 'parfaite'" (click)="choisirVariante(v.code)">
-            <span class="rg-v-nom">{{ v.nom }}</span>
-            <span class="rg-v-score">{{ fr(v.indicateurs.score, 1) }}<small>/100</small></span>
-            <span class="rg-badge reco" *ngIf="v.recommandee"><i class="fas fa-star"></i> Recommandée</span>
-            <span class="rg-badge ko" *ngIf="!v.admissible && v.code !== 'parfaite'"><i class="fas fa-ban"></i> Non recommandable</span>
-            <span class="rg-badge parf" *ngIf="v.code === 'parfaite'"><i class="fas fa-magic"></i> {{ resultat.parfaite.suggestions.length }} emplacement(s)</span>
-            <span class="rg-v-meta">{{ v.indicateurs.nb_lignes_base }} lignes · angle min {{ fr(v.indicateurs.angle_min, 1) }}°</span>
-          </button>
-        </div>
-
-        <div class="rg-justif" *ngIf="resultat.justification.length">
-          <h3><i class="fas fa-award"></i> Pourquoi cette recommandation ?</h3>
-          <ul><li *ngFor="let r of resultat.justification">{{ r }}</li></ul>
-        </div>
-
-        <div class="rg-detail" *ngIf="variante as v">
-          <h3>{{ v.nom }}</h3>
-          <p class="hint">{{ v.description }}</p>
-          <ul class="rg-controles">
-            <li *ngFor="let c of v.controles" [class.ok]="c.ok" [ngClass]="c.gravite">
-              <i class="fas" [ngClass]="c.ok ? 'fa-check-circle' : (c.gravite === 'bloquant' ? 'fa-times-circle' : 'fa-exclamation-circle')"></i>
-              <span class="code-token">{{ c.norme }}</span> {{ c.message }}
-            </li>
-          </ul>
-
-          <ng-container *ngIf="v.code === 'parfaite'">
-            <p class="rg-conclusion">{{ resultat.parfaite.conclusion }}</p>
-            <ol class="rg-suggestions">
-              <li *ngFor="let s of resultat.parfaite.suggestions">
-                <strong>{{ s.nom_point }}</strong> — X {{ fr(s.x_m, 0) }} · Y {{ fr(s.y_m, 0) }}
-                <span class="hint">(rayon ≈ {{ fr(s.rayon_recherche_m, 0) }} m)</span>
-                <div>{{ s.justification }}</div>
-              </li>
-            </ol>
-          </ng-container>
-        </div>
-
-        <h3 class="rg-titre-comp">Comparaison des variantes</h3>
-        <div class="rg-table-wrap">
-          <table class="rg-table rg-comparaison">
-            <thead>
-              <tr>
-                <th>Indicateur</th>
-                <th *ngFor="let v of toutesVariantes" [class.active]="v.code === varianteActive">{{ v.nom }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let l of comparaison">
-                <td>{{ l.libelle }} <span class="code-token" *ngIf="l.norme">{{ l.norme }}</span></td>
-                <td *ngFor="let v of toutesVariantes" [class.meilleur]="estMeilleure(l, v)" [class.active]="v.code === varianteActive">
-                  {{ l.valeur(v) }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Normes -->
-      <div class="rg-carte-bloc" *ngIf="referentiel">
-        <button type="button" class="rg-repli" (click)="normesOuvertes = !normesOuvertes">
-          <i class="fas" [ngClass]="normesOuvertes ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
-          Normes appliquées ({{ referentiel.normes.length }})
-        </button>
-        <ul class="rg-normes" *ngIf="normesOuvertes">
-          <li *ngFor="let n of referentiel.normes">
-            <span class="code-token">{{ n.code }}</span> <strong>{{ n.titre }}</strong>
-            <div class="hint">{{ n.detail }} — <em>{{ n.source }}</em></div>
-          </li>
-        </ul>
-      </div>
+    <section class="rg-panneau" role="tabpanel">
+      <ng-container [ngSwitch]="store.onglet">
+        <app-onglet-points *ngSwitchCase="'points'"></app-onglet-points>
+        <app-onglet-controle *ngSwitchCase="'controle'"></app-onglet-controle>
+        <app-onglet-ecarts *ngSwitchCase="'ecarts'"></app-onglet-ecarts>
+        <app-onglet-densification *ngSwitchCase="'densification'"></app-onglet-densification>
+        <app-onglet-fonds *ngSwitchCase="'fonds'"></app-onglet-fonds>
+      </ng-container>
     </section>
 
-    <!-- ================================================================ CARTE -->
     <section class="rg-zone-carte">
       <div class="rg-barre-carte">
         <label class="field rg-fond">
           <span>Fond de carte</span>
-          <select [ngModel]="fondActifId" (ngModelChange)="choisirFond($event)">
-            <optgroup label="Fonds intégrés">
-              <option *ngFor="let f of fondsIntegres" [value]="f.id">{{ f.nom }}</option>
-            </optgroup>
-            <optgroup label="Mes fonds" *ngIf="fondsPersonnels.length">
-              <option *ngFor="let f of fondsPersonnels" [value]="f.id">{{ f.nom }}</option>
-            </optgroup>
+          <select [ngModel]="store.fondActif?.id" (ngModelChange)="store.choisirFond($event)">
+            <option *ngFor="let f of store.listeFonds" [value]="f.id">{{ f.nom }}</option>
           </select>
         </label>
-        <button type="button" class="btn-ghost btn-sm" (click)="formFondOuvert = !formFondOuvert">
-          <i class="fas fa-layer-group"></i> Ajouter un fond</button>
+        <button type="button" class="btn-ghost btn-sm" (click)="store.choisirOnglet('fonds')" title="Catalogue et fonds personnalisés">
+          <i class="fas fa-layer-group"></i> Gérer</button>
         <label class="rg-case"><input type="checkbox" [(ngModel)]="etiquettesDistances"> Distances</label>
         <label class="rg-case"><input type="checkbox" [(ngModel)]="afficherTriangles"> Triangles</label>
-        <button type="button" class="btn-ghost btn-sm" *ngIf="vue" (click)="carte.recadrer()" title="Recadrer sur le réseau">
+        <button type="button" class="btn-ghost btn-sm" (click)="carte.recadrer()" title="Recadrer sur les points">
           <i class="fas fa-expand"></i></button>
       </div>
 
-      <div class="rg-form-fond" *ngIf="formFondOuvert">
-        <div class="rg-grille">
-          <label class="field"><span>Nom</span><input [(ngModel)]="nouveauFond.nom" placeholder="Orthophoto ANCFCC"></label>
-          <label class="field"><span>Type</span>
-            <select [(ngModel)]="nouveauFond.type">
-              <option value="xyz">Tuiles XYZ</option>
-              <option value="wms">WMS</option>
-            </select>
-          </label>
-        </div>
-        <label class="field"><span>URL</span>
-          <input [(ngModel)]="nouveauFond.url"
-                 [placeholder]="nouveauFond.type === 'wms' ? 'https://serveur/wms' : 'https://serveur/{z}/{x}/{y}.png'"></label>
-        <label class="field" *ngIf="nouveauFond.type === 'wms'"><span>Couches (LAYERS)</span>
-          <input [(ngModel)]="nouveauFond.couches"></label>
-        <label class="field"><span>Attribution</span><input [(ngModel)]="nouveauFond.attribution"></label>
-        <div class="err" *ngIf="erreurFond">{{ erreurFond }}</div>
-        <div class="rg-actions">
-          <button type="button" class="btn-primary btn-sm" (click)="ajouterFond()"><i class="fas fa-plus"></i> Enregistrer</button>
-          <span class="hint">Enregistré dans ce navigateur. Google Satellite n'est pas intégré (usage soumis aux conditions
-            des API Google Maps) : ajoutez-le ici si vous disposez d'un accès autorisé.</span>
-        </div>
-        <ul class="rg-mes-fonds" *ngIf="fondsPersonnels.length">
-          <li *ngFor="let f of fondsPersonnels">{{ f.nom }} <code>{{ f.type }}</code>
-            <button type="button" class="rg-icone" title="Supprimer ce fond" (click)="supprimerFond(f.id)"><i class="fas fa-times"></i></button>
-          </li>
-        </ul>
-      </div>
-
       <div class="rg-carte-cadre">
-        <app-reseau-carte #carte [vue]="vue" [fond]="fondActif" [etiquettesDistances]="etiquettesDistances"
-                          [afficherTriangles]="afficherTriangles"></app-reseau-carte>
-        <div class="rg-vide" *ngIf="!vue">
+        <app-reseau-carte #carte [vue]="store.vue$ | async" [fond]="store.fondActif" [etiquettesDistances]="etiquettesDistances"
+                          [afficherTriangles]="afficherTriangles" [modeAjout]="store.modeAjoutCarte"
+                          (clicCarte)="clicCarte($event)"></app-reseau-carte>
+        <div class="rg-vide" *ngIf="!(store.vue$ | async)">
           <i class="fas fa-map-marked-alt"></i>
-          Saisissez ou importez des points puis générez le réseau.
+          Importez la liste des points anciens pour commencer.
+        </div>
+        <div class="rg-bandeau-ajout" *ngIf="store.modeAjoutCarte">
+          <i class="fas fa-crosshairs"></i> Cliquez pour placer un point nouveau
+          <button type="button" class="btn-ghost btn-sm" (click)="store.modeAjoutCarte = false">Terminer</button>
         </div>
       </div>
 
       <div class="rg-legende">
-        <span><i class="pt ancien"></i> Ancien</span>
-        <span><i class="pt nouveau"></i> Nouveau</span>
-        <span><i class="pt suggere"></i> Emplacement suggéré</span>
-        <span><i class="ln ok"></i> Ligne en boucle</span>
-        <span><i class="ln hb"></i> Hors boucle</span>
-        <span><i class="ln long"></i> Trop longue</span>
-        <span><i class="tr ko"></i> Triangle hors [30°;120°]</span>
-        <span><i class="tr def"></i> Défectueux</span>
+        <span *ngFor="let s of legende"><i class="pt" [style.background]="couleurs[s]"></i> {{ libelles[s] }}</span>
+        <ng-container *ngIf="store.onglet === 'controle' || store.onglet === 'densification'">
+          <span><i class="ln ok"></i> Ligne en boucle</span>
+          <span><i class="ln long"></i> Trop longue</span>
+          <span><i class="tr ko"></i> Triangle hors [30°;120°]</span>
+        </ng-container>
+        <span *ngIf="store.onglet === 'controle'"><i class="pt marque"></i> Proposé à l'écart</span>
+        <span *ngIf="store.onglet === 'ecarts'"><i class="ln incompatible"></i> Écart ΔD hors tolérance</span>
+        <ng-container *ngIf="store.onglet === 'densification'">
+          <span><i class="zone"></i> Zone à densifier</span>
+          <span><i class="pt non-couvert"></i> Hors couverture N11</span>
+        </ng-container>
       </div>
     </section>
   </div>

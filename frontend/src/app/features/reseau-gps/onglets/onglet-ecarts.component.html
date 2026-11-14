@@ -1,0 +1,114 @@
+<p class="intro">Une fois le réseau de contrôle observé sur le terrain, importez le <strong>rapport de contrôle</strong> (RC) :
+  l'application compare les écarts ΔD à la tolérance et arrête les <strong>points anciens homogènes</strong> entre eux,
+  seuls retenus comme points d'appui de la densification.</p>
+
+<app-rg-section titre="Rapport de contrôle" icone="fas fa-file-invoice" cle="ecarts.source"
+                [badge]="store.lignesRc.length ? store.lignesRc.length + ' ligne(s)' : null">
+  <div class="segment rg-segment">
+    <button type="button" [class.active]="source === 'import'" (click)="choisirSource('import')">
+      <i class="fas fa-file-import"></i> Fichier CSV / Excel</button>
+    <button type="button" [class.active]="source === 'piece'" (click)="choisirSource('piece')">
+      <i class="fas fa-folder-open"></i> Pièce RC d'un SDGPS</button>
+  </div>
+  <ng-container *ngIf="source === 'import'">
+    <label class="btn-ghost btn-sm rg-fichier">
+      <i class="fas" [ngClass]="importEnCours ? 'fa-spinner fa-spin' : 'fa-upload'"></i> Choisir un fichier
+      <input type="file" accept=".csv,.txt,.xlsx,.xls" (change)="importer($event)" hidden>
+    </label>
+    <p class="hint">Colonnes de la pièce RC : <code>nom_point_fixe ; nom_point_calcule ; x_m_fixe ; y_m_fixe ;
+      x_m_calcule ; y_m_calcule ; delta_x_m ; delta_y_m ; delta_d_m</code> (libellés « Nom Point Fixe », « ΔD(m) »…
+      reconnus). ΔD est recalculé à partir des coordonnées s'il manque.</p>
+  </ng-container>
+  <ng-container *ngIf="source === 'piece'">
+    <label class="field">
+      <span>SDGPS ayant un rapport de contrôle</span>
+      <select [(ngModel)]="ssdgpsChoisi">
+        <option value="">— Choisir —</option>
+        <option *ngFor="let s of sourcesRc" [value]="s.ssdgps_id">{{ s.libelle }} — {{ s.nb_lignes }} ligne(s)</option>
+      </select>
+    </label>
+    <p class="hint" *ngIf="sourcesChargees && !sourcesRc.length">Aucun rapport de contrôle accessible.</p>
+    <div class="rg-actions">
+      <button type="button" class="btn-ghost btn-sm" [disabled]="!ssdgpsChoisi" (click)="chargerPiece()">
+        <i class="fas fa-download"></i> Reprendre le rapport</button>
+    </div>
+  </ng-container>
+  <p class="hint" *ngIf="store.libelleRc">Rapport chargé : <strong>{{ store.libelleRc }}</strong></p>
+</app-rg-section>
+
+<app-rg-section titre="Tolérance et analyse" icone="fas fa-ruler" cle="ecarts.tolerance">
+  <div class="rg-grille">
+    <label class="field">
+      <span>Tolérance ΔD (cm)</span>
+      <input type="number" min="0.1" max="10000" step="0.5" [(ngModel)]="store.toleranceCm">
+      <span class="hint">15 cm au cadastre par défaut (Paramètres › Tolérances) ; ajustable ici.</span>
+    </label>
+  </div>
+  <div class="rg-actions">
+    <button type="button" class="btn-primary" [disabled]="!store.lignesRc.length || store.calculEcarts" (click)="store.analyserEcarts()">
+      <i class="fas" [ngClass]="store.calculEcarts ? 'fa-spinner fa-spin' : 'fa-search'"></i> Analyser les écarts</button>
+    <span class="hint" *ngIf="!store.lignesRc.length">Importez d'abord un rapport de contrôle.</span>
+  </div>
+  <div class="rg-erreur" *ngIf="store.erreurEcarts">{{ store.erreurEcarts }}</div>
+</app-rg-section>
+
+<ng-container *ngIf="store.analyse as a">
+  <app-rg-section titre="Points homogènes" icone="fas fa-check-double" cle="ecarts.homogenes"
+                  [badge]="store.nbHomogenes + ' / ' + store.anciensRetenus.length">
+    <div class="rg-kpis">
+      <div class="rg-kpi"><div class="val">{{ a.homogenes.length }}</div><div class="lib">Homogènes</div></div>
+      <div class="rg-kpi"><div class="val">{{ a.non_homogenes.length }}</div><div class="lib">Non homogènes</div></div>
+      <div class="rg-kpi"><div class="val">{{ a.nb_hors_tolerance }}<small>/{{ a.nb_lignes }}</small></div><div class="lib">Écarts hors tolérance</div></div>
+    </div>
+    <p class="rg-info"><i class="fas fa-info-circle"></i>{{ a.conclusion }} Les points homogènes sont le plus grand groupe
+      de points dont tous les écarts deux à deux restent dans la tolérance.</p>
+    <div class="rg-ligne-outils">
+      <span class="rg-compte">Cochez / décochez pour ajuster la sélection.</span>
+      <span class="spacer"></span>
+      <button type="button" class="btn-ghost btn-sm" (click)="store.appliquerDetection()">
+        <i class="fas fa-magic"></i> Détection automatique</button>
+    </div>
+    <div class="rg-table-wrap">
+      <table class="rg-table">
+        <thead>
+          <tr><th>Homogène</th><th>Point</th><th>Contrôles</th><th>ΔD max (m)</th><th>ΔD moyen (m)</th>
+            <th>Hors tolérance avec</th></tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let p of store.anciensRetenus">
+            <ng-container *ngIf="analysePoint(p.nom_point) as ap; else nonControle">
+              <td><input type="checkbox" [checked]="p.homogene === true" (change)="basculer(p)"></td>
+              <td><strong>{{ p.nom_point }}</strong></td>
+              <td class="num">{{ ap.nb_controles }}</td>
+              <td class="num" [class.ko]="(ap.ecart_max_m ?? 0) > store.toleranceCm / 100">{{ fr(ap.ecart_max_m, 3) }}</td>
+              <td class="num">{{ fr(ap.ecart_moyen_m, 3) }}</td>
+              <td>{{ ap.incompatible_avec.join(', ') || '—' }}</td>
+            </ng-container>
+            <ng-template #nonControle>
+              <td><input type="checkbox" [checked]="p.homogene === true" (change)="basculer(p)"></td>
+              <td><strong>{{ p.nom_point }}</strong></td>
+              <td colspan="4"><span class="rg-badge neutre">Non contrôlé par le RC</span></td>
+            </ng-template>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </app-rg-section>
+
+  <app-rg-section titre="Écarts du rapport" icone="fas fa-list" cle="ecarts.lignes" [ouvert]="false"
+                  [badge]="a.nb_lignes">
+    <div class="rg-table-wrap">
+      <table class="rg-table">
+        <thead><tr><th>Point fixe</th><th>Point calculé</th><th>ΔX (m)</th><th>ΔY (m)</th><th>ΔD (m)</th><th></th></tr></thead>
+        <tbody>
+          <tr *ngFor="let l of a.lignes">
+            <td>{{ l.nom_point_fixe }}</td><td>{{ l.nom_point_calcule }}</td>
+            <td class="num">{{ fr($any(l.delta_x_m), 3) }}</td><td class="num">{{ fr($any(l.delta_y_m), 3) }}</td>
+            <td class="num" [class.ko]="l.hors_tolerance">{{ fr($any(l.delta_d_m), 3) }}</td>
+            <td><span class="rg-badge" [ngClass]="l.hors_tolerance ? 'ko' : 'ok'">{{ l.hors_tolerance ? 'Hors tolérance' : 'OK' }}</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </app-rg-section>
+</ng-container>

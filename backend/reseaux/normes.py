@@ -58,4 +58,10 @@ NORMES = [
     {'code': 'N10', 'titre': 'Au moins 3 points anciens ; nouveaux rattachés à ≥ 2 anciens',
      'detail': 'Deux points pour déterminer, un pour contrôler.',
      'source': 'Pratique du rattachement — choix du module'},
+    {'code': 'N11', 'titre': 'Tout point de la zone à moins de 5 km de 3 points de densification',
+     'detail': 'Lever des points de détail (stop and go / RTK) depuis les points anciens et nouveaux.',
+     'source': 'Prescription du service du cadastre (utilisateur)'},
+    {'code': 'N12', 'titre': 'Points anciens homogènes : écarts ΔD ≤ 15 cm entre eux',
+     'detail': "Seuls les points homogènes du rapport de contrôle servent d'appui à la densification.",
+     'source': 'Tolérance cadastrale en distance (Paramètres › Tolérances)'},
 ]

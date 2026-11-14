@@ -1,0 +1,58 @@
+<p class="intro">Composez la liste de vos fonds à partir du <strong>catalogue</strong> fourni par l'application (services
+  gratuits ou à accès gratuit, conditions d'utilisation indiquées), retirez ceux que vous n'utilisez plus, ou ajoutez
+  votre propre fond.</p>
+
+<app-rg-section titre="Mes fonds" icone="fas fa-layer-group" cle="fonds.mes" [badge]="store.listeFonds.length">
+  <p class="hint" *ngIf="!store.listeFonds.length">Aucun fond : la carte s'affiche sans arrière-plan. Ajoutez-en depuis le catalogue.</p>
+  <ul class="rg-mes-fonds">
+    <li *ngFor="let f of store.listeFonds" [class.actif]="store.fondActif?.id === f.id">
+      <label class="rg-radio">
+        <input type="radio" name="fondActif" [checked]="store.fondActif?.id === f.id" (change)="store.choisirFond(f.id)">
+        <span>{{ f.nom }}</span>
+      </label>
+      <span class="rg-badge neutre">{{ f.personnel ? 'Personnalisé' : (f.type === 'wms' ? 'WMS' : 'Tuiles') }}</span>
+      <span class="spacer"></span>
+      <button type="button" class="rg-icone" title="Retirer de mes fonds" (click)="store.retirerFond(f.id)">
+        <i class="fas fa-trash"></i></button>
+    </li>
+  </ul>
+</app-rg-section>
+
+<app-rg-section *ngFor="let c of store.referentiel?.fonds?.categories" [titre]="'Catalogue — ' + c.libelle" [icone]="c.icone"
+                [cle]="'fonds.cat.' + c.code" [ouvert]="false" [badge]="catalogueDe(c.code).length">
+  <div class="rg-catalogue">
+    <article class="rg-fond" *ngFor="let f of catalogueDe(c.code)" [class.pris]="store.estDansMesFonds(f.id)">
+      <header>
+        <strong>{{ f.nom }}</strong>
+        <span class="spacer"></span>
+        <button type="button" class="btn-ghost btn-sm" *ngIf="!store.estDansMesFonds(f.id)" (click)="store.ajouterFondCatalogue(f.id)">
+          <i class="fas fa-plus"></i> Ajouter</button>
+        <button type="button" class="btn-ghost btn-sm" *ngIf="store.estDansMesFonds(f.id)" (click)="store.choisirFond(f.id)">
+          <i class="fas fa-eye"></i> Afficher</button>
+      </header>
+      <p>{{ f.description }}</p>
+      <p class="hint"><i class="fas fa-balance-scale"></i> {{ f.licence }}</p>
+    </article>
+  </div>
+</app-rg-section>
+
+<app-rg-section titre="Ajouter un fond personnalisé" icone="fas fa-plus-circle" cle="fonds.perso" [ouvert]="false">
+  <ul class="rg-aide">
+    <li *ngFor="let a of store.referentiel?.fonds?.aide_personnalise">{{ a }}</li>
+  </ul>
+  <div class="rg-grille">
+    <label class="field"><span>Nom</span><input [(ngModel)]="nouveau.nom" placeholder="Orthophoto de mon organisme"></label>
+    <label class="field"><span>Type</span>
+      <select [(ngModel)]="nouveau.type"><option value="xyz">Tuiles XYZ</option><option value="wms">WMS</option></select>
+    </label>
+  </div>
+  <label class="field"><span>URL</span>
+    <input [(ngModel)]="nouveau.url"
+           [placeholder]="nouveau.type === 'wms' ? 'https://serveur.exemple/wms' : 'https://serveur.exemple/{z}/{x}/{y}.png'"></label>
+  <label class="field" *ngIf="nouveau.type === 'wms'"><span>Couches (LAYERS)</span><input [(ngModel)]="nouveau.couches"></label>
+  <label class="field"><span>Attribution</span><input [(ngModel)]="nouveau.attribution" placeholder="© fournisseur"></label>
+  <div class="rg-erreur" *ngIf="erreur">{{ erreur }}</div>
+  <div class="rg-actions">
+    <button type="button" class="btn-primary btn-sm" (click)="ajouterPersonnel()"><i class="fas fa-plus"></i> Enregistrer le fond</button>
+  </div>
+</app-rg-section>

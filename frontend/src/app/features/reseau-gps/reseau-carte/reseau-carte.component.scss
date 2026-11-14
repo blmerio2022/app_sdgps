@@ -1,5 +1,7 @@
 :host { display: block; position: relative; width: 100%; height: 100%; min-height: 360px; }
-.rg-carte { position: absolute; inset: 0; border-radius: 10px; overflow: hidden; background: var(--content-bg); }
+.rg-carte { position: absolute; inset: 0; border-radius: 10px; overflow: hidden; background: var(--content-bg);
+  &.mode-ajout { cursor: crosshair; } }
+:host ::ng-deep .rg-carte.mode-ajout .leaflet-container, :host ::ng-deep .mode-ajout.leaflet-container { cursor: crosshair; }
 
 /* Contenus Leaflet injectés hors du gabarit Angular : ::ng-deep limité à ce composant. */
 :host ::ng-deep {

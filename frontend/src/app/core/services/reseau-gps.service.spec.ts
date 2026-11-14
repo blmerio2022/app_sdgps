@@ -42,3 +42,42 @@ describe('ReseauGpsService', () => {
     http.expectOne(`${base}sources-lpa/abc/`).flush({ points: [], zone_proposee: 'sud' });
   });
 });
+
+describe('ReseauGpsService — écarts et densification', () => {
+  let service: ReseauGpsService;
+  let http: HttpTestingController;
+  const base = `${environment.apiUrl}/v1/reseau-gps/`;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({ imports: [HttpClientTestingModule] });
+    service = TestBed.inject(ReseauGpsService);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  it('analyse les écarts', () => {
+    service.analyserEcarts([{ nom_point_fixe: 'A', nom_point_calcule: 'B' }], 0.15, ['A']).subscribe();
+    const req = http.expectOne(`${base}analyser-ecarts/`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body.tolerance_m).toBe(0.15);
+    expect(req.request.body.noms_reseau).toEqual(['A']);
+    req.flush({});
+  });
+
+  it('liste et reprend les rapports de contrôle', () => {
+    service.sourcesRc().subscribe();
+    http.expectOne(`${base}sources-rc/`).flush([]);
+    service.sourceRc('x').subscribe();
+    http.expectOne(`${base}sources-rc/x/`).flush({ lignes: [] });
+  });
+
+  it('densifie', () => {
+    service.densifier({ anciens: [], nouveaux: [], nb_nouveaux: 0, proposer: true, zone: 'nord',
+      longueur_max_km: 10, rayon_couverture_km: 5, points_couverture_min: 3 }).subscribe();
+    const req = http.expectOne(`${base}densifier/`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body.rayon_couverture_km).toBe(5);
+    req.flush({});
+  });
+});

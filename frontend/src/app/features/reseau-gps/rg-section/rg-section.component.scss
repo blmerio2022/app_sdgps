@@ -1,0 +1,17 @@
+.rg-section {
+  background: var(--secondary-color); border: 1px solid var(--border-color); border-radius: 12px;
+  &.ferme { background: transparent; }
+}
+.rg-section-tete {
+  width: 100%; display: flex; align-items: center; gap: 9px; padding: 11px 14px; cursor: pointer;
+  background: transparent; border: none; color: var(--text-color); font-family: inherit; text-align: left;
+  &:hover .rg-section-titre { color: var(--accent-color); }
+}
+.rg-chevron { width: 12px; font-size: 11px; color: var(--text-muted); }
+.rg-section-icone { color: var(--accent-color); width: 16px; text-align: center; }
+.rg-section-titre { font-size: 13.5px; font-weight: 700; flex: 1; transition: color 0.15s; }
+.rg-section-badge {
+  font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 20px;
+  color: var(--accent-color); background: rgba(204, 88, 88, 0.13);
+}
+.rg-section-corps { padding: 2px 16px 14px; }

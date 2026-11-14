@@ -1,0 +1,9 @@
+<section class="rg-section" [class.ferme]="!ouvert">
+  <button type="button" class="rg-section-tete" (click)="basculer()" [attr.aria-expanded]="ouvert">
+    <i class="fas rg-chevron" [ngClass]="ouvert ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
+    <i *ngIf="icone" class="rg-section-icone" [ngClass]="icone"></i>
+    <span class="rg-section-titre">{{ titre }}</span>
+    <span class="rg-section-badge" *ngIf="badge !== null && badge !== ''">{{ badge }}</span>
+  </button>
+  <div class="rg-section-corps" *ngIf="ouvert"><ng-content></ng-content></div>
+</section>

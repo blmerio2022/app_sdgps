@@ -779,6 +779,9 @@ def generer_reseau(points, type_reseau=TYPE_ANCIENS, zone='nord',
         'recommandee': False,
     }
 
+    from .optimisation import suggerer_suppressions  # import local : dépendance circulaire
+    suppressions = suggerer_suppressions(pts, coords, statuts, longueur_max_m, type_reseau)
+
     degres_reco = next((v['degres'] for v in variantes if v['recommandee']), variantes[0]['degres'])
     return {
         'type_reseau': type_reseau,
@@ -789,4 +792,5 @@ def generer_reseau(points, type_reseau=TYPE_ANCIENS, zone='nord',
         'recommandee': code_reco,
         'justification': justifier(variantes, code_reco),
         'parfaite': parfaite,
+        'suppressions': suppressions,
     }
