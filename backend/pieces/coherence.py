@@ -26,6 +26,15 @@ from .report import EXCLUDED_TYPES
 ERREUR = 'erreur'
 AVERTISSEMENT = 'avertissement'
 
+# Types de pièces INTERCHANGEABLES pour juger qu'une pièce « prévue » manque : la
+# présence d'un membre du groupe satisfait tout le groupe.
+EQUIVALENCES = (
+    # Déterminations intermédiaires : une pièce par détermination (RDN) ou une seule
+    # pièce assemblée (RDIA). Le dossier porte l'une OU l'autre, jamais les deux par
+    # obligation.
+    frozenset({'RDN', 'RDIA'}),
+)
+
 
 def _anomalie(code, severite, message, **extra):
     return {'code': code, 'severite': severite, 'message': message, **extra}
@@ -125,6 +134,13 @@ def analyser_coherence(ssdgps, pieces, sessions_portee, pieces_hors_rapport=()):
     # Regroupées en UNE anomalie : un SDGPS en début d'instruction en compterait une
     # douzaine, et douze lignes identiques noieraient les anomalies qui comptent.
     presents = {p.type_piece for p in pieces} | {p.type_piece for p in pieces_hors_rapport}
+    # Un groupe d'ÉQUIVALENTS est satisfait dès qu'un de ses membres est là : réclamer
+    # l'autre serait faux. RDN et RDIA portent les mêmes déterminations intermédiaires —
+    # l'une par détermination, l'autre assemblée — et le calcul du rapport de contrôle
+    # les traite déjà comme deux sources au choix (`compute_rc`).
+    for groupe in EQUIVALENCES:
+        if presents & groupe:
+            presents |= groupe
     absents = [c for c in types_attendus(ssdgps.nature_ssdgps) if c not in presents]
     if absents:
         libelles = ', '.join(f"{PIECE_CATALOG[c]['nom']} ({c})" for c in absents)
@@ -135,8 +151,11 @@ def analyser_coherence(ssdgps, pieces, sessions_portee, pieces_hors_rapport=()):
             types_pieces=absents))
 
     # --- (5) Sessions sans aucune pièce ----------------------------------------------
+    # Sauf en MONO-SESSION : la session n°1 y est structurelle et le rapport ne la nomme
+    # nulle part (règle stricte, cf. `pieces/report.py::est_mono_session`). Lui reprocher
+    # de n'avoir aucune pièce propre contredirait cette règle.
     avec_piece = {p.session_id for p in pieces if p.session_id}
-    for session in sessions_portee:
+    for session in (sessions_portee if ssdgps.type_ssdgps == 'multi-session' else []):
         if session.pk not in avec_piece:
             anomalies.append(_anomalie(
                 'session_sans_piece', AVERTISSEMENT,

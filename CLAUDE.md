@@ -291,6 +291,12 @@ valides telles qu'elles sont et n'alerte sur rien.
   pilote déjà l'assistant d'ajout — pas d'une nouvelle liste à maintenir ;
 - **le contrôle ne bloque JAMAIS la génération** : un dossier en cours d'instruction est
   légitimement incomplet. L'endpoint de génération ne le consulte pas ;
+- **pas de faux positif** — un avertissement qu'on apprend à ignorer vide le contrôle de
+  son sens : (a) `EQUIVALENCES` déclare les types **interchangeables** (RDN ↔ RDIA : mêmes
+  déterminations intermédiaires, par détermination ou assemblées ; `compute_rc` les traite
+  déjà comme deux sources au choix) — un groupe est satisfait dès qu'un membre est
+  présent ; (b) la session sans pièce propre n'est signalée qu'en **multi-session**, la
+  session n°1 d'un mono-session étant structurelle et jamais nommée par le rapport ;
 - front : panneau repliable en tête de la modale *Rapport PDF*, relancé à l'ouverture et
   à chaque changement de portée (`setReportScope`, `onReportRangeChange`). Un contrôle
   en échec n'affiche rien plutôt que d'empêcher de générer ;

@@ -158,6 +158,63 @@ class DetectionDesAnomaliesTests(CoherenceBaseTest):
         self.assertGreaterEqual(resp.data['erreurs'], 1)
 
 
+class FauxPositifsTests(CoherenceBaseTest):
+    """Signalements qui n'en sont pas — relevés en passant le contrôle sur les dossiers
+    réels. Un avertissement qu'on apprend à ignorer vide le contrôle de son sens."""
+
+    def test_un_mono_session_ne_signale_pas_sa_session_structurelle(self):
+        # La session n°1 d'un mono-session est structurelle : le rapport ne la nomme
+        # NULLE PART (règle stricte). Lui reprocher de n'avoir aucune pièce propre
+        # contredit cette règle.
+        self.ssdgps.type_ssdgps = 'mono-session'
+        self.ssdgps.save(update_fields=['type_ssdgps'])
+        self._piece('LPA', None, 0)
+
+        resp = self.controler()
+
+        self.assertNotIn('session_sans_piece', self.codes(resp))
+
+    def test_un_multi_session_continue_de_signaler_ses_sessions_vides(self):
+        self._piece('LPA', None, 0)
+        self._piece('ROB', self.sessions[0], 1)
+
+        resp = self.controler()
+
+        self.assertIn('session_sans_piece', self.codes(resp))
+
+    def test_une_rdia_tient_lieu_de_rdn(self):
+        # Les deux portent les déterminations intermédiaires : l'une assemblée, l'autre
+        # par détermination. Le calcul du RC les traite déjà comme deux sources au choix.
+        self._piece('RDIA', self.sessions[0], 0)
+
+        resp = self.controler()
+
+        absents = next((a['types_pieces'] for a in resp.data['anomalies']
+                        if a['code'] == 'piece_attendue_absente'), [])
+        self.assertNotIn('RDN', absents)
+        self.assertNotIn('RDIA', absents)
+
+    def test_une_rdn_tient_lieu_de_rdia(self):
+        self._piece('RDN', self.sessions[0], 0, numero=1)
+
+        resp = self.controler()
+
+        absents = next((a['types_pieces'] for a in resp.data['anomalies']
+                        if a['code'] == 'piece_attendue_absente'), [])
+        self.assertNotIn('RDIA', absents)
+        self.assertNotIn('RDN', absents)
+
+    def test_sans_aucune_des_deux_l_absence_est_bien_signalee(self):
+        self._piece('LPA', None, 0)
+
+        resp = self.controler()
+
+        absents = next(a['types_pieces'] for a in resp.data['anomalies']
+                       if a['code'] == 'piece_attendue_absente')
+        self.assertIn('RDN', absents)
+        self.assertIn('RDIA', absents)
+
+
 class PorteeDuControleTests(CoherenceBaseTest):
     def test_une_session_ne_voit_pas_les_pieces_de_l_autre(self):
         self._piece('RDN', self.sessions[1], 1, numero=2)   # trou, mais session 2
