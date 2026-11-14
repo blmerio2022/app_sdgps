@@ -47,9 +47,10 @@
           <i class="fas fa-table"></i>
         </button>
       </div>
-      <button class="btn btn-secondary" (click)="viewAllSsdgps()" title="Voir tous les SSDGPS du projet à plat">
-        <i class="fas fa-satellite-dish"></i> Tous les SSDGPS
-      </button>
+      <!-- Tous les sous-niveaux, à plat, du parent affiché (le projet, ou la propriété /
+           l'affaire / le SSDGPS ouverts). -->
+      <app-sous-niveaux-menu *ngIf="projet && porteeCourante as pc" [niveau]="pc.niveau" [entite]="pc.entite"
+        [projetId]="projet.id" libelle="À plat"></app-sous-niveaux-menu>
       <button class="btn btn-success" *ngIf="!showDeleted" (click)="openCreate()"><i class="fas fa-plus-circle"></i> Ajouter</button>
     </div>
   </header>
@@ -223,6 +224,7 @@
       </div>
       <div class="item-actions" (click)="$event.stopPropagation()">
         <button class="icon-btn" title="Pièces" *ngIf="(level==='ssdgps' || level==='session') && !it.is_deleted" (click)="openPieces(it, $event)"><i class="fas fa-paperclip"></i></button>
+        <app-sous-niveaux-menu *ngIf="!it.is_deleted && projet" [niveau]="level" [entite]="it" [projetId]="projet.id"></app-sous-niveaux-menu>
         <button class="icon-btn" title="Modifier" *ngIf="!it.is_deleted" (click)="openEdit(it, $event)"><i class="fas fa-pen"></i></button>
         <button class="icon-btn danger" title="Supprimer" *ngIf="!it.is_deleted" (click)="openDeleteModal(it, $event)"><i class="fas fa-trash-alt"></i></button>
         <button class="icon-btn restore" title="Restaurer" *ngIf="it.is_deleted" (click)="openRestoreModal(it); $event.stopPropagation()"><i class="fas fa-undo"></i></button>
@@ -309,6 +311,7 @@
             <td class="actions-col" (click)="$event.stopPropagation()">
               <button class="btn-icon" title="Ouvrir" *ngIf="!isLeaf() && !it.is_deleted" (click)="descend(it)"><i class="fas fa-folder-open"></i></button>
               <button class="btn-icon" title="Pièces" *ngIf="(level==='ssdgps' || level==='session') && !it.is_deleted" (click)="openPieces(it, $event)"><i class="fas fa-paperclip"></i></button>
+              <app-sous-niveaux-menu *ngIf="!it.is_deleted && projet" [niveau]="level" [entite]="it" [projetId]="projet.id"></app-sous-niveaux-menu>
               <button class="btn-icon" title="Modifier" *ngIf="!it.is_deleted" (click)="openEdit(it, $event)"><i class="fas fa-edit"></i></button>
               <button class="btn-icon btn-icon-danger" title="Supprimer" *ngIf="!it.is_deleted" (click)="openDeleteModal(it, $event)"><i class="fas fa-trash"></i></button>
               <button class="btn-icon btn-icon-restore" title="Restaurer" *ngIf="it.is_deleted" (click)="openRestoreModal(it); $event.stopPropagation()"><i class="fas fa-undo"></i></button>

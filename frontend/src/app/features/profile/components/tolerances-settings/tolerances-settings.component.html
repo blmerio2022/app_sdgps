@@ -1,0 +1,114 @@
+<div class="tol-page">
+  <header class="page-header">
+    <h1><i class="fas fa-ruler-combined"></i> Tolérances des pièces</h1>
+    <p class="subtitle">Une valeur hors tolérance est <strong>signalée dans le rapport SDGPS</strong> : cellule encadrée en rouge,
+      ligne teintée et légende sous le tableau. Ces seuils sont propres à votre compte.</p>
+  </header>
+
+  <div class="tol-toolbar" *ngIf="cfg">
+    <div class="tol-autosave">
+      <span class="saving" *ngIf="saving"><i class="fas fa-spinner fa-spin"></i> Enregistrement…</span>
+      <span class="saved" *ngIf="!saving && savedFlash"><i class="fas fa-check-circle"></i> Modifications enregistrées</span>
+      <span class="idle" *ngIf="!saving && !savedFlash"><i class="fas fa-bolt"></i> Les modifications sont enregistrées automatiquement</span>
+    </div>
+    <span class="spacer"></span>
+    <button type="button" class="btn-reset" (click)="reset()"><i class="fas fa-arrows-rotate"></i> Valeurs par défaut</button>
+  </div>
+
+  <div class="tol-error" *ngIf="error"><i class="fas fa-triangle-exclamation"></i> {{ error }}</div>
+  <div class="tol-loading" *ngIf="loading"><i class="fas fa-spinner fa-spin"></i> Chargement…</div>
+
+  <div class="tol-grid" *ngIf="cfg">
+    <!-- Durées : observations brutes + vecteurs -->
+    <section class="tol-card" *ngFor="let r of reglesDuree" [class.off]="!cfg[r].actif">
+      <div class="tol-card-head">
+        <span class="tol-icon"><i class="fas" [ngClass]="r === 'rob_duree' ? 'fa-stopwatch' : 'fa-route'"></i></span>
+        <div class="tol-title">
+          <h2>{{ libelles[r] }}</h2>
+          <p>{{ r === 'rob_duree' ? 'Colonnes « Type » et « Durée » des observations brutes (ROB).' : 'Colonnes « Méthode terrain » et « Durée » des vecteurs (RTLB).' }}</p>
+        </div>
+        <span class="tol-badge" *ngIf="modifie(r)">Personnalisé</span>
+        <label class="tol-switch" [title]="cfg[r].actif ? 'Désactiver la règle' : 'Activer la règle'">
+          <input type="checkbox" [(ngModel)]="cfg[r].actif" (ngModelChange)="changed()"><span></span>
+        </label>
+      </div>
+      <div class="tol-rows">
+        <div class="tol-row" *ngFor="let mode of modes">
+          <span class="tol-mode" [class.sg]="mode === 'stopgo'">{{ mode === 'statique' ? 'Statique' : 'Stop and go' }}</span>
+          <span class="tol-lbl">Durée minimale</span>
+          <div class="tol-input">
+            <input type="number" min="0" step="1" [(ngModel)]="durees[r][mode].valeur" (ngModelChange)="changed()" [disabled]="!cfg[r].actif">
+            <select [(ngModel)]="durees[r][mode].unite" (ngModelChange)="changed()" [disabled]="!cfg[r].actif">
+              <option *ngFor="let u of unites" [value]="u">{{ u }}</option>
+            </select>
+          </div>
+          <label class="tol-check" title="Une durée égale au minimum est-elle acceptée ?">
+            <input type="checkbox" [(ngModel)]="$any(cfg[r])[mode + '_limite_acceptee']" (ngModelChange)="changed()" [disabled]="!cfg[r].actif">
+            Limite acceptée
+          </label>
+          <span class="tol-def">défaut {{ defautDuree(r, mode) }}</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Fermeture des boucles -->
+    <section class="tol-card" [class.off]="!cfg.rfb_fermeture.actif">
+      <div class="tol-card-head">
+        <span class="tol-icon"><i class="fas fa-circle-notch"></i></span>
+        <div class="tol-title">
+          <h2>{{ libelles['rfb_fermeture'] }}</h2>
+          <p>Une boucle est signalée si son Δ3D dépasse sa colonne « Tolérance » ou si « Tolérable » vaut « Non ».</p>
+        </div>
+        <span class="tol-badge" *ngIf="modifie('rfb_fermeture')">Personnalisé</span>
+        <label class="tol-switch"><input type="checkbox" [(ngModel)]="cfg.rfb_fermeture.actif" (ngModelChange)="changed()"><span></span></label>
+      </div>
+    </section>
+
+    <!-- Écarts -->
+    <section class="tol-card" *ngFor="let r of ['ecarts_determinations', 'rc_ecarts']" [class.off]="!$any(cfg)[r].actif">
+      <div class="tol-card-head">
+        <span class="tol-icon"><i class="fas" [ngClass]="r === 'rc_ecarts' ? 'fa-clipboard-check' : 'fa-arrows-left-right-to-line'"></i></span>
+        <div class="tol-title">
+          <h2>{{ libelles[r] }}</h2>
+          <p>{{ r === 'rc_ecarts' ? 'Colonne ΔD du rapport de contrôle (RC).' : 'Colonne ΔD de la version « écarts » des RDL, RDN, RDIA et du RDI.' }}</p>
+        </div>
+        <span class="tol-badge" *ngIf="modifie($any(r))">Personnalisé</span>
+        <label class="tol-switch"><input type="checkbox" [(ngModel)]="$any(cfg)[r].actif" (ngModelChange)="changed()"><span></span></label>
+      </div>
+      <div class="tol-rows">
+        <div class="tol-row">
+          <span class="tol-lbl">Écart maximal</span>
+          <div class="tol-input">
+            <input type="number" min="0" step="0.5" [ngModel]="cm($any(r))" (ngModelChange)="setCm($any(r), $event)" [disabled]="!$any(cfg)[r].actif">
+            <span class="tol-unit">cm</span>
+          </div>
+          <span class="tol-def">défaut {{ $any(defauts)[r].max_m * 100 }} cm</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Reconnaissance des modes -->
+    <section class="tol-card tol-wide">
+      <div class="tol-card-head">
+        <span class="tol-icon"><i class="fas fa-tags"></i></span>
+        <div class="tol-title">
+          <h2>Reconnaissance du mode d'observation</h2>
+          <p>Mots-clés cherchés (sans casse ni accents) dans les colonnes « Type » / « Méthode terrain ». Séparez-les par des virgules.
+            Une ligne dont le mode n'est pas reconnu n'est pas contrôlée.</p>
+        </div>
+        <span class="tol-badge" *ngIf="modifie('modes')">Personnalisé</span>
+      </div>
+      <div class="tol-rows">
+        <div class="tol-row">
+          <span class="tol-mode">Statique</span>
+          <input class="tol-text" type="text" [(ngModel)]="motsCles.statique" (ngModelChange)="changed()" placeholder="stati, static">
+        </div>
+        <div class="tol-row">
+          <span class="tol-mode sg">Stop and go</span>
+          <input class="tol-text" type="text" [(ngModel)]="motsCles.stopgo" (ngModelChange)="changed()" placeholder="stop, go, arret, marche">
+        </div>
+        <p class="tol-warn" *ngIf="!motsClesValides"><i class="fas fa-circle-info"></i> Chaque mode doit avoir au moins un mot-clé : rien n'est enregistré tant que ce n'est pas le cas.</p>
+      </div>
+    </section>
+  </div>
+</div>

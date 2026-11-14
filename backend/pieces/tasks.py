@@ -113,6 +113,8 @@ def generer_rapport(self, generation_id):
             generation.ssdgps, generation.session, pieces,
             sort_config=sort_config, fields_config=fields_config,
             duplex=generation.duplex,
+            # Les tolérances de celui qui a DEMANDÉ le rapport, comme ses champs et son tri.
+            tolerances=getattr(auteur, 'tolerances_config', None),
             on_progress=lambda faites, total, etape: generation.marquer_progression(
                 faites, total, etape,
             ),

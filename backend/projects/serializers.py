@@ -96,6 +96,10 @@ class ProprieteSerializer(serializers.ModelSerializer):
 
 
 class AffaireSerializer(serializers.ModelSerializer):
+    # Contexte parent (vue « toutes les affaires » d'un projet) — sans requête de plus.
+    propriete_nom = serializers.CharField(source='propriete.nom_propriete', read_only=True)
+    propriete_id_titre = serializers.CharField(source='propriete.id_titre', read_only=True)
+    propriete_id_requisition = serializers.CharField(source='propriete.id_requisition', read_only=True)
     nbr_total_ssdgps = serializers.IntegerField(read_only=True)
     nbr_total_sessions = serializers.IntegerField(read_only=True)
     nbr_total_pieces = serializers.IntegerField(read_only=True)
@@ -107,7 +111,8 @@ class AffaireSerializer(serializers.ModelSerializer):
         model = Affaire
         fields = [
             'id', 'numero_sd_affaire', 'nature_procedure_affaire', 'nature_affaire',
-            'date_bornage', 'propriete', 'nbr_total_ssdgps', 'nbr_total_sessions',
+            'date_bornage', 'propriete', 'propriete_nom', 'propriete_id_titre',
+            'propriete_id_requisition', 'nbr_total_ssdgps', 'nbr_total_sessions',
             'nbr_total_pieces',
             'created_at', 'updated_at', 'is_deleted', 'deleted_at',
             'created_by_email', 'updated_by_email', 'deleted_by_email',
@@ -219,6 +224,16 @@ class SsdgpsSerializer(serializers.ModelSerializer):
 
 
 class SessionSerializer(serializers.ModelSerializer):
+    # Contexte parent (vue « toutes les sessions ») : SSDGPS, affaire, propriété.
+    ssdgps_numero = serializers.IntegerField(source='ssdgps.numero_ssdgps', read_only=True)
+    ssdgps_nature = serializers.CharField(source='ssdgps.nature_ssdgps', read_only=True)
+    affaire = serializers.UUIDField(source='ssdgps.affaire_id', read_only=True)
+    affaire_numero = serializers.IntegerField(source='ssdgps.affaire.numero_sd_affaire', read_only=True)
+    propriete = serializers.UUIDField(source='ssdgps.affaire.propriete_id', read_only=True)
+    propriete_nom = serializers.CharField(source='ssdgps.affaire.propriete.nom_propriete', read_only=True)
+    propriete_id_titre = serializers.CharField(source='ssdgps.affaire.propriete.id_titre', read_only=True)
+    propriete_id_requisition = serializers.CharField(
+        source='ssdgps.affaire.propriete.id_requisition', read_only=True)
     nbr_total_pieces = serializers.IntegerField(read_only=True)
     created_by_email = AuthorDisplayField(source='created_by')
     updated_by_email = AuthorDisplayField(source='updated_by')
@@ -228,6 +243,8 @@ class SessionSerializer(serializers.ModelSerializer):
         model = Session
         fields = [
             'id', 'ssdgps', 'numero_session', 'date_session', 'nbr_total_pieces',
+            'ssdgps_numero', 'ssdgps_nature', 'affaire', 'affaire_numero', 'propriete',
+            'propriete_nom', 'propriete_id_titre', 'propriete_id_requisition',
             'created_at', 'updated_at', 'is_deleted', 'deleted_at',
             'created_by_email', 'updated_by_email', 'deleted_by_email',
         ]

@@ -226,6 +226,18 @@
      Garantit que l'en-tête « running » de la version démarre bien sur une nouvelle page. */
   .version-wrap.pb { page-break-before: always; }
   .table-caption { font-weight: bold; font-size: 9pt; margin: 10px 0 5px; text-decoration: underline; }
+  /* ---------- Valeurs HORS TOLÉRANCE (cf. pieces/tolerances.py) ----------
+     La ligne entière est teintée pour être retrouvée d'un coup d'œil ; la cellule fautive
+     est encadrée d'un trait épais : lisible aussi en impression noir et blanc. */
+  table.data tr td.row-hors-tol { background: #f6d2cf; }
+  table.data tr td.hors-tol {
+    background: #e8a19b; color: #7a0010; outline: 1.6pt solid #b00020; outline-offset: -1.6pt;
+    text-decoration: underline;
+  }
+  .tol-alerte {
+    margin: 6px 0 6px; padding: 5px 8px; font-size: 8pt; font-weight: bold; color: #7a0010;
+    border: 1pt solid #b00020; border-left-width: 4pt; background: #fbe9e7;
+  }
 
   /* ---------- Images / photos ----------
      Chaque image occupe une page entière : elle est agrandie au maximum de l'espace
@@ -425,11 +437,12 @@ ce dernier (« 1/3 », « 2/3 ») et doivent pourtant viser des pages différent
       {% for blk in ver.blocks %}
       <div class="tbl-block{% if blk.break_before %} pb{% endif %}">
         {% if blk.title %}<div class="table-caption">{{ blk.title }}</div>{% endif %}
+        {% if blk.alerte %}<div class="tol-alerte">Hors tolérance : {{ blk.alerte }} Valeurs encadrées en rouge.</div>{% endif %}
         <table class="data">
           <thead><tr>{% for col in blk.columns %}<th>{{ col.label }}{% if col.sort_dir %}<span class="sort-mark">{% if col.sort_dir == 'desc' %}↓{% else %}↑{% endif %}{% if col.sort_rank %}<sup>{{ col.sort_rank }}</sup>{% endif %}</span>{% endif %}</th>{% endfor %}</tr></thead>
           {% for group in blk.groups %}
           <tbody>
-            {% for row in group.rows %}<tr class="{{ row.zebra }}" data-row="{{ row.rid }}">{% for cell in row.cells %}{% if not cell.skip %}<td class="{% if cell.num %}num {% endif %}{% if cell.merged %}merged {{ cell.mz }}{% endif %}"{% if cell.rowspan %} rowspan="{{ cell.rowspan }}"{% endif %}>{{ cell.value }}</td>{% endif %}{% endfor %}</tr>{% endfor %}
+            {% for row in group.rows %}<tr class="{{ row.zebra }}" data-row="{{ row.rid }}">{% for cell in row.cells %}{% if not cell.skip %}<td class="{% if cell.num %}num {% endif %}{% if cell.merged %}merged {{ cell.mz }}{% endif %}{% if cell.row_hors_tol and not cell.merged %} row-hors-tol{% endif %}{% if cell.hors_tol %} hors-tol{% endif %}"{% if cell.rowspan %} rowspan="{{ cell.rowspan }}"{% endif %}>{{ cell.value }}</td>{% endif %}{% endfor %}</tr>{% endfor %}
           </tbody>
           {% endfor %}
         </table>

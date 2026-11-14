@@ -19,6 +19,8 @@ import { SdgpsAssistantComponent } from './sdgps-assistant/sdgps-assistant.compo
 import { ModeleSsdgpsEditorComponent } from './modele-ssdgps-editor/modele-ssdgps-editor.component';
 import { ModeleSsdgpsListComponent } from './modele-ssdgps-list/modele-ssdgps-list.component';
 import { PdfPageEditorComponent } from './pdf-page-editor/pdf-page-editor.component';
+import { ProjectFlatListComponent } from './project-flat-list/project-flat-list.component';
+import { SousNiveauxMenuComponent } from './sous-niveaux-menu/sous-niveaux-menu.component';
 
 @NgModule({
   declarations: [
@@ -28,7 +30,7 @@ import { PdfPageEditorComponent } from './pdf-page-editor/pdf-page-editor.compon
     PieceAddPageComponent, PieceDetailPageComponent, PiecePhotoPointsComponent,
     PieceDataTableComponent,
     SdgpsAssistantComponent, ModeleSsdgpsEditorComponent, ModeleSsdgpsListComponent,
-    PdfPageEditorComponent,
+    PdfPageEditorComponent, ProjectFlatListComponent, SousNiveauxMenuComponent,
   ],
   imports: [CommonModule, FormsModule, ReactiveFormsModule, ProjectsRoutingModule, SharedModule],
 })

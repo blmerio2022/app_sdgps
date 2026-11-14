@@ -158,7 +158,7 @@
           </span>
         </div>
         <div class="item-actions" (click)="$event.stopPropagation()">
-          <button class="icon-btn" title="Tous les SSDGPS du projet" *ngIf="!p.is_deleted" (click)="openAllSsdgps(p, $event)"><i class="fas fa-satellite-dish"></i></button>
+          <app-sous-niveaux-menu *ngIf="!p.is_deleted" niveau="projet" [entite]="p"></app-sous-niveaux-menu>
           <button class="icon-btn" title="Modifier" *ngIf="!p.is_deleted" (click)="openEdit(p, $event)"><i class="fas fa-pen"></i></button>
           <button class="icon-btn danger" title="Supprimer" *ngIf="!p.is_deleted" (click)="openDeleteModal(p, $event)"><i class="fas fa-trash-alt"></i></button>
           <button class="icon-btn restore" title="Restaurer" *ngIf="p.is_deleted" (click)="openRestoreModal(p); $event.stopPropagation()"><i class="fas fa-undo"></i></button>
@@ -234,9 +234,8 @@
                 <button class="btn-icon" (click)="open(p)" title="Ouvrir">
                   <i class="fas fa-folder-open"></i>
                 </button>
-                <button class="btn-icon" *ngIf="!p.is_deleted" (click)="openAllSsdgps(p, $event)" title="Tous les SSDGPS du projet">
-                  <i class="fas fa-satellite-dish"></i>
-                </button>
+                <!-- Toutes les propriétés / affaires / SSDGPS / sessions du projet, à plat. -->
+                <app-sous-niveaux-menu *ngIf="!p.is_deleted" niveau="projet" [entite]="p"></app-sous-niveaux-menu>
                 <button class="btn-icon" [class.btn-icon-disabled]="p.is_deleted" [disabled]="p.is_deleted" (click)="!p.is_deleted && openEdit(p, $event)" title="Modifier">
                   <i class="fas fa-edit"></i>
                 </button>

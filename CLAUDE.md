@@ -195,6 +195,39 @@ dans la mise en page réelle (`required_content_margin_mm`) et, s'il manque de l
 re-rend la pièce avec `content_margin_top` relevé (écart minimal `HEADER_GAP_MM`). Tests :
 `tests_report_header_layout.MargeHauteAdaptativeTests`.
 
+**Tolérances de l'opérateur : valeurs hors tolérance signalées dans le rapport.** Chaque
+opérateur règle ses seuils dans *Paramètres › Tolérances* (`/parametres/tolerances`,
+`CustomUser.tolerances_config`, API `GET/PUT /api/auth/me/tolerances/` + `reset/`). Seules
+les valeurs qui diffèrent des défauts sont enregistrées. Règles (`pieces/tolerances.py`,
+défauts dans `DEFAUTS`) :
+- ROB (« Type » + « Durée ») et RTLB (« Méthode terrain » + « Durée ») : durée minimale
+  par mode — statique ≥ 30 min ; stop and go ≥ 40 s (ROB) / > 40 s (RTLB : 40 s pile est
+  hors tolérance). Mode reconnu par mots-clés (sans casse ni accents) — défauts `stati` /
+  `stop`, `go`, `s&g`, `arret`, `marche` (« Arrêt et marche » = libellé Trimble français,
+  majoritaire dans les données réelles) ; une ligne au mode inconnu n'est pas contrôlée ;
+- RFB : Δ3D > « Tolérance » ou « Tolérable » = Non ;
+- écarts des déterminations (version écarts des RDL/RDN/RDIA, RDI brut) et RC : |ΔD| > 15 cm.
+`evaluer()` renvoie les colonnes fautives par ligne ; `_table_cells` marque les cellules
+(`hors_tol`, encadré rouge) et toute la ligne (`row_hors_tol`) ; une légende `.tol-alerte`
+précède le tableau. Le rapport applique les tolérances de **celui qui le demande** (vue
+synchrone : `request.user` ; tâche de fond : `generation.created_by`). Ajouter une règle =
+une entrée dans `DEFAUTS` + `LIBELLES`, sa validation dans `normaliser`, son cas dans
+`evaluer`. Tests : `pieces/tests_tolerances.py`, `tolerances-settings.component.spec.ts`.
+
+**Vues « à plat » entre niveaux.** Depuis un projet, une propriété, une affaire ou un SSDGPS
+multi-session, le menu `<app-sous-niveaux-menu>` (icône *sitemap* dans les actions des
+lignes ; bouton « À plat » dans l'en-tête de l'explorateur) ouvre la liste de TOUS les
+éléments d'un niveau inférieur : routes `projets/:id/proprietes|affaires|ssdgps|sessions`,
+portée en query params (`?propriete=` / `?affaire=` / `?ssdgps=`, la plus fine l'emporte).
+`ProjectFlatListComponent` (propriétés, affaires, sessions) et la page SSDGPS existante
+gardent l'outillage complet (colonnes + tri multi-niveaux sur les clés `flat_proprietes` /
+`flat_affaires` / `flat_sessions`, déclarées dans `accounts/views.py`). Côté API :
+`affaires/?projet=`, `sessions/?projet|propriete|affaire=` (sessions des seuls
+multi-session — la session d'un mono-session est structurelle), niveaux intermédiaires en
+corbeille exclus ; contexte parent (`propriete_*`, `ssdgps_numero`, `affaire_numero`…)
+renvoyé par les sérialiseurs. Tests : `projects/tests_vues_a_plat.py`, specs
+`sous-niveaux-menu`, `project-flat-list`.
+
 **Aperçu de la page de garde (avant génération).** `GET /api/v1/pieces/report-cover/`
 rend la **seule** page de garde en PDF, avec les mêmes paramètres, la même portée et les
 mêmes contrôles que `report/` (c'est la même `_resoudre_portee_rapport`). Elle est la

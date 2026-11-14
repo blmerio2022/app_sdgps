@@ -719,6 +719,17 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
   natureLabel(v: string): string { return NATURE_AFFAIRE_LABELS[v as NatureAffaire] || v; }
   isLeaf(): boolean { return this.level === 'session'; }
 
+  /** Entité dont le niveau courant affiche les enfants : le projet, ou le parent ouvert.
+   * Sert au menu « À plat » de l'en-tête (tous ses sous-niveaux, sans descendre). */
+  get porteeCourante(): { niveau: 'projet' | 'propriete' | 'affaire' | 'ssdgps'; entite: any } | null {
+    switch (this.level) {
+      case 'propriete': return this.projet ? { niveau: 'projet', entite: this.projet } : null;
+      case 'affaire': return this.chain.propriete ? { niveau: 'propriete', entite: this.chain.propriete } : null;
+      case 'ssdgps': return this.chain.affaire ? { niveau: 'affaire', entite: this.chain.affaire } : null;
+      case 'session': return this.chain.ssdgps ? { niveau: 'ssdgps', entite: this.chain.ssdgps } : null;
+    }
+  }
+
   levelIcon(level: Level = this.level): string {
     return { propriete: 'fa-map-marker-alt', affaire: 'fa-file-signature', ssdgps: 'fa-satellite-dish', session: 'fa-clock' }[level];
   }

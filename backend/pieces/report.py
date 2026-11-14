@@ -291,7 +291,7 @@ def _merge_fields(type_piece, version):
     return ()
 
 
-def _table_cells(champs, rows, sort_levels=None, visible=None):
+def _table_cells(champs, rows, sort_levels=None, visible=None, flags=None):
     """Colonnes gardées (colonnes entièrement vides retirées) + lignes de cellules
     formatées (valeurs en mètres arrondies via `_meter_decimals`). Ne fait aucune
     fusion ni pagination : c'est la base commune aux deux passes de rendu.
@@ -329,13 +329,22 @@ def _table_cells(champs, rows, sort_levels=None, visible=None):
                for c in kept]
     decimals = {c['name']: _meter_decimals(c) for c in kept}
     flat = []
-    for row in rows:
+    for i, row in enumerate(rows):
+        # `flags[i]` : colonnes hors tolérance de la ligne (cf. pieces/tolerances.py). La
+        # cellule fautive est accentuée, toute la ligne est teintée (`row_hors_tol`) pour
+        # que l'œil la retrouve même si la colonne fautive est masquée dans la vue PDF.
+        hors = (flags[i] if flags and i < len(flags) else None) or set()
         cells = []
         for c in kept:
             value = row.get(c['name'], '')
             if decimals[c['name']] is not None:
                 value = _format_meters(value, decimals[c['name']])
-            cells.append({'value': value, 'num': c.get('type') == 'number', 'name': c['name']})
+            cell = {'value': value, 'num': c.get('type') == 'number', 'name': c['name']}
+            if hors:
+                cell['row_hors_tol'] = True
+                if c['name'] in hors:
+                    cell['hors_tol'] = True
+            cells.append(cell)
         flat.append(cells)
     return columns, flat
 
@@ -361,7 +370,8 @@ def flat_blocks(tables):
         # (cf. _group_versions / template), pas par le bloc lui-même.
         blocks.append({'title': tbl['title'], 'columns': tbl['columns'], 'merged': False,
                        'break_before': False, 'groups': [{'rows': rows}],
-                       'vidx': tbl.get('vidx', 0), 'mention': tbl.get('mention', '')})
+                       'vidx': tbl.get('vidx', 0), 'mention': tbl.get('mention', ''),
+                       'alerte': tbl.get('alerte', '')})
     return blocks
 
 
@@ -428,6 +438,7 @@ def paged_blocks(tables, row_pages):
                                     for r in seg]}]
             blocks.append({
                 'title': tbl['title'] if first_seg else '',
+                'alerte': tbl.get('alerte', '') if first_seg else '',
                 'columns': tbl['columns'], 'merged': bool(merge),
                 'break_before': prev_page is not None and page != prev_page,
                 'groups': groups,
@@ -541,7 +552,8 @@ def _sorted_renumbered(rows, sort):
     return [{**r, 'id': i + 1} for i, r in enumerate(_sorted_only(rows, sort))]
 
 
-def _piece_content(piece, landscape=False, sort_config=None, fields_config=None):
+def _piece_content(piece, landscape=False, sort_config=None, fields_config=None,
+                   tolerances=None):
     """Modèle de rendu du contenu d'une pièce : tableaux (liste `tables` « à plat », la
     pagination/fusion est décidée ensuite par `flat_blocks`/`paged_blocks`), images, photos.
 
@@ -668,17 +680,23 @@ def _piece_content(piece, landscape=False, sort_config=None, fields_config=None)
     # jamais imprimé), puis restriction par la vue PDF (`visible_brut`).
     brut = None
     brut_champs = import_effective_champs(piece.type_piece, fields_config)
+    # Tolérances de l'opérateur : marquage AVANT mise en forme, sur les valeurs brutes
+    # des lignes déjà triées (les drapeaux suivent l'ordre d'affichage).
+    from .tolerances import evaluer
     if rows and brut_champs:
-        columns, flat = _table_cells(brut_champs, rows, sort_brut, visible_brut)
+        flags, alerte = evaluer(piece.type_piece, 'brut', rows, tolerances)
+        columns, flat = _table_cells(brut_champs, rows, sort_brut, visible_brut, flags)
         if columns:
-            brut = {'title': '', 'columns': columns, 'flat': flat,
+            brut = {'title': '', 'columns': columns, 'flat': flat, 'alerte': alerte,
                     'merge': _merge_fields(piece.type_piece, 'brut')}
     ecarts = None
     if rows_ecarts and piece_def.get('ecarts_champs'):
-        columns, flat = _table_cells(piece_def['ecarts_champs'], rows_ecarts, sort_ecarts, visible_ecarts)
+        flags, alerte = evaluer(piece.type_piece, 'ecarts', rows_ecarts, tolerances)
+        columns, flat = _table_cells(piece_def['ecarts_champs'], rows_ecarts, sort_ecarts,
+                                     visible_ecarts, flags)
         if columns:
             ecarts = {'title': 'Écarts par rapport à la détermination définitive',
-                      'columns': columns, 'flat': flat,
+                      'columns': columns, 'flat': flat, 'alerte': alerte,
                       'merge': _merge_fields(piece.type_piece, 'ecarts')}
 
     # Choix de la/des version(s) à afficher (types RDL/RDN/RDIA). Repli sur ce qui existe
@@ -837,7 +855,7 @@ def report_foot_prefix(ssdgps, session_numero=None) -> str:
 
 
 def build_report_context(ssdgps, session, pieces, sort_config=None, fields_config=None,
-                         avec_contenu=True):
+                         avec_contenu=True, tolerances=None):
     """Assemble le contexte de rendu du template `pieces/report.html`. `sort_config` =
     préférences de tri de l'opérateur ({ type_piece: {field, dir} }). `fields_config` =
     préférences de colonnes de l'opérateur (vue PDF), cf. CustomUser.piece_fields_config.
@@ -959,7 +977,7 @@ def build_report_context(ssdgps, session, pieces, sort_config=None, fields_confi
             'numero': numero_affiche,
             'title': designation.upper(),
             'code': piece.type_piece,
-            'content': _piece_content(piece, landscape, sort_config, fields_config),
+            'content': _piece_content(piece, landscape, sort_config, fields_config, tolerances),
             'content_landscape': landscape,
             # Vides hors synthèse : les gabarits retombent alors sur `header.session_label`
             # (la session unique du rapport), et le pied sur `header.session_numero`.
@@ -1065,7 +1083,7 @@ def required_content_margin_mm(doc):
 
 
 def render_report_pdf(ssdgps, session, pieces, sort_config=None, fields_config=None,
-                      duplex=False, on_progress=None):
+                      duplex=False, on_progress=None, tolerances=None):
     """Rend le rapport en PDF (bytes). Lève `RuntimeError` si une dépendance de la
     chaîne PDF (WeasyPrint et ses bibliothèques natives, pypdf, reportlab) manque sur
     l'environnement d'exécution — vérification faite **en amont** du rendu, qui dure
@@ -1090,7 +1108,8 @@ def render_report_pdf(ssdgps, session, pieces, sort_config=None, fields_config=N
     check_pdf_toolchain()
     from weasyprint import HTML
 
-    context = build_report_context(ssdgps, session, pieces, sort_config, fields_config)
+    context = build_report_context(ssdgps, session, pieces, sort_config, fields_config,
+                                   tolerances=tolerances)
     base = {'header': context['header']}
 
     foot_base = report_foot_prefix(ssdgps, context['header']['session_numero'])

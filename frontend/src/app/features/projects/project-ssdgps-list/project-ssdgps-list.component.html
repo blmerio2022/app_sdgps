@@ -15,6 +15,10 @@
         </p>
       </div>
     </div>
+    <div class="fl-scope" *ngIf="porteeLabel">
+      <i class="fas fa-filter"></i><span>{{ porteeLabel }}</span>
+      <button type="button" (click)="elargir()" title="Afficher pour tout le projet"><i class="fas fa-xmark"></i></button>
+    </div>
   </header>
 
   <!-- Onglets Actifs / Corbeille -->
@@ -175,6 +179,7 @@
               <button class="btn-icon" title="Voir les pièces" *ngIf="!s.is_deleted" (click)="openPieces(s)">
                 <i class="fas fa-paperclip"></i>
               </button>
+              <app-sous-niveaux-menu *ngIf="!s.is_deleted" niveau="ssdgps" [entite]="s" [projetId]="projectId"></app-sous-niveaux-menu>
               <button class="btn-icon" title="Modifier" *ngIf="!s.is_deleted" (click)="openEdit(s, $event)">
                 <i class="fas fa-edit"></i>
               </button>

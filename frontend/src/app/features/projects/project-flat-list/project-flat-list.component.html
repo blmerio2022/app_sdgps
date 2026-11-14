@@ -1,0 +1,129 @@
+<div class="ssdgps-list-page">
+  <header class="page-header">
+    <div class="header-title">
+      <button class="btn-back" (click)="backToExplorer()" title="Retour à l'explorateur"><i class="fas fa-arrow-left"></i></button>
+      <span class="header-icon"><i class="fas" [ngClass]="def.icon"></i></span>
+      <div>
+        <h2>{{ def.titre }} <span class="proj-code" *ngIf="projet">— {{ projet.code_projet }}</span></h2>
+        <p class="subtitle" *ngIf="!loading">
+          <strong>Total :</strong> {{ showDeleted ? deletedCount : activeCount }} ·
+          <strong>Filtrés :</strong> {{ filteredItems.length }}
+          <ng-container *ngIf="selectedIds.size"> · <strong>Sélectionnés :</strong> {{ selectedIds.size }}</ng-container>
+        </p>
+      </div>
+    </div>
+    <!-- Portée : la vue est restreinte à un parent ; un clic l'élargit à tout le projet. -->
+    <div class="fl-scope" *ngIf="porteeLabel">
+      <i class="fas fa-filter"></i><span>{{ porteeLabel }}</span>
+      <button type="button" (click)="elargir()" title="Afficher pour tout le projet"><i class="fas fa-xmark"></i></button>
+    </div>
+  </header>
+
+  <div class="level-tabs">
+    <button class="level-tab" [class.active]="!showDeleted" (click)="setTab(false)">
+      <i class="fas fa-layer-group"></i> Actifs <span class="tab-count">{{ activeCount }}</span></button>
+    <button class="level-tab deleted" [class.active]="showDeleted" (click)="setTab(true)">
+      <i class="fas fa-trash-restore"></i> Corbeille <span class="tab-count">{{ deletedCount }}</span></button>
+  </div>
+
+  <div class="level-toolbar" *ngIf="!loading">
+    <div class="toolbar-group">
+      <button class="icon-tool" (click)="toggleSelectAll()" title="Tout sélectionner / désélectionner (page)">
+        <i class="fas" [class.fa-check-double]="!isAllSelected" [class.fa-times]="isAllSelected"></i></button>
+      <div class="toolbar-sep"></div>
+      <app-column-config [columns]="columns" [describe]="describeColumn" [title]="'Organiser les colonnes — ' + def.titre"
+        [saving]="savingColumns" [savedFlash]="savedColumnsFlash" [resetting]="resettingColumns"
+        (columnsChange)="onColumnsChange($event)" (resetToSource)="onResetColumns()"></app-column-config>
+      <app-multi-level-sort [sortableFields]="sortableFields" [levels]="sortLevels" [title]="'Tri multi-niveaux — ' + def.titre"
+        emptyHint="Aucun niveau de tri — ordre du serveur." [saving]="savingSort" [savedFlash]="savedSortFlash"
+        [resetting]="resettingSort" (levelsChange)="onSortLevelsChange($event)" (resetToSource)="onResetSort()"></app-multi-level-sort>
+      <button class="icon-tool" (click)="exportCsv()" title="Exporter en CSV"><i class="fas fa-file-csv"></i></button>
+      <div class="toolbar-sep"></div>
+      <button class="btn btn-danger sm" *ngIf="!showDeleted" [disabled]="!selectedIds.size || busy" (click)="askDelete(selection)">
+        <i class="fas fa-trash"></i> Supprimer <span *ngIf="selectedIds.size" class="btn-count">{{ selectedIds.size }}</span></button>
+      <button class="btn btn-restore sm" *ngIf="showDeleted" [disabled]="!selectedIds.size || busy" (click)="restore(selection)">
+        <i class="fas fa-undo"></i> Restaurer <span *ngIf="selectedIds.size" class="btn-count">{{ selectedIds.size }}</span></button>
+      <button class="btn btn-danger sm" *ngIf="showDeleted" [disabled]="!selectedIds.size || busy" (click)="askPermanent(selection)">
+        <i class="fas fa-trash-alt"></i> Supprimer définitivement</button>
+    </div>
+    <div class="search-box">
+      <i class="fas fa-search"></i>
+      <input type="text" [placeholder]="'Rechercher une ' + def.singulier + '…'" [(ngModel)]="searchText" (ngModelChange)="currentPage = 1">
+      <button *ngIf="searchText" class="clear-btn" (click)="searchText = ''"><i class="fas fa-times"></i></button>
+    </div>
+  </div>
+
+  <div class="loading-state" *ngIf="loading"><i class="fas fa-spinner fa-spin"></i><span>Chargement…</span></div>
+
+  <div class="table-wrapper" *ngIf="!loading">
+    <div class="table-container">
+      <table class="modern-table">
+        <thead>
+          <tr>
+            <th class="checkbox-col"><input type="checkbox" [checked]="isAllSelected" (change)="toggleSelectAll()"></th>
+            <th *ngFor="let col of visibleColumns" class="sortable" [class.num]="col.type === 'number'"
+                [class.is-sorted]="sortLevelOf(col.field)" (click)="openSortConfig()"
+                appTableHeaderTooltip [tipLabel]="col.label" [tipDescription]="describeColumn(col.field)" [tipType]="col.type"
+                [tipSortLevel]="sortLevelOf(col.field)" [tipSortDir]="sortDirOf(col.field)">
+              <span>{{ col.label }}</span>
+              <app-column-filter [field]="col.field" [label]="col.label" [type]="col.type" [rows]="items" [format]="cellText"
+                [selected]="columnFilters[col.field] || null" (selectedChange)="onColumnFilterChange(col.field, $event)"
+                (openSort)="openSortConfig()" (hideColumn)="hideColumnField(col.field)" (openColumnConfig)="openColumnConfig()"></app-column-filter>
+              <span class="sort-badge" *ngIf="sortLevelOf(col.field)">
+                <span class="sort-rank">{{ sortLevelOf(col.field) }}</span>
+                <i class="fas" [class.fa-arrow-up-short-wide]="sortDirOf(col.field) === 'asc'" [class.fa-arrow-down-wide-short]="sortDirOf(col.field) === 'desc'"></i>
+              </span>
+            </th>
+            <th class="actions-col">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let r of paginatedItems" [class.selected]="selectedIds.has(r.id)" [class.row-deleted]="r.is_deleted"
+              [class.clickable]="!r.is_deleted" (click)="open(r)">
+            <td class="checkbox-col" (click)="$event.stopPropagation()"><input type="checkbox" [checked]="selectedIds.has(r.id)" (change)="toggleSelect(r, $event)"></td>
+            <td *ngFor="let col of visibleColumns" [class.num]="col.type === 'number'">
+              <span [class.code-chip]="col === visibleColumns[0]" [class.num-value]="col.type === 'number' && col !== visibleColumns[0]">{{ getCellValue(r, col.field) }}</span>
+            </td>
+            <td class="actions-col" (click)="$event.stopPropagation()">
+              <button class="btn-icon" *ngIf="!r.is_deleted" (click)="open(r)" [title]="niveau === 'session' ? 'Voir les pièces de la session' : 'Ouvrir dans l\'explorateur'">
+                <i class="fas" [ngClass]="niveau === 'session' ? 'fa-paperclip' : 'fa-folder-open'"></i></button>
+              <app-sous-niveaux-menu *ngIf="!r.is_deleted" [niveau]="niveauEntite" [entite]="r" [projetId]="projectId"></app-sous-niveaux-menu>
+              <button class="btn-icon btn-icon-danger" *ngIf="!r.is_deleted" (click)="askDelete([r.id])" title="Supprimer"><i class="fas fa-trash"></i></button>
+              <button class="btn-icon btn-icon-restore" *ngIf="r.is_deleted" (click)="restore([r.id])" title="Restaurer"><i class="fas fa-undo"></i></button>
+              <button class="btn-icon btn-icon-danger" *ngIf="r.is_deleted" (click)="askPermanent([r.id])" title="Supprimer définitivement"><i class="fas fa-trash-alt"></i></button>
+            </td>
+          </tr>
+          <tr *ngIf="!filteredItems.length">
+            <td [attr.colspan]="visibleColumns.length + 2" class="no-data">
+              <div class="no-data-content"><i class="fas" [ngClass]="showDeleted ? 'fa-trash-restore' : def.icon"></i>
+                <p>{{ showDeleted ? 'Corbeille vide' : 'Aucune ' + def.singulier + ' à afficher' }}</p></div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-footer">
+      <div class="table-footer-left"></div>
+      <div class="table-footer-right">
+        <app-table-pagination [page]="currentPage" [pageSize]="pageSize" [total]="filteredItems.length"
+          [pageSizeOptions]="pageSizeOptions" [entityPlural]="def.titre.replace('Toutes les ', '')"
+          (pageSizeChange)="setPageSize($event)" (first)="goToPage(1)" (prev)="goToPage(currentPage - 1)"
+          (next)="goToPage(currentPage + 1)" (last)="goToPage(totalPages)"></app-table-pagination>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" *ngIf="confirm" (click)="busy || (confirm = null)">
+  <div class="modal-content confirm-panel danger" (click)="$event.stopPropagation()">
+    <h3><i class="fas fa-triangle-exclamation"></i>
+      {{ confirm.kind === 'delete' ? 'Supprimer' : 'Supprimer définitivement' }} {{ confirm.ids.length }} {{ def.singulier }}(s) ?</h3>
+    <p *ngIf="confirm.kind === 'delete'">Les éléments seront déplacés vers la <strong>corbeille</strong>. Vous pourrez les restaurer.</p>
+    <p *ngIf="confirm.kind === 'permanent'">Action <strong>irréversible</strong>. Les éléments qui portent encore des sous-données sont conservés.</p>
+    <div class="confirm-actions">
+      <button class="btn-cancel" (click)="confirm = null" [disabled]="busy"><i class="fas fa-times"></i> Annuler</button>
+      <button class="btn-danger" (click)="confirmAction()" [disabled]="busy">
+        <i class="fas" [ngClass]="busy ? 'fa-spinner fa-spin' : 'fa-trash'"></i> Confirmer</button>
+    </div>
+  </div>
+</div>

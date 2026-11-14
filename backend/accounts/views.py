@@ -639,6 +639,48 @@ class PieceFieldsConfigView(APIView):
         return Response(cleaned, status=status.HTTP_200_OK)
 
 
+class TolerancesConfigView(APIView):
+    """Tolérances de l'opérateur connecté sur les valeurs des pièces.
+
+    GET /api/auth/me/tolerances/ → `{config, effectives, defauts, libelles}` :
+      `config` = ce que l'opérateur a modifié, `effectives` = config complétée des
+      valeurs par défaut (ce qu'applique le rapport).
+    PUT → corps `{<règle>: {...}}`, validé par `pieces.tolerances.normaliser` ; seules les
+      règles et champs connus sont gardés. Renvoie la même forme que GET.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @staticmethod
+    def payload(user):
+        from pieces import tolerances
+        config = user.tolerances_config or {}
+        return {'config': config, 'effectives': tolerances.effectives(config),
+                'defauts': tolerances.DEFAUTS, 'libelles': tolerances.LIBELLES}
+
+    def get(self, request):
+        return Response(self.payload(request.user))
+
+    def put(self, request):
+        from pieces import tolerances
+        try:
+            propre = tolerances.normaliser(request.data)
+        except tolerances.ToleranceInvalide as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        request.user.tolerances_config = propre
+        request.user.save(update_fields=['tolerances_config'])
+        return Response(self.payload(request.user))
+
+
+class TolerancesConfigResetView(APIView):
+    """POST /api/auth/me/tolerances/reset/ — revient aux valeurs par défaut."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        request.user.tolerances_config = {}
+        request.user.save(update_fields=['tolerances_config'])
+        return Response(TolerancesConfigView.payload(request.user))
+
+
 class PieceFieldsConfigResetView(APIView):
     """Réinitialise la config des CHAMPS (colonnes) de l'opérateur connecté avec la
     configuration SOURCE (celle du compte super admin, cf. accounts.piece_defaults).
@@ -933,6 +975,28 @@ TABLE_SORT_FIELDS = {
         'created_at', 'updated_at', 'is_deleted', 'deleted_at',
         'created_by_email', 'updated_by_email', 'deleted_by_email',
     },
+    # Vues À PLAT d'un projet / d'une propriété / d'une affaire
+    # (features/projects/project-flat-list) : colonnes de l'explorateur + contexte parent.
+    'flat_proprietes': {
+        'nom_propriete', 'id_propriete', 'id_requisition', 'id_titre',
+        'organisme_niveau1_nom', 'organisme_niveau2_nom', 'nbr_total_affaires',
+        'nbr_total_ssdgps', 'nbr_total_sessions', 'nbr_total_pieces',
+        'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+        'created_by_email', 'updated_by_email', 'deleted_by_email',
+    },
+    'flat_affaires': {
+        'numero_sd_affaire', 'nature_procedure_affaire', 'nature_affaire', 'date_bornage',
+        'propriete_label', 'propriete_nom', 'nbr_total_ssdgps', 'nbr_total_sessions',
+        'nbr_total_pieces',
+        'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+        'created_by_email', 'updated_by_email', 'deleted_by_email',
+    },
+    'flat_sessions': {
+        'numero_session', 'date_session', 'ssdgps_label', 'ssdgps_nature', 'affaire_numero',
+        'propriete_label', 'nbr_total_pieces',
+        'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+        'created_by_email', 'updated_by_email', 'deleted_by_email',
+    },
     # Liste des PIÈCES d'un rapport SSDGPS (features/projects/piece-management-page). NB : distinct
     # du tri des DONNÉES internes d'une pièce (piece_sort_config, par type, via Profil).
     'pieces': {
@@ -1087,6 +1151,28 @@ TABLE_COLUMN_FIELDS = {
         'propriete_label', 'affaire_numero',
         'nbr_total_sessions', 'nbr_total_pieces', 'propriete_nom', 'propriete_id_titre',
         'propriete_id_requisition', 'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+        'created_by_email', 'updated_by_email', 'deleted_by_email',
+    },
+    # Vues À PLAT d'un projet / d'une propriété / d'une affaire
+    # (features/projects/project-flat-list) : colonnes de l'explorateur + contexte parent.
+    'flat_proprietes': {
+        'nom_propriete', 'id_propriete', 'id_requisition', 'id_titre',
+        'organisme_niveau1_nom', 'organisme_niveau2_nom', 'nbr_total_affaires',
+        'nbr_total_ssdgps', 'nbr_total_sessions', 'nbr_total_pieces',
+        'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+        'created_by_email', 'updated_by_email', 'deleted_by_email',
+    },
+    'flat_affaires': {
+        'numero_sd_affaire', 'nature_procedure_affaire', 'nature_affaire', 'date_bornage',
+        'propriete_label', 'propriete_nom', 'nbr_total_ssdgps', 'nbr_total_sessions',
+        'nbr_total_pieces',
+        'created_at', 'updated_at', 'is_deleted', 'deleted_at',
+        'created_by_email', 'updated_by_email', 'deleted_by_email',
+    },
+    'flat_sessions': {
+        'numero_session', 'date_session', 'ssdgps_label', 'ssdgps_nature', 'affaire_numero',
+        'propriete_label', 'nbr_total_pieces',
+        'created_at', 'updated_at', 'is_deleted', 'deleted_at',
         'created_by_email', 'updated_by_email', 'deleted_by_email',
     },
     # Liste des PIÈCES d'un rapport SSDGPS (features/projects/piece-management-page).

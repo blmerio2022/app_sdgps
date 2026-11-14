@@ -56,6 +56,7 @@ export class ProjectsService {
 
   // --- Propriétés ---
   getProprietes(projetId: string, params?: Record<string, any>): Observable<Propriete[]> { return this.list('proprietes', { projet: projetId, ...params }); }
+  getPropriete(id: string): Observable<Propriete> { return this.http.get<Propriete>(`${this.base}proprietes/${id}/`); }
   createPropriete(p: Partial<Propriete>): Observable<Propriete> { return this.http.post<Propriete>(`${this.base}proprietes/`, p); }
   updatePropriete(id: string, p: Partial<Propriete>): Observable<Propriete> { return this.http.patch<Propriete>(`${this.base}proprietes/${id}/`, p); }
   deletePropriete(id: string): Observable<void> { return this.http.delete<void>(`${this.base}proprietes/${id}/`); }
@@ -64,6 +65,8 @@ export class ProjectsService {
 
   // --- Affaires ---
   getAffaires(proprieteId: string, params?: Record<string, any>): Observable<Affaire[]> { return this.list('affaires', { propriete: proprieteId, ...params }); }
+  /** Vue à plat : affaires filtrées par ancêtre (`projet` ou `propriete`). */
+  listAffaires(params: Record<string, any>): Observable<Affaire[]> { return this.list('affaires', params); }
   createAffaire(a: Partial<Affaire>): Observable<Affaire> { return this.http.post<Affaire>(`${this.base}affaires/`, a); }
   updateAffaire(id: string, a: Partial<Affaire>): Observable<Affaire> { return this.http.patch<Affaire>(`${this.base}affaires/${id}/`, a); }
   deleteAffaire(id: string): Observable<void> { return this.http.delete<void>(`${this.base}affaires/${id}/`); }
@@ -94,6 +97,10 @@ export class ProjectsService {
 
   // --- Sessions ---
   getSessions(ssdgpsId: string, params?: Record<string, any>): Observable<Session[]> { return this.list('sessions', { ssdgps: ssdgpsId, ...params }); }
+  /** Vue à plat : sessions filtrées par ancêtre (`projet`, `propriete`, `affaire` ou `ssdgps`). */
+  listSessions(params: Record<string, any>): Observable<Session[]> { return this.list('sessions', params); }
+  /** Vue à plat : SSDGPS filtrés par ancêtre (`projet`, `propriete` ou `affaire`). */
+  listSsdgps(params: Record<string, any>): Observable<Ssdgps[]> { return this.list('ssdgps', params); }
   createSession(s: Partial<Session>): Observable<Session> { return this.http.post<Session>(`${this.base}sessions/`, s); }
   updateSession(id: string, s: Partial<Session>): Observable<Session> { return this.http.patch<Session>(`${this.base}sessions/${id}/`, s); }
   deleteSession(id: string): Observable<void> { return this.http.delete<void>(`${this.base}sessions/${id}/`); }

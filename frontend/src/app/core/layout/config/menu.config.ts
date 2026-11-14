@@ -45,6 +45,14 @@ export const USER_MENU: MenuItem[] = [
         route: '/parametres/champs-pieces',
         type: 'link',
         description: 'Colonnes affichées par type de pièce (vues app + rapport PDF)'
+      },
+      {
+        id: 'tolerances',
+        title: 'Tolérances',
+        icon: 'fas fa-ruler-combined',
+        route: '/parametres/tolerances',
+        type: 'link',
+        description: 'Seuils signalés dans le rapport (durées, boucles, écarts)'
       }
     ]
   }
@@ -156,6 +164,14 @@ export const ADMIN_MENU: MenuItem[] = [
         type: 'link',
         description: 'Colonnes affichées par type de pièce (vues app + rapport PDF)',
         roles: ALL_ADMIN_ROLES,
+      },
+      {
+        id: 'tolerances',
+        title: 'Tolérances',
+        icon: 'fas fa-ruler-combined',
+        route: '/admin/parametres/tolerances',
+        type: 'link',
+        description: 'Seuils signalés dans le rapport (durées, boucles, écarts)'
       },
       {
         id: 'descriptions-champs',

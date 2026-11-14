@@ -1377,7 +1377,8 @@ class PieceViewSet(viewsets.ModelViewSet):
             fields_config = getattr(request.user, 'piece_fields_config', None) or {}
             pdf_bytes = render_report_pdf(ssdgps, session, pieces,
                                           sort_config=sort_config, fields_config=fields_config,
-                                          duplex=duplex)
+                                          duplex=duplex,
+                                          tolerances=getattr(request.user, 'tolerances_config', None))
         except RuntimeError as exc:
             # Chaîne PDF indisponible (dépendance / bibliothèque native manquante) :
             # message actionnable, levé AVANT le rendu par `check_pdf_toolchain`.

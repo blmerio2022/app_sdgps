@@ -93,12 +93,15 @@ const FIELD_DESCRIPTIONS: Record<string, string> = {
 @Component({
   selector: 'app-project-ssdgps-list',
   templateUrl: './project-ssdgps-list.component.html',
-  styleUrls: ['./project-ssdgps-list.component.scss'],
+  styleUrls: ['./project-ssdgps-list.component.scss', '../project-flat-list/project-flat-list.component.scss'],
 })
 export class ProjectSsdgpsListComponent implements OnInit, OnDestroy {
   loading = true;
   projectId!: string;
   projet: Projet | null = null;
+  /** Portée optionnelle (`?propriete=` / `?affaire=`) : les SSDGPS d'un seul parent. */
+  portee: { propriete?: string; affaire?: string } = {};
+  porteeLabel = '';
 
   private activeItems: Ssdgps[] = [];
   private deletedItems: Ssdgps[] = [];
@@ -188,6 +191,8 @@ export class ProjectSsdgpsListComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.projectId = this.route.snapshot.paramMap.get('id')!;
+    const qp = this.route.snapshot.queryParamMap;
+    this.portee = { propriete: qp.get('propriete') || undefined, affaire: qp.get('affaire') || undefined };
     this.loadColumnsConfig();
     this.load();
     this.loadSortConfig();
@@ -208,6 +213,7 @@ export class ProjectSsdgpsListComponent implements OnInit, OnDestroy {
       { label: 'Accueil', route: '/home', icon: 'fa-house' },
       { label: 'Projets', route: base, icon: 'fa-folder-open' },
       { label: this.projet?.nom_projet || this.projet?.code_projet || 'Projet', route: `${base}/${this.projectId}`, icon: 'fa-diagram-project' },
+      ...(this.porteeLabel ? [{ label: this.porteeLabel, icon: 'fa-filter' }] : []),
       { label: 'Tous les SSDGPS', icon: 'fa-satellite-dish', isActive: true },
     ]);
   }
@@ -226,11 +232,19 @@ export class ProjectSsdgpsListComponent implements OnInit, OnDestroy {
 
   load(): void {
     this.loading = true;
+    // Portée la plus fine d'abord : affaire, sinon propriété, sinon tout le projet.
+    const f: Record<string, string> = this.portee.affaire ? { affaire: this.portee.affaire }
+      : this.portee.propriete ? { propriete: this.portee.propriete } : { projet: this.projectId };
     forkJoin([
-      this.service.getSsdgpsByProjet(this.projectId),
-      this.service.getSsdgpsByProjet(this.projectId, { show_deleted: true }),
+      this.service.listSsdgps(f),
+      this.service.listSsdgps({ ...f, show_deleted: true }),
     ]).subscribe({
       next: ([active, deleted]) => {
+        const ref: any = active[0] || deleted[0];
+        const prop = ref ? (ref.propriete_id_titre || ref.propriete_id_requisition || ref.propriete_nom) : '';
+        this.porteeLabel = this.portee.affaire ? `Affaire SD ${ref?.affaire_numero ?? ''}${prop ? ' · ' + prop : ''}`
+          : this.portee.propriete ? `Propriété ${prop}` : '';
+        this.updateTopbarBreadcrumb();
         this.activeItems = active;
         this.deletedItems = deleted;
         this.selectedIds.clear();
@@ -554,6 +568,11 @@ export class ProjectSsdgpsListComponent implements OnInit, OnDestroy {
     });
   }
   backToExplorer(): void { this.router.navigate([...this.projetsBase(), this.projectId]); }
+  /** Retire la portée : tous les SSDGPS du projet. */
+  elargir(): void {
+    this.portee = {};
+    this.router.navigate([...this.projetsBase(), this.projectId, 'ssdgps']).then(() => this.load());
+  }
 
   restore(s: Ssdgps): void {
     if (this.restoring) return;

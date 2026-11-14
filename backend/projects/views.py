@@ -351,6 +351,15 @@ class AffaireViewSet(BaseOrgScopedViewSet):
     child_relations = ('ssdgps_set',)
     parent_query_param = ('propriete', 'propriete_id')
 
+    def get_queryset(self):
+        """Filtre à plat `?projet=` : TOUTES les affaires d'un projet (vue « toutes les
+        affaires »), propriétés supprimées exclues."""
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(propriete__projet_id=projet, propriete__is_deleted=False)
+        return qs
+
     def _org_id_of_validated(self, serializer):
         return serializer.validated_data['propriete'].projet.organization_id
 
@@ -391,6 +400,9 @@ class SsdgpsViewSet(BaseOrgScopedViewSet):
         propriete = self.request.query_params.get('propriete')
         if propriete:
             qs = qs.filter(affaire__propriete_id=propriete)
+        if projet or propriete:
+            # Vue à plat : pas de SSDGPS sous une affaire ou une propriété en corbeille.
+            qs = qs.filter(affaire__is_deleted=False, affaire__propriete__is_deleted=False)
         return qs
 
     def _org_id_of_validated(self, serializer):
@@ -659,6 +671,30 @@ class SessionViewSet(BaseOrgScopedViewSet):
     org_lookup = 'ssdgps__affaire__propriete__projet__organization_id'
     child_relations = ('pieces',)
     parent_query_param = ('ssdgps', 'ssdgps_id')
+
+    #: Filtres à plat (vue « toutes les sessions » d'un projet, d'une propriété, d'une
+    #: affaire) → chemin vers l'ancêtre.
+    ANCETRES = {
+        'projet': 'ssdgps__affaire__propriete__projet_id',
+        'propriete': 'ssdgps__affaire__propriete_id',
+        'affaire': 'ssdgps__affaire_id',
+    }
+
+    def get_queryset(self):
+        """Vue à plat : seules les sessions des SSDGPS **multi-session** comptent — la
+        session n°1 d'un mono-session est structurelle et invisible (même règle que les
+        compteurs `nbr_total_sessions`) — et les niveaux intermédiaires supprimés sont
+        écartés."""
+        qs = super().get_queryset()
+        filtres = {chemin: self.request.query_params.get(param)
+                   for param, chemin in self.ANCETRES.items()
+                   if self.request.query_params.get(param)}
+        if filtres:
+            qs = qs.filter(**filtres,
+                           ssdgps__type_ssdgps=Ssdgps.TypeSSDGPS.MULTI,
+                           ssdgps__is_deleted=False, ssdgps__affaire__is_deleted=False,
+                           ssdgps__affaire__propriete__is_deleted=False)
+        return qs
 
     def _org_id_of_validated(self, serializer):
         return serializer.validated_data['ssdgps'].affaire.propriete.projet.organization_id

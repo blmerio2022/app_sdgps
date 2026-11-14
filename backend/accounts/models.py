@@ -392,6 +392,15 @@ class CustomUser(AbstractUser):
     # tous les champs du catalogue, dans l'ordre du catalogue.
     # Défaut = configuration de colonnes du super admin (source), appliquée à TOUT compte
     # nouvellement créé ; repli sur {} si aucune source. Cf. piece_defaults.
+    # Tolérances de l'opérateur sur les valeurs des pièces (durées d'observation, fermeture
+    # des boucles, écarts…) : les valeurs hors tolérance sont signalées dans le rapport.
+    # Clés absentes = valeurs par défaut de `pieces.tolerances.DEFAUTS`.
+    tolerances_config = models.JSONField(
+        default=dict, blank=True,
+        verbose_name="Tolérances des pièces",
+        help_text="Seuils au-delà desquels une valeur est signalée dans le rapport SDGPS.",
+    )
+
     piece_fields_config = models.JSONField(
         default=default_piece_fields_config, blank=True,
         verbose_name="Champs par défaut des tableaux de pièces",

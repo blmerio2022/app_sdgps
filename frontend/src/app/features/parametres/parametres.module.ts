@@ -5,6 +5,7 @@ import { RouterModule, Routes } from '@angular/router';
 import { HttpClientModule } from '@angular/common/http';
 import { PieceSortSettingsComponent } from '../profile/components/piece-sort-settings/piece-sort-settings.component';
 import { PieceFieldsSettingsComponent } from '../profile/components/piece-fields-settings/piece-fields-settings.component';
+import { TolerancesSettingsComponent } from '../profile/components/tolerances-settings/tolerances-settings.component';
 
 /**
  * Module « Paramètres » (préférences d'affichage des pièces : tri + champs par défaut).
@@ -18,10 +19,11 @@ const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'tri-pieces' },
   { path: 'tri-pieces', component: PieceSortSettingsComponent },
   { path: 'champs-pieces', component: PieceFieldsSettingsComponent },
+  { path: 'tolerances', component: TolerancesSettingsComponent },
 ];
 
 @NgModule({
-  declarations: [PieceSortSettingsComponent, PieceFieldsSettingsComponent],
+  declarations: [PieceSortSettingsComponent, PieceFieldsSettingsComponent, TolerancesSettingsComponent],
   imports: [
     CommonModule,
     FormsModule,
