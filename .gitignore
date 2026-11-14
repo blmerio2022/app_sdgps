@@ -84,3 +84,6 @@ tableau.md
 .claude/
 # Espaces de travail d'éditeur locaux
 *.code-workspace
+
+# Version générée au build (backend/backend/version.py --ecrire)
+build-info/version.json

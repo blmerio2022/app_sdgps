@@ -1,0 +1,67 @@
+:host { display: block; }
+
+.vb-trigger {
+  display: inline-flex; align-items: center; gap: 7px; max-width: 100%;
+  padding: 5px 10px; border-radius: 20px; cursor: pointer;
+  background: transparent; border: 1px solid transparent; color: var(--text-muted);
+  font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  i { font-size: 10.5px; }
+  &:hover, &:focus-visible { outline: none; color: var(--text-color); border-color: var(--border-color); background: var(--hover-bg); }
+}
+.vb-app { font-weight: 600; letter-spacing: 0.3px; }
+.vb-num { font-weight: 700; color: var(--text-color); }
+.vb-env {
+  padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--accent-color); background: rgba(204, 88, 88, 0.12); border: 1px solid rgba(204, 88, 88, 0.3);
+}
+
+/* Pied de la page de connexion : centré sous la carte. */
+.vb-login { margin: 18px auto 0; display: flex; }
+
+/* Bas du menu latéral. */
+.vb-sidebar { width: 100%; justify-content: center; border-radius: 8px; }
+.vb-compact { padding: 5px 2px; font-size: 10px; overflow: hidden; text-overflow: ellipsis; }
+
+/* ------------------------------------------------------------ « À propos » */
+.vb-overlay {
+  position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; padding: 16px;
+  background: rgba(0, 0, 0, 0.55); animation: vb-fade 0.15s ease;
+}
+@keyframes vb-fade { from { opacity: 0; } to { opacity: 1; } }
+.vb-modal {
+  width: min(420px, 100%); border-radius: 16px; overflow: hidden; text-align: left;
+  background: var(--secondary-color); border: 1px solid var(--border-color); color: var(--text-color);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+.vb-head {
+  display: flex; align-items: center; gap: 12px; padding: 16px 18px;
+  border-bottom: 1px solid var(--border-color);
+  background: linear-gradient(135deg, rgba(204, 88, 88, 0.12) 0%, transparent 70%);
+  h2 { margin: 0; font-size: 15px; font-weight: 700; }
+  p { margin: 2px 0 0; font-size: 12px; color: var(--text-muted); }
+  > div { flex: 1; min-width: 0; }
+}
+.vb-logo {
+  width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; flex-shrink: 0;
+  color: #fff; background: var(--accent-color);
+}
+.vb-close {
+  width: 30px; height: 30px; border-radius: 8px; border: none; cursor: pointer;
+  background: transparent; color: var(--text-muted);
+  &:hover { background: var(--hover-bg); color: var(--text-color); }
+}
+.vb-version { display: flex; align-items: center; gap: 10px; padding: 18px 18px 6px; }
+.vb-big { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.5px; }
+.vb-details {
+  display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 0; padding: 10px 18px 14px; font-size: 13px;
+  dt { color: var(--text-muted); }
+  dd { margin: 0; }
+  code { font-size: 12px; padding: 1px 6px; border-radius: 5px; background: var(--primary-color); border: 1px solid var(--border-color); }
+}
+.vb-stale { color: #d9a441; a { color: var(--accent-color); font-weight: 600; } }
+.vb-note {
+  display: flex; gap: 8px; align-items: flex-start; margin: 0; padding: 11px 18px 14px;
+  border-top: 1px solid var(--border-color); font-size: 11.5px; color: var(--text-muted);
+  i { margin-top: 2px; }
+}

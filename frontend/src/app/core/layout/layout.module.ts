@@ -1,3 +1,4 @@
+import { VersionModule } from '../version/version.module';
 import { NgModule } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
@@ -24,7 +25,8 @@ import { LayoutService } from './services/layout.service';
   imports: [
     CommonModule,    // ← Nécessaire pour *ngIf, *ngFor, async pipe
     RouterModule,    // ← Nécessaire pour routerLink, router-outlet
-    FormsModule
+    FormsModule,
+    VersionModule    // Version déployée en bas du menu
   ],
   exports: [
     DashboardLayoutComponent,

@@ -9,6 +9,9 @@ WORKDIR /fe
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --legacy-peer-deps
 COPY frontend/ ./
+# Version du bundle (build-info/version.json, généré avant le build — cf. backend/backend/version.py).
+COPY build-info/ /build-info/
+RUN node scripts/inject-version.js /build-info/version.json
 # Build de production → /fe/dist/frontend (cf. angular.json outputPath).
 RUN npx ng build --configuration production
 
@@ -30,6 +33,8 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ .
+# Version servie par GET /api/version/ (lue par backend/version.py).
+COPY build-info/ /app/build-info/
 
 # Build Angular embarqué : WhiteNoise le sert à la racine (WHITENOISE_ROOT = frontend_dist).
 COPY --from=frontend /fe/dist/frontend/ /app/frontend_dist/

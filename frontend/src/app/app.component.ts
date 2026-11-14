@@ -1,4 +1,5 @@
 import {Component} from '@angular/core';
+import {VersionService} from './core/version/version.service';
 
 /**
  * @component AppComponent
@@ -8,9 +9,14 @@ import {Component} from '@angular/core';
  */
 @Component({
     selector: 'app-root',
-    template: '<router-outlet></router-outlet>',
+    // Bandeau « nouvelle version » : global, au-dessus de toutes les pages (connecté ou non).
+    template: '<router-outlet></router-outlet><app-nouvelle-version></app-nouvelle-version>',
     styles: []
 })
 export class AppComponent {
     title = 'SDGPS - Système de Génération de Documents';
+
+    constructor(versions: VersionService) {
+        versions.demarrer();
+    }
 }

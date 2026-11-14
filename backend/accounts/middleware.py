@@ -23,6 +23,7 @@ class ForcePasswordChangeMiddleware:
                 allowed_paths = [
                     '/api/auth/change-password/',  # API changement MDP
                     '/api/auth/logout/',           # API logout
+                    '/api/version/',               # Version déployée (publique)
                     '/static/',                     # Fichiers statiques
                     '/media/',                      # Fichiers media
                 ]

@@ -40,6 +40,12 @@ textes d'interface). Respecter cette convention lors de l'ajout de code.
 - Build : `npm run build` (configuration production par défaut)
 - Tests unitaires (Karma/Jasmine) : `npm test` / `ng test`
 
+### Déploiement de TEST sur Railway (projet `sdgps-test`)
+- Depuis la racine du dépôt, CLI Railway connectée et liée au service `app` :
+  `python backend/backend/version.py --ecrire build-info/version.json` puis
+  `railway up --service app --detach` (envoie l'arbre de travail, construit le
+  `Dockerfile` racine). Secrets générés : `backend/.env.railway-test` (gitignoré).
+
 ### Installation / redémarrage en une commande (PowerShell Windows)
 - Installation initiale (idempotente) : `.\backend\scripts\setup\run.ps1`
 - Redémarrer les deux serveurs : `.\backend\scripts\setup\restart_servers.ps1`
@@ -465,6 +471,30 @@ trace des actions qui ne modifient rien. Le journal, lui, enregistre QUI / QUOI 
   l'application** (`IsApplicationAdmin`), filtres `action` / `acteur` / `acteur_email` /
   `cible_id` / `depuis` / `jusqu_a`. Pas d'écran frontend à ce stade ;
 - tests : `backend/accounts/tests_audit_journal.py`.
+
+**Version de l'application : `v<majeure>.<mineure>.<n>`, calculée depuis git.** Visible par
+TOUS, connecté ou non : pied de la page de connexion, bas du menu latéral (clic → « À
+propos » : commit, dates, environnement), API **publique** `GET /api/version/` (inscrite
+dans `VUES_PUBLIQUES_AUTORISEES` ; n'expose que version, commit, dates, environnement).
+- règle (`backend/backend/version.py`) : `<majeure>.<mineure>` = repère git **`base/vX.Y`**
+  le plus récent atteignable (posé UNE fois au début de `feature/vX.Y` : `base/v1.0` est
+  sur `1ad7788`) ; `<n>` = `git rev-list --count --first-parent base/vX.Y..HEAD` — +1 par
+  commit, une fusion de `develop` compte pour 1 : le numéro ne recule jamais ; suffixe
+  `+local` si `backend/` ou `frontend/` ont des modifications suivies non commitées.
+  ⚠️ Le repère ne commence PAS par `v` (la CI déploie sur les tags `v*`). Nouvelle version
+  `feature/v1.1` ⇒ poser `git tag -a base/v1.1 -m "…"` sur son premier commit et le pousser ;
+- le serveur n'a pas `.git` : la version est **figée au build** dans
+  `build-info/version.json` (gitignoré, mais forcé dans l'envoi par `.railwayignore`) —
+  `python backend/backend/version.py --ecrire build-info/version.json` **avant
+  `railway up`** ; la CI le fait dans ses jobs d'image (`fetch-depth: 0`). Le Dockerfile
+  le copie côté backend et l'injecte dans le bundle (`frontend/scripts/inject-version.js`
+  → `core/version/build-version.ts`, valeur versionnée `dev`). Sans fichier, le backend
+  lit git (développement), sinon « inconnue » — jamais bloquant ;
+- **bandeau « Une nouvelle version est disponible — Recharger »** : `VersionService` sonde
+  l'API toutes les 5 min et au retour sur l'onglet ; il compare la version en ligne à celle
+  compilée dans le bundle (jamais en `dev`). « Plus tard » ne masque que CETTE version ;
+- tests : `backend/accounts/tests_version.py` (dépôt git jetable : fusions, `+local`,
+  repère le plus récent ; endpoint public), `core/version/version.spec.ts`.
 
 **Observabilité :** `backend/observability.py::configurer_sentry` (backend) et
 `core/observability/sentry.ts` (frontend). **Inerte** tant que `SENTRY_DSN` /

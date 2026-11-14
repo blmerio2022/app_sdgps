@@ -1,0 +1,4 @@
+# `railway up` respecte .gitignore ; ce fichier le complète et a PRIORITÉ sur lui.
+# La version générée avant l'envoi est ignorée par git mais DOIT partir vers Railway
+# (le serveur n'a pas l'historique git pour la calculer).
+!build-info/version.json

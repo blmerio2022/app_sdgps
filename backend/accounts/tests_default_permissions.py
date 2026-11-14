@@ -25,6 +25,7 @@ VUES_PUBLIQUES_AUTORISEES = {
     'VerifyCodeView': "vérification du code reçu par email",
     'ResetPasswordView': "réinitialisation avec le jeton issu du code",
     'TokenRefreshView': "rafraîchissement JWT, validé par le jeton lui-même",
+    'VersionView': "version déployée : pied de la page de connexion, rien de sensible",
 }
 
 

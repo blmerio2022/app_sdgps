@@ -76,4 +76,9 @@
 
     </ng-container>
   </ul>
+
+  <!-- Version déployée (clic : « À propos »). -->
+  <div class="sidebar-version">
+    <app-version-badge variante="sidebar" [compact]="!!(sidebarState$ | async)?.isCollapsed"></app-version-badge>
+  </div>
 </div>

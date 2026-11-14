@@ -1,0 +1,50 @@
+<ng-container *ngIf="versions.info$ | async as info">
+  <button type="button" class="vb-trigger" [ngClass]="'vb-' + variante" [class.vb-compact]="compact"
+          (click)="ouvrir($event)" [title]="'Version ' + info.version + ' — détails'"
+          [attr.aria-label]="'Version de l’application ' + info.version">
+    <ng-container *ngIf="!compact; else numeroSeul">
+      <i class="fas fa-code-branch"></i>
+      <span class="vb-app">SDGPS</span>
+      <span class="vb-num">{{ info.version }}</span>
+      <span class="vb-env" *ngIf="env(info)">{{ env(info) }}</span>
+    </ng-container>
+    <ng-template #numeroSeul><span class="vb-num">{{ info.version.replace('v', '').replace('+local', '') }}</span></ng-template>
+  </button>
+
+  <div class="vb-overlay" *ngIf="ouvert" (click)="fermer()">
+    <div class="vb-modal" role="dialog" aria-modal="true" aria-labelledby="vb-titre" (click)="$event.stopPropagation()">
+      <header class="vb-head">
+        <span class="vb-logo"><i class="fas fa-satellite-dish"></i></span>
+        <div>
+          <h2 id="vb-titre">À propos de SDGPS</h2>
+          <p>Système de Génération de Documents</p>
+        </div>
+        <button type="button" class="vb-close" (click)="fermer()" aria-label="Fermer"><i class="fas fa-xmark"></i></button>
+      </header>
+
+      <div class="vb-version">
+        <span class="vb-big">{{ info.version }}</span>
+        <span class="vb-env" *ngIf="env(info)">{{ env(info) }}</span>
+      </div>
+
+      <dl class="vb-details">
+        <dt>Commit</dt><dd><code>{{ info.commit || '—' }}</code></dd>
+        <dt>Date du commit</dt><dd>{{ dateLisible(info.date_commit) }}</dd>
+        <dt>Date du build</dt><dd>{{ dateLisible(info.date_build) }}</dd>
+        <dt>Environnement</dt><dd>{{ info.environnement || '—' }}</dd>
+        <dt>Page affichée</dt>
+        <dd>
+          <code>{{ versions.bundle.version }}</code>
+          <span class="vb-stale" *ngIf="versions.nouvelleVersion$ | async">
+            — ancienne version, <a href="" (click)="$event.preventDefault(); versions.recharger()">recharger</a>
+          </span>
+        </dd>
+      </dl>
+
+      <p class="vb-note">
+        <i class="fas fa-circle-info"></i>
+        Le dernier nombre augmente à chaque commit de la branche de la version en cours.
+      </p>
+    </div>
+  </div>
+</ng-container>

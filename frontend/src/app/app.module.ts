@@ -5,7 +5,8 @@ import {HTTP_INTERCEPTORS, HttpClientModule} from '@angular/common/http'; // Imp
 import {AppRoutingModule} from './app-routing.module'; // Importe le module de routage principal
 import {AppComponent} from './app.component'; // Importe le composant racine
 import {LayoutModule} from './core/layout/layout.module'; // ← AJOUT: Module Layout (Sidebar, TopBar, etc.)
-import {AuthModule} from './features/auth/auth.module'; // ← AJOUT: Module Auth (Login, Register, etc.)
+import {AuthModule} from './features/auth/auth.module';
+import {VersionModule} from './core/version/version.module'; // ← AJOUT: Module Auth (Login, Register, etc.)
 import {DashboardModule} from './features/dashboard/dashboard.module'; // ← AJOUT: Module Dashboard
 import {UsersModule} from './features/admin/users/users.module'; // ← AJOUT: Module Users
 import {OrganismesModule} from './features/admin/organismes/organismes.module'; // ← AJOUT: Module Organismes
@@ -26,6 +27,7 @@ import {AuthInterceptor} from './core/interceptors/auth.interceptor';
         HttpClientModule, // Permet d'utiliser le service HttpClient pour les appels API
         LayoutModule, // ← AJOUT: Dashboard layout components
         AuthModule, // ← AJOUT: Authentication components
+        VersionModule, // Version déployée + bandeau « nouvelle version »
         DashboardModule, // ← AJOUT: Dashboard components (OrganizationList, etc.)
         UsersModule, // ← AJOUT: User management components
         OrganismesModule, // ← AJOUT: Organismes premier/deuxième niveau

@@ -81,6 +81,13 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Historique + tags complets : la version (v1.0.N) se calcule depuis git.
+          fetch-depth: 0
+
+      - name: Calculer la version (build-info/version.json)
+        # Repère base/vX.Y absent → image sans version (« inconnue ») plutôt que build bloqué.
+        run: python3 backend/backend/version.py --ecrire build-info/version.json || echo "version indisponible"
 
       - name: Se connecter à GitHub Container Registry
         uses: docker/login-action@v3
@@ -128,6 +135,13 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Historique + tags complets : la version (v1.0.N) se calcule depuis git.
+          fetch-depth: 0
+
+      - name: Calculer la version (build-info/version.json)
+        # Repère base/vX.Y absent → image sans version (« inconnue ») plutôt que build bloqué.
+        run: python3 backend/backend/version.py --ecrire build-info/version.json || echo "version indisponible"
 
       - name: Se connecter à GitHub Container Registry
         uses: docker/login-action@v3
@@ -174,6 +188,13 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Historique + tags complets : la version (v1.0.N) se calcule depuis git.
+          fetch-depth: 0
+
+      - name: Calculer la version (build-info/version.json)
+        # Repère base/vX.Y absent → image sans version (« inconnue ») plutôt que build bloqué.
+        run: python3 backend/backend/version.py --ecrire build-info/version.json || echo "version indisponible"
 
       - name: Se connecter à GitHub Container Registry
         uses: docker/login-action@v3
