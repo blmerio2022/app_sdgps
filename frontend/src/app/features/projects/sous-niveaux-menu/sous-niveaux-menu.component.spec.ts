@@ -70,3 +70,54 @@ describe('SousNiveauxMenuComponent', () => {
     expect(cmp.open).toBeFalse();
   });
 });
+
+describe('SousNiveauxMenuComponent — panneau', () => {
+  let cmp: SousNiveauxMenuComponent;
+  const bouton = (rect: Partial<DOMRect>) => ({ nativeElement: { getBoundingClientRect: () => rect } } as any);
+
+  beforeEach(() => {
+    const router = jasmine.createSpyObj('Router', ['navigate']);
+    router.url = '/projets';
+    cmp = new SousNiveauxMenuComponent(router, { nativeElement: document.createElement('div') } as any);
+    cmp.niveau = 'propriete';
+    cmp.entite = { id: 'pr1', id_titre: 'T9002/C', nbr_total_affaires: 3 };
+  });
+
+  afterEach(() => cmp.ngOnDestroy());
+
+  it('nom de l’élément d’origine et sous-titre contextualisé', () => {
+    expect(cmp.nom).toBe('Propriété T9002/C');
+    expect(cmp.complement).toBe('de cette propriété');
+    expect(cmp.options.map(o => cmp.retrait(o))).toEqual([0, 1, 2]);
+  });
+
+  it('s’ouvre sous le bouton, aligné à droite et gardé dans la fenêtre', () => {
+    cmp.trigger = bouton({ top: 100, bottom: 130, right: 200, left: 170 });
+    cmp.toggle(new Event('click'));
+    expect(cmp.open).toBeTrue();
+    expect(cmp.vers).toBe('bas');
+    expect(cmp.position.top).toBe(136);
+    expect(cmp.position.left).toBe(8);            // 200 - 360 < 8 : ramené dans la fenêtre
+  });
+
+  it('s’ouvre vers le haut près du bas de la fenêtre', () => {
+    const h = window.innerHeight;
+    cmp.trigger = bouton({ top: h - 40, bottom: h - 10, right: 900, left: 870 });
+    cmp.toggle(new Event('click'));
+    expect(cmp.vers).toBe('haut');
+    expect(cmp.position.bottom).toBe(46);
+  });
+
+  it('se ferme au défilement d’un conteneur, à Échap et au second clic', () => {
+    cmp.trigger = bouton({ top: 100, bottom: 130, right: 600, left: 570 });
+    cmp.toggle(new Event('click'));
+    document.body.dispatchEvent(new Event('scroll'));
+    expect(cmp.open).toBeFalse();
+    cmp.toggle(new Event('click'));
+    cmp.onEscape();
+    expect(cmp.open).toBeFalse();
+    cmp.toggle(new Event('click'));
+    cmp.toggle(new Event('click'));
+    expect(cmp.open).toBeFalse();
+  });
+});

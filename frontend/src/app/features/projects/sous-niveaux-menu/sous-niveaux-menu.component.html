@@ -1,0 +1,37 @@
+<ng-container *ngIf="options.length">
+  <!-- Ligne de tableau : icône seule. En-tête de page : bouton libellé. -->
+  <button #trigger type="button" class="sn-trigger" [class.sn-pill]="!!libelle" [class.open]="open"
+          (click)="toggle($event)" [attr.aria-expanded]="open" aria-haspopup="menu"
+          [attr.aria-label]="'Sous-niveaux de ' + nom" [title]="libelle ? '' : 'Sous-niveaux — afficher à plat'">
+    <i class="fas fa-folder-tree"></i>
+    <ng-container *ngIf="libelle">
+      <span>{{ libelle }}</span>
+      <i class="fas fa-chevron-down sn-chevron"></i>
+    </ng-container>
+  </button>
+
+  <div class="sn-panel" *ngIf="open" role="menu" [class.vers-haut]="vers === 'haut'"
+       [style.top.px]="position.top" [style.bottom.px]="position.bottom" [style.left.px]="position.left"
+       (click)="$event.stopPropagation()">
+    <header class="sn-head">
+      <span class="sn-eyebrow">Afficher à plat</span>
+      <strong class="sn-origin" [title]="nom">{{ nom }}</strong>
+    </header>
+
+    <ol class="sn-tree">
+      <li *ngFor="let o of options; let last = last" [style.--retrait]="retrait(o)" [class.last]="last">
+        <button type="button" class="sn-item" role="menuitem" (click)="go(o)">
+          <span class="sn-node" [attr.data-niveau]="o.niveau"><i class="fas" [ngClass]="o.icon"></i></span>
+          <span class="sn-text">
+            <span class="sn-title">{{ o.titre }}</span>
+            <span class="sn-sub">{{ o.label }} {{ complement }}</span>
+          </span>
+          <span class="sn-count" *ngIf="count(o) !== null" [class.zero]="count(o) === 0">{{ count(o) }}</span>
+          <i class="fas fa-arrow-right sn-go"></i>
+        </button>
+      </li>
+    </ol>
+
+    <footer class="sn-foot"><i class="fas fa-table-list"></i> Liste complète, filtrable et exportable</footer>
+  </div>
+</ng-container>

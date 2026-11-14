@@ -50,7 +50,7 @@
       <!-- Tous les sous-niveaux, à plat, du parent affiché (le projet, ou la propriété /
            l'affaire / le SSDGPS ouverts). -->
       <app-sous-niveaux-menu *ngIf="projet && porteeCourante as pc" [niveau]="pc.niveau" [entite]="pc.entite"
-        [projetId]="projet.id" libelle="À plat"></app-sous-niveaux-menu>
+        [projetId]="projet.id" libelle="Sous-niveaux"></app-sous-niveaux-menu>
       <button class="btn btn-success" *ngIf="!showDeleted" (click)="openCreate()"><i class="fas fa-plus-circle"></i> Ajouter</button>
     </div>
   </header>

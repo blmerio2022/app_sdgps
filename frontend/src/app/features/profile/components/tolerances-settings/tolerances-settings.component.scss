@@ -1,5 +1,11 @@
-:host { display: block; }
-.tol-page { padding: 20px 24px 28px; max-width: 1180px; }
+/* La zone de contenu de l'app est en `overflow: hidden` (cf. dashboard-layout) : chaque page
+   gère son propre défilement. Sans cela, les réglages du bas étaient inaccessibles. */
+:host { display: block; flex: 1 1 auto; min-height: 0; }
+.tol-page {
+  height: 100%; box-sizing: border-box; overflow-y: auto;
+  padding: 20px 24px 32px;
+  > * { max-width: 1180px; }
+}
 
 .page-header {
   margin-bottom: 16px;

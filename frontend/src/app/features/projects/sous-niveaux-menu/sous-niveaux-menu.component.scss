@@ -1,32 +1,111 @@
-:host { display: inline-block; }
-.sn-wrap { position: relative; display: inline-block; }
+:host { display: inline-block; vertical-align: middle; }
 
-.sn-trigger.open { color: var(--accent-color); background: rgba(204, 88, 88, 0.12); }
+$accent-soft: rgba(204, 88, 88, 0.12);
+$accent-line: rgba(204, 88, 88, 0.32);
 
-.sn-menu {
-  position: absolute; right: 0; top: calc(100% + 6px); z-index: 1200; min-width: 250px;
-  padding: 6px; border-radius: 10px; text-align: left;
-  background: var(--secondary-color); border: 1px solid var(--border-color);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
-  animation: sn-in 0.12s ease-out;
+/* ------------------------------------------------------------------ Déclencheur */
+.sn-trigger {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  width: 30px; height: 30px; padding: 0; border-radius: 8px; cursor: pointer;
+  background: transparent; border: 1px solid transparent; color: var(--text-muted);
+  font-size: 13px; transition: color 0.15s, background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  &:hover { color: var(--accent-color); background: var(--hover-bg); }
+  &.open {
+    color: var(--accent-color); background: $accent-soft; border-color: $accent-line;
+    box-shadow: 0 0 0 3px rgba(204, 88, 88, 0.08);
+  }
+  &:focus-visible { outline: none; border-color: var(--accent-color); }
+
+  /* Variante en-tête : bouton libellé, même famille que les boutons secondaires. */
+  &.sn-pill {
+    width: auto; height: 36px; padding: 0 12px 0 13px; border-radius: 9px;
+    font-size: 13px; font-weight: 600; color: var(--text-color);
+    background: var(--secondary-color); border-color: var(--border-color);
+    > i:first-child { color: var(--accent-color); }
+    &:hover { border-color: var(--accent-color); background: var(--hover-bg); }
+    &.open { border-color: var(--accent-color); .sn-chevron { transform: rotate(180deg); } }
+  }
+  .sn-chevron { font-size: 10px; color: var(--text-muted); transition: transform 0.2s; }
 }
-@keyframes sn-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+/* ------------------------------------------------------------------ Panneau */
+.sn-panel {
+  position: fixed; z-index: 1300; width: 360px; overflow: hidden;
+  border-radius: 14px; text-align: left;
+  background: var(--secondary-color); border: 1px solid var(--border-color);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.38), 0 2px 6px rgba(0, 0, 0, 0.2);
+  transform-origin: top right;
+  animation: sn-in 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+  &.vers-haut { transform-origin: bottom right; animation-name: sn-in-up; }
+}
+@keyframes sn-in { from { opacity: 0; transform: translateY(-6px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes sn-in-up { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: none; } }
 
 .sn-head {
-  padding: 6px 10px 6px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px;
-  text-transform: uppercase; color: var(--text-muted);
+  display: flex; flex-direction: column; gap: 3px; padding: 13px 16px 12px;
+  border-bottom: 1px solid var(--border-color);
+  background: linear-gradient(135deg, rgba(204, 88, 88, 0.10) 0%, transparent 70%);
+}
+.sn-eyebrow { font-size: 10px; font-weight: 700; letter-spacing: 0.9px; text-transform: uppercase; color: var(--accent-color); }
+.sn-origin { font-size: 13.5px; font-weight: 600; color: var(--text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ------------------------------------------------------------------ Arborescence
+   Chaque niveau est décalé de `--retrait` crans ; un fil vertical relie les nœuds et un
+   coude rattache chaque nœud au fil : la hiérarchie se lit sans légende. */
+.sn-tree { list-style: none; margin: 0; padding: 8px 8px 6px; }
+.sn-tree li {
+  --pas: 14px;
+  position: relative; padding-left: calc(var(--retrait, 0) * var(--pas));
+  /* Coude vers le nœud (sauf le premier niveau, qui est la racine visuelle). */
+  &:not(:first-child)::before {
+    content: ''; position: absolute;
+    left: calc((var(--retrait, 0) - 1) * var(--pas) + 23px); top: -6px;
+    width: calc(var(--pas) - 2px); height: 30px;
+    border-left: 1.5px solid var(--border-color); border-bottom: 1.5px solid var(--border-color);
+    border-bottom-left-radius: 8px;
+    pointer-events: none;
+  }
 }
 
 .sn-item {
-  width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 10px;
-  border: none; border-radius: 7px; cursor: pointer; background: transparent;
-  color: var(--text-color); font-size: 13px; text-align: left; transition: background 0.12s;
-  i { width: 16px; text-align: center; color: var(--text-muted); font-size: 12px; }
-  .sn-label { flex: 1; white-space: nowrap; }
-  .sn-count {
-    min-width: 26px; padding: 1px 8px; border-radius: 10px; text-align: center;
-    font-size: 11px; font-weight: 700; color: var(--accent-color);
-    background: rgba(204, 88, 88, 0.12); border: 1px solid rgba(204, 88, 88, 0.28);
+  position: relative; width: 100%; display: flex; align-items: center; gap: 11px;
+  padding: 8px 10px 8px 8px; margin: 2px 0; border-radius: 10px; cursor: pointer;
+  background: transparent; border: 1px solid transparent; color: var(--text-color); text-align: left;
+  transition: background 0.14s, border-color 0.14s;
+  &:hover, &:focus-visible {
+    outline: none; background: var(--hover-bg); border-color: var(--border-color);
+    .sn-go { opacity: 1; transform: none; }
+    .sn-node { border-color: var(--accent-color); color: var(--accent-color); }
   }
-  &:hover { background: var(--hover-bg); i { color: var(--accent-color); } }
+}
+
+.sn-node {
+  position: relative; z-index: 1; flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px;
+  display: grid; place-items: center; font-size: 12px;
+  color: var(--text-color); background: var(--primary-color); border: 1px solid var(--border-color);
+  transition: border-color 0.14s, color 0.14s;
+  /* Teinte discrète par niveau : même nuancier d'un écran à l'autre. */
+  &[data-niveau='propriete'] i { color: #cc5858; }
+  &[data-niveau='affaire'] i { color: #d9a441; }
+  &[data-niveau='ssdgps'] i { color: #4a90d9; }
+  &[data-niveau='session'] i { color: #2ecc71; }
+}
+
+.sn-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.sn-title { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.sn-sub { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.sn-count {
+  flex-shrink: 0; min-width: 28px; padding: 2px 8px; border-radius: 20px; text-align: center;
+  font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+  color: var(--accent-color); background: $accent-soft; border: 1px solid $accent-line;
+  &.zero { color: var(--text-muted); background: var(--hover-bg); border-color: var(--border-color); }
+}
+.sn-go { flex-shrink: 0; font-size: 11px; color: var(--accent-color); opacity: 0; transform: translateX(-4px);
+  transition: opacity 0.14s, transform 0.14s; }
+
+.sn-foot {
+  display: flex; align-items: center; gap: 7px; padding: 9px 16px 11px;
+  border-top: 1px solid var(--border-color); font-size: 11px; color: var(--text-muted);
+  i { font-size: 10.5px; }
 }
