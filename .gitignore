@@ -37,6 +37,7 @@ build/
 .env.staging
 .env.preprod
 .env.production
+.env.railway-*
 !.env*.example
 
 # Angular cache
