@@ -117,9 +117,9 @@ class Command(BaseCommand):
         try:
             if client.protocole() == 'openai':
                 r = openai_compat.creer(client.adresse(), client.cle(), modele=nom_modele,
-                                        messages=message, max_tokens=64)
+                                        messages=message, max_tokens=400)
             else:
-                r = client._client().messages.create(model=nom_modele, max_tokens=64,
+                r = client._client().messages.create(model=nom_modele, max_tokens=400,
                                                      messages=message)
         except Exception as exc:  # noqa: BLE001 - un diagnostic rapporte, il ne plante pas
             statut = getattr(exc, 'statut', None) or getattr(exc, 'status_code', None)
