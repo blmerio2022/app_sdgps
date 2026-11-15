@@ -6,6 +6,8 @@ export interface IaStatut {
   modele: string | null;
   /** Vrai si l'IA passe par une passerelle (OmniRoute…) plutôt que l'API Anthropic. */
   passerelle?: boolean | null;
+  /** Libellé du fournisseur choisi (Google Gemini, OpenRouter…), s'il est configuré. */
+  fournisseur?: string | null;
 }
 
 export type IaConfiance = 'haute' | 'moyenne' | 'faible';

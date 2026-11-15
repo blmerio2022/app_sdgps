@@ -148,12 +148,14 @@ class InertieTests(IaBaseTest):
     def test_statut_annonce_l_inactivite(self):
         resp = self.api.get('/api/v1/ia/statut/')
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.data, {'disponible': False, 'modele': None, 'passerelle': None})
+        self.assertEqual(resp.data, {'disponible': False, 'modele': None, 'passerelle': None,
+                                     'fournisseur': None})
 
     @override_settings(**ACTIVE)
     def test_statut_actif(self):
         self.assertEqual(self.api.get('/api/v1/ia/statut/').data,
-                         {'disponible': True, 'modele': 'claude-opus-5-5', 'passerelle': False})
+                         {'disponible': True, 'modele': 'claude-opus-5-5', 'passerelle': False,
+                          'fournisseur': None})
 
     @override_settings(**PASSERELLE)
     def test_statut_passerelle(self):
@@ -524,8 +526,8 @@ class CommandeVerifierTests(SimpleTestCase):
         )
         texte = self._executer(sdk)
         self.assertIn('http://localhost:20128', texte)
-        self.assertIn('cc/claude-opus-5-5  ← IA_MODELE', texte)
-        self.assertIn("Appel d'essai réussi", texte)
+        self.assertIn('cc/claude-opus-5-5  ← configuré', texte)
+        self.assertIn('Essai « cc/claude-opus-5-5 » réussi', texte)
         self.assertNotIn('sk-test-factice', texte)                  # la clé n'apparaît jamais
 
     @override_settings(**PASSERELLE)
@@ -539,14 +541,207 @@ class CommandeVerifierTests(SimpleTestCase):
                 raise AssertionError('la pagination automatique ne doit pas être utilisée')
 
         sdk = SimpleNamespace(models=SimpleNamespace(list=lambda limit: Page()))
-        self.assertIn('cc/claude-opus-5-5  ← IA_MODELE', self._executer(sdk, sans_appel=True))
+        self.assertIn('cc/claude-opus-5-5  ← configuré', self._executer(sdk, sans_appel=True))
 
     @override_settings(**{**PASSERELLE, 'IA_MODELE': 'inexistant'})
     def test_signale_un_modele_absent_sans_appel(self):
         sdk = SimpleNamespace(models=SimpleNamespace(list=lambda limit: [SimpleNamespace(id='glm/glm-5.2')]))
         texte = self._executer(sdk, sans_appel=True)
-        self.assertIn("« inexistant » n'est pas dans la liste", texte)
+        self.assertIn('Absent(s) de la liste : inexistant', texte)
 
     @override_settings(**{**PASSERELLE, 'ANTHROPIC_API_KEY': ''})
     def test_sans_cle(self):
         self.assertIn('Aucune clé', self._executer(SimpleNamespace()))
+
+
+# =========================================================================== fournisseurs
+
+from ia import fournisseurs, openai_compat  # noqa: E402
+
+GOOGLE = {**ACTIVE, 'IA_FOURNISSEUR': 'google', 'IA_MODELE': 'gemini-flash', 'IA_CLE': 'cle-google',
+          'ANTHROPIC_API_KEY': '', 'IA_MODELES_SECOURS': 'gemini-flash-lite, gemma-libre'}
+
+
+def chat(contenu=None, appels=None, fin='stop', modele='gemini-flash'):
+    """Réponse Chat Completions (format OpenAI)."""
+    message = {'role': 'assistant', 'content': contenu}
+    if appels:
+        message['tool_calls'] = appels
+    return {'model': modele, 'choices': [{'message': message, 'finish_reason': fin}],
+            'usage': {'prompt_tokens': 50, 'completion_tokens': 10}}
+
+
+class CatalogueTests(SimpleTestCase):
+    def test_fournisseurs_gratuits_au_catalogue(self):
+        for cle in ('google', 'openrouter', 'groq', 'mistral', 'cerebras', 'opencode', 'omniroute'):
+            f = fournisseurs.fournisseur(cle)
+            self.assertIsNotNone(f, cle)
+            self.assertTrue(f.base_url.startswith('http'), cle)
+        self.assertEqual(fournisseurs.fournisseur('GOOGLE').protocole, 'openai')
+        self.assertIsNone(fournisseurs.fournisseur(''))
+        self.assertIsNone(fournisseurs.fournisseur('inconnu'))
+
+    @override_settings(**GOOGLE)
+    def test_configuration_resolue_depuis_le_catalogue(self):
+        self.assertEqual(client.protocole(), 'openai')
+        self.assertEqual(client.adresse(), 'https://generativelanguage.googleapis.com/v1beta/openai')
+        self.assertEqual(client.cle(), 'cle-google')                  # IA_CLE prioritaire
+        self.assertTrue(client.compatible())
+        self.assertTrue(client.disponible())
+        self.assertEqual(client.modeles_essai(), ['gemini-flash', 'gemini-flash-lite', 'gemma-libre'])
+
+    @override_settings(**{**GOOGLE, 'IA_BASE_URL': 'https://passerelle.test/v1'})
+    def test_adresse_explicite_prioritaire(self):
+        self.assertEqual(client.adresse(), 'https://passerelle.test/v1')
+
+    @override_settings(**{**ACTIVE, 'IA_FOURNISSEUR': 'omniroute', 'IA_MODELE': ''})
+    def test_omniroute_reste_en_protocole_anthropic_compatible(self):
+        self.assertEqual((client.protocole(), client.modele()), ('anthropic', 'Free-Combo'))
+        self.assertTrue(client.compatible())
+
+    @override_settings(**{**ACTIVE, 'IA_MODELE': ''})
+    def test_sans_fournisseur_modele_claude_par_defaut(self):
+        self.assertEqual(client.modele(), 'claude-opus-5-5')
+        self.assertFalse(client.compatible())
+
+
+class TraductionOpenAITests(SimpleTestCase):
+    def test_messages_outils_et_resultats(self):
+        messages = [
+            {'role': 'user', 'content': 'Mes dossiers ?'},
+            {'role': 'assistant', 'content': [
+                SimpleNamespace(type='thinking', thinking='...'),
+                SimpleNamespace(type='text', text='Je regarde.'),
+                SimpleNamespace(type='tool_use', id='t1', name='chercher_dossiers', input={'texte': 'Zaytoun'}),
+            ]},
+            {'role': 'user', 'content': [
+                {'type': 'tool_result', 'tool_use_id': 't1', 'content': '{"total": 1}'}]},
+        ]
+        sortie = openai_compat.traduire_messages('Tu aides.', messages)
+        self.assertEqual(sortie[0], {'role': 'system', 'content': 'Tu aides.'})
+        self.assertEqual(sortie[1], {'role': 'user', 'content': 'Mes dossiers ?'})
+        self.assertEqual(sortie[2]['content'], 'Je regarde.')
+        appel = sortie[2]['tool_calls'][0]
+        self.assertEqual((appel['id'], appel['function']['name']), ('t1', 'chercher_dossiers'))
+        self.assertEqual(json.loads(appel['function']['arguments']), {'texte': 'Zaytoun'})
+        self.assertEqual(sortie[3], {'role': 'tool', 'tool_call_id': 't1', 'content': '{"total": 1}'})
+
+    def test_outils(self):
+        outils = openai_compat.traduire_outils([{'name': 'f', 'description': 'd',
+                                                 'input_schema': {'type': 'object'}}])
+        self.assertEqual(outils, [{'type': 'function', 'function': {
+            'name': 'f', 'description': 'd', 'parameters': {'type': 'object'}}}])
+
+    def test_reponse_texte_sans_raisonnement(self):
+        r = openai_compat.traduire_reponse(chat('<think>je réfléchis</think>\nBonjour.'))
+        self.assertEqual((client.texte(r), r.stop_reason, r.model), ('Bonjour.', 'end_turn', 'gemini-flash'))
+        self.assertEqual((r.usage.input_tokens, r.usage.output_tokens), (50, 10))
+
+    def test_reponse_appel_d_outil(self):
+        r = openai_compat.traduire_reponse(chat(None, [
+            {'id': 'c1', 'type': 'function',
+             'function': {'name': 'tableau_de_bord', 'arguments': '{}'}},
+            {'id': 'c2', 'type': 'function', 'function': {'name': 'x', 'arguments': 'pas du json'}},
+        ], fin='stop'))                               # certains répondent « stop » malgré tout
+        self.assertEqual(r.stop_reason, 'tool_use')
+        self.assertEqual([(b.type, b.name, b.input) for b in r.content],
+                         [('tool_use', 'tableau_de_bord', {}), ('tool_use', 'x', {})])
+
+    def test_arrets(self):
+        self.assertEqual(openai_compat.traduire_reponse(chat('x', fin='length')).stop_reason, 'max_tokens')
+        self.assertEqual(openai_compat.traduire_reponse(chat('x', fin='content_filter')).stop_reason, 'refusal')
+
+
+@override_settings(**GOOGLE)
+class AppelOpenAITests(IaBaseTest):
+    def test_appel_et_consigne_json(self):
+        with patch('ia.openai_compat._requete', return_value=chat('```json\n{"ok": true}\n```')) as req:
+            r = client.appeler('essai', self.agent, system='Tu aides.',
+                               messages=[{'role': 'user', 'content': 'x'}], schema={'type': 'object'})
+        methode, url, cle, corps, _delai = req.call_args.args
+        self.assertEqual((methode, url, cle), (
+            'POST', 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', 'cle-google'))
+        self.assertEqual(corps['model'], 'gemini-flash')
+        self.assertIn('FORMAT DE RÉPONSE OBLIGATOIRE', corps['messages'][0]['content'])
+        self.assertNotIn('output_config', corps)
+        self.assertEqual(client.json_de(r), {'ok': True})
+        ev = AuditEvent.objects.get(action=AuditEvent.ACTION_IA_APPEL)
+        self.assertEqual((ev.details['fournisseur'], ev.details['modele']), ('google', 'gemini-flash'))
+
+    def test_quota_epuise_bascule_sur_le_modele_de_secours(self):
+        reponses = [openai_compat.ErreurHttp(429, 'quota'), chat('Bonjour.', modele='gemini-flash-lite')]
+
+        def requete(*args):
+            r = reponses.pop(0)
+            if isinstance(r, Exception):
+                raise r
+            return r
+        with patch('ia.openai_compat._requete', side_effect=requete) as req:
+            r = client.appeler('essai', self.agent, messages=[{'role': 'user', 'content': 'x'}])
+        self.assertEqual(client.texte(r), 'Bonjour.')
+        self.assertEqual([c.args[3]['model'] for c in req.call_args_list], ['gemini-flash', 'gemini-flash-lite'])
+        erreurs = list(AuditEvent.objects.filter(action=AuditEvent.ACTION_IA_APPEL)
+                       .values_list('details__erreur', flat=True).order_by('created_at'))
+        self.assertEqual(erreurs, ['debit', None])
+
+    def test_cle_refusee_ne_bascule_pas(self):
+        with patch('ia.openai_compat._requete', side_effect=openai_compat.ErreurHttp(401)) as req, \
+                self.assertRaisesMessage(client.IaErreur, 'clé'):
+            client.appeler('essai', self.agent, messages=[{'role': 'user', 'content': 'x'}])
+        self.assertEqual(req.call_count, 1)                    # même clé pour tous : inutile
+
+    def test_tous_les_modeles_epuises(self):
+        with patch('ia.openai_compat._requete', side_effect=openai_compat.ErreurHttp(429)) as req, \
+                self.assertRaisesMessage(client.IaErreur, 'saturé'):
+            client.appeler('essai', self.agent, messages=[{'role': 'user', 'content': 'x'}])
+        self.assertEqual(req.call_count, 3)
+
+    def test_assistant_de_bout_en_bout_en_protocole_openai(self):
+        reponses = [
+            chat(None, [{'id': 'c1', 'type': 'function',
+                         'function': {'name': 'chercher_dossiers', 'arguments': '{"texte": "Zaytoun"}'}}],
+                 fin='tool_calls'),
+            chat('Un dossier trouvé : SDGPS n°4.'),
+        ]
+        with patch('ia.openai_compat._requete', side_effect=lambda *a: reponses.pop(0)) as req:
+            resp = self.api.post('/api/v1/ia/assistant/', {'messages': [
+                {'role': 'user', 'content': 'Où en est Zaytoun ?'}]}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['outils'], ['chercher_dossiers'])
+        self.assertIn('SDGPS n°4', resp.data['reponse'])
+        second = req.call_args_list[1].args[3]['messages']
+        self.assertEqual(second[-1]['role'], 'tool')
+        self.assertIn('Zaytoun', second[-1]['content'])
+        self.assertEqual(req.call_args_list[0].args[3]['tools'][0]['type'], 'function')
+
+    def test_statut_annonce_le_fournisseur(self):
+        self.assertEqual(self.api.get('/api/v1/ia/statut/').data['fournisseur'], 'Google Gemini (AI Studio)')
+
+
+class DiagnosticOpenAITests(SimpleTestCase):
+    @override_settings(**GOOGLE)
+    def test_liste_et_essaie_chaque_modele(self):
+        from io import StringIO
+        from django.core.management import call_command
+        sortie = StringIO()
+        with patch('ia.openai_compat.lister_modeles', return_value=['gemini-flash', 'gemini-flash-lite']), \
+                patch('ia.openai_compat.creer', side_effect=[
+                    openai_compat.traduire_reponse(chat('OK')),
+                    openai_compat.ErreurHttp(429, 'quota'),
+                    openai_compat.traduire_reponse(chat('OK', modele='gemma-libre'))]):
+            call_command('ia_verifier', stdout=sortie)
+        texte = sortie.getvalue()
+        self.assertIn('Google Gemini', texte)
+        self.assertIn('gemini-flash → gemini-flash-lite → gemma-libre', texte)
+        self.assertIn('Absent(s) de la liste : gemma-libre', texte)
+        self.assertIn('Essai « gemini-flash » réussi', texte)
+        self.assertIn('Essai « gemini-flash-lite » : échec (429)', texte)
+        self.assertNotIn('cle-google', texte)
+
+    def test_catalogue(self):
+        from io import StringIO
+        from django.core.management import call_command
+        sortie = StringIO()
+        call_command('ia_verifier', fournisseurs=True, stdout=sortie)
+        self.assertIn('openrouter', sortie.getvalue())
+        self.assertIn('aistudio.google.com', sortie.getvalue())

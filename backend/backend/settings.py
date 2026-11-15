@@ -373,7 +373,18 @@ REST_FRAMEWORK = {
 # le respect de la loi 09-08 (CNDP). Cf. CLAUDE.md, « Intelligence artificielle ».
 IA_ACTIVE = config('IA_ACTIVE', default=False, cast=bool)
 ANTHROPIC_API_KEY = config('ANTHROPIC_API_KEY', default='')
-IA_MODELE = config('IA_MODELE', default='claude-opus-5-5')
+# Fournisseur (cf. ia/fournisseurs.py) : anthropic, google, openrouter, groq, mistral,
+# cerebras, opencode, omniroute — vide = API Anthropic directe (ou IA_BASE_URL).
+IA_FOURNISSEUR = config('IA_FOURNISSEUR', default='')
+# Clé du fournisseur. ANTHROPIC_API_KEY reste lue si IA_CLE est vide (compatibilité).
+IA_CLE = config('IA_CLE', default='')
+# Vide = modèle suggéré par le fournisseur (claude-opus-5-5 pour Anthropic).
+IA_MODELE = config('IA_MODELE', default='')
+# Modèles essayés ensuite si le premier échoue (quota, modèle inconnu, panne), séparés
+# par des virgules — utile avec les offres gratuites.
+IA_MODELES_SECOURS = config('IA_MODELES_SECOURS', default='')
+# Protocole forcé (anthropic | openai) pour une adresse hors catalogue.
+IA_PROTOCOLE = config('IA_PROTOCOLE', default='')
 # Passerelle compatible Anthropic (OmniRoute, LiteLLM…) : adresse RACINE, sans « /v1 »
 # (le SDK ajoute /v1/messages). Vide = API Anthropic directe. La clé reste lue dans
 # ANTHROPIC_API_KEY (envoyée en x-api-key) — pour une passerelle, c'est SA clé.

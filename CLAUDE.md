@@ -352,6 +352,17 @@ foi d'une réponse du modèle :
   `claude-opus-5-5`), délai `IA_DELAI`, plafond par utilisateur `IA_DEBIT` (throttle `ia`).
   Railway `sdgps-test` (service `app`) : `IA_ACTIVE`, `IA_MODELE`, `IA_DELAI`, `IA_DEBIT`
   posées ; `ANTHROPIC_API_KEY` est posée par l'opérateur lui-même (secret) ;
+- **fournisseurs** (`ia/fournisseurs.py`, `IA_FOURNISSEUR`) : `anthropic`, `google`
+  (Gemini, clé gratuite AI Studio), `openrouter` (modèles `:free`), `groq`, `mistral`,
+  `cerebras`, `opencode` (ses modèles GRATUITS sont réservés à OpenCode : payants
+  seulement ici), `omniroute`. Le catalogue fournit protocole, adresse et modèle
+  suggéré ; `IA_BASE_URL` / `IA_MODELE` / `IA_PROTOCOLE` surchargent. Clé : `IA_CLE`
+  (repli `ANTHROPIC_API_KEY`). Protocole `openai` (« Chat Completions ») :
+  `ia/openai_compat.py`, HTTP de la bibliothèque standard, traduction aller-retour vers le
+  format de l'API Messages (blocs `text` / `tool_use` / `tool_result`, `<think>` retiré) —
+  les trois fonctions ignorent quel fournisseur répond. `IA_MODELES_SECOURS` (virgules) :
+  modèles essayés ensuite sur quota (429), modèle inconnu (404), 400 ou 5xx — jamais sur une
+  clé refusée ni un service injoignable (inutile : même clé, même adresse) ;
 - **passerelle compatible Anthropic (OmniRoute)** : `IA_BASE_URL` = adresse RACINE, sans
   `/v1` (ex. `http://localhost:20128` en local) ; la clé de la passerelle va dans
   `ANTHROPIC_API_KEY` (x-api-key) ; `IA_MODELE` = un identifiant OmniRoute
@@ -361,8 +372,8 @@ foi d'une réponse du modèle :
   avec tolérance (`client.extraire_json`). ⚠ La passerelle doit être joignable DEPUIS le
   serveur : un OmniRoute sur `localhost` ne sert que l'application locale ; pour Railway,
   il faut une adresse publique (tunnel). Diagnostic : `python manage.py ia_verifier`
-  (mode, modèles accessibles, appel d'essai — `--sans-appel`, `--filtre`), clé jamais
-  affichée ;
+  (fournisseur, modèles accessibles, appel d'essai par modèle — `--sans-appel`,
+  `--filtre :free`, `--fournisseurs` pour le catalogue), clé jamais affichée ;
 - **point de passage unique** : `ia/client.py::appeler(...)` — jamais le SDK `anthropic` en
   direct. Il journalise chaque appel (`AuditEvent.ACTION_IA_APPEL` : fonction, modèle, jetons,
   erreur), traduit les erreurs du fournisseur en `IaErreur` (message en français), active le
