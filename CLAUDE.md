@@ -235,7 +235,9 @@ défauts dans `DEFAUTS`) :
   majoritaire dans les données réelles) ; une ligne au mode inconnu n'est pas contrôlée ;
 - RFB : Δ3D > « Tolérance » ou « Tolérable » = Non ;
 - écarts des déterminations (version écarts des RDL/RDN/RDIA, RDI brut) et RC : |ΔD| > 15 cm.
-`evaluer()` renvoie les colonnes fautives par ligne ; `_table_cells` marque les cellules
+Chaque règle a son interrupteur `actif` ; la barre d'outils de l'écran propose aussi « Tout activer / Tout
+désactiver » (compteur « n / N règles actives », seuils conservés), appliqué à toute entrée de la
+configuration qui porte un `actif` — une règle ajoutée y entre d'office. `evaluer()` renvoie les colonnes fautives par ligne ; `_table_cells` marque les cellules
 (`hors_tol`, encadré rouge) et toute la ligne (`row_hors_tol`) ; une légende `.tol-alerte`
 précède le tableau. Le rapport applique les tolérances de **celui qui le demande** (vue
 synchrone : `request.user` ; tâche de fond : `generation.created_by`). Ajouter une règle =

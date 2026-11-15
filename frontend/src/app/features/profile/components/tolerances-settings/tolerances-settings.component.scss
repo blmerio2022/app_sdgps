@@ -14,7 +14,7 @@
   .subtitle { margin: 6px 0 0; font-size: 13.5px; color: var(--text-muted); max-width: 860px; }
 }
 
-.tol-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.tol-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; margin-bottom: 14px; }
 .spacer { flex: 1; }
 .tol-autosave { font-size: 12.5px;
   .saving { color: var(--text-muted); } .saved { color: #2ecc71; } .idle { color: var(--text-muted); }
@@ -22,8 +22,22 @@
 .btn-reset {
   display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px; border-radius: 8px; cursor: pointer;
   background: transparent; border: 1px solid var(--border-color); color: var(--text-muted); font-size: 12.5px; font-weight: 600;
+  white-space: nowrap;
   &:hover { border-color: var(--accent-color); color: var(--accent-color); }
 }
+.tol-bulk { display: inline-flex; white-space: nowrap; align-items: center; gap: 3px; padding: 3px; border-radius: 9px;
+  background: var(--secondary-color); border: 1px solid var(--border-color);
+  button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border: none; border-radius: 7px; cursor: pointer;
+    background: transparent; color: var(--text-muted); font-size: 12.5px; font-weight: 600;
+    &:hover:not(:disabled) { color: var(--accent-color); background: var(--hover-bg); }
+    &:disabled { opacity: .45; cursor: default; } } }
+.tol-count { padding: 0 10px 0 8px; font-size: 12px; font-weight: 600; color: var(--text-color); font-variant-numeric: tabular-nums;
+  border-right: 1px solid var(--border-color); margin-right: 2px;
+  i { margin-right: 5px; color: var(--accent-color); }
+  &.none, &.none i { color: var(--text-muted); } }
+.tol-info { margin-bottom: 12px; padding: 9px 13px; border-radius: 8px; font-size: 13px;
+  color: #d9a441; background: rgba(217, 164, 65, 0.12); border: 1px solid rgba(217, 164, 65, 0.3);
+  i { margin-right: 6px; } }
 .tol-error { margin-bottom: 12px; padding: 9px 13px; border-radius: 8px; font-size: 13px;
   color: #e74c3c; background: rgba(231, 76, 60, 0.12); border: 1px solid rgba(231, 76, 60, 0.3); }
 .tol-loading { padding: 30px; text-align: center; color: var(--text-muted); }

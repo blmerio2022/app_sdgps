@@ -12,9 +12,24 @@
       <span class="idle" *ngIf="!saving && !savedFlash"><i class="fas fa-bolt"></i> Les modifications sont enregistrées automatiquement</span>
     </div>
     <span class="spacer"></span>
+    <div class="tol-bulk" role="group" aria-label="Activer ou désactiver toutes les règles">
+      <span class="tol-count" [class.none]="aucuneActive">
+        <i class="fas" [ngClass]="aucuneActive ? 'fa-eye-slash' : 'fa-shield-halved'"></i>
+        {{ nbActives }} / {{ regles.length }} règle{{ regles.length > 1 ? 's' : '' }} active{{ nbActives > 1 ? 's' : '' }}
+      </span>
+      <button type="button" (click)="basculerTout(true)" [disabled]="toutesActives"
+              title="Activer toutes les règles (les seuils réglés sont conservés)">
+        <i class="fas fa-toggle-on"></i> Tout activer</button>
+      <button type="button" (click)="basculerTout(false)" [disabled]="aucuneActive"
+              title="Désactiver toutes les règles : aucune valeur ne sera signalée dans le rapport">
+        <i class="fas fa-toggle-off"></i> Tout désactiver</button>
+    </div>
     <button type="button" class="btn-reset" (click)="reset()"><i class="fas fa-arrows-rotate"></i> Valeurs par défaut</button>
   </div>
 
+  <div class="tol-info" *ngIf="cfg && aucuneActive">
+    <i class="fas fa-circle-info"></i> Toutes les règles sont désactivées : le rapport SDGPS ne signalera aucune valeur hors tolérance.
+  </div>
   <div class="tol-error" *ngIf="error"><i class="fas fa-triangle-exclamation"></i> {{ error }}</div>
   <div class="tol-loading" *ngIf="loading"><i class="fas fa-spinner fa-spin"></i> Chargement…</div>
 

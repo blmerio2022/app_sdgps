@@ -96,4 +96,32 @@ describe('TolerancesSettingsComponent', () => {
     cmp.reset();
     expect(svc.reset).toHaveBeenCalled();
   });
+
+  it('tout désactiver puis tout activer, seuils conservés', fakeAsync(() => {
+    cmp.setCm('rc_ecarts', 10);
+    tick(700);
+    expect(cmp.regles).toEqual(['rob_duree', 'rtlb_duree', 'rfb_fermeture', 'ecarts_determinations', 'rc_ecarts']);
+    expect(cmp.toutesActives).toBeTrue();
+
+    cmp.basculerTout(false);
+    expect(cmp.aucuneActive).toBeTrue();
+    expect(cmp.nbActives).toBe(0);
+    tick(700);
+    const off = svc.save.calls.mostRecent().args[0];
+    ['rob_duree', 'rtlb_duree', 'rfb_fermeture', 'ecarts_determinations'].forEach(k => expect(off[k]).toEqual({ actif: false }));
+    expect(off.rc_ecarts).toEqual({ actif: false, max_m: 0.1 });
+
+    cmp.basculerTout(true);
+    expect(cmp.toutesActives).toBeTrue();
+    tick(700);
+    expect(svc.save.calls.mostRecent().args[0]).toEqual({ rc_ecarts: { max_m: 0.1 } });
+    flush();
+  }));
+
+  it('les compteurs suivent les interrupteurs individuels', () => {
+    cmp.cfg!.rfb_fermeture.actif = false;
+    expect(cmp.nbActives).toBe(4);
+    expect(cmp.toutesActives).toBeFalse();
+    expect(cmp.aucuneActive).toBeFalse();
+  });
 });

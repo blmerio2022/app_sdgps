@@ -85,6 +85,26 @@ export class TolerancesSettingsComponent implements OnInit, OnDestroy {
     if (this.cfg) { this.cfg[regle].max_m = Math.max(0, Number(v) || 0) / 100; this.changed(); }
   }
 
+  /**
+   * Règles activables : toute entrée de la configuration qui porte un interrupteur `actif`.
+   * Dérivé de la configuration (et non d'une liste en dur) : une règle ajoutée côté serveur
+   * est prise en compte d'office par « Tout activer / Tout désactiver ».
+   */
+  get regles(): string[] {
+    if (!this.cfg) return [];
+    return Object.keys(this.cfg).filter(k => typeof (this.cfg as any)[k]?.actif === 'boolean');
+  }
+  get nbActives(): number { return this.regles.filter(k => (this.cfg as any)[k].actif).length; }
+  get toutesActives(): boolean { return this.regles.length > 0 && this.nbActives === this.regles.length; }
+  get aucuneActive(): boolean { return this.nbActives === 0; }
+
+  /** Active (ou désactive) toutes les règles d'un coup ; les seuils réglés sont conservés. */
+  basculerTout(actif: boolean): void {
+    if (!this.cfg) return;
+    this.regles.forEach(k => ((this.cfg as any)[k].actif = actif));
+    this.changed();
+  }
+
   /** La règle s'écarte-t-elle des valeurs par défaut ? (badge « Personnalisé ») */
   modifie(cle: keyof TolerancesConfig): boolean {
     if (!this.cfg || !this.defauts) return false;
