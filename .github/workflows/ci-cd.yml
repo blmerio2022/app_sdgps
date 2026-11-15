@@ -132,15 +132,20 @@ jobs:
         run: |
           npm install -g @railway/cli --allow-scripts=@railway/cli
           JETON="$(printf '%s' "$JETON" | tr -d '[:space:]')"   # espaces / retour ligne collés
-          if RAILWAY_TOKEN="$JETON" railway status >/dev/null 2>&1; then
+          echo "Jeton : ${#JETON} caractères."
+          # (1) jeton de PROJET : `status` lit le projet et l'environnement portés par le jeton.
+          if sortie_projet="$(RAILWAY_TOKEN="$JETON" railway status 2>&1)"; then
             echo "Jeton de projet Railway détecté."
             export RAILWAY_TOKEN="$JETON"
-          elif RAILWAY_API_TOKEN="$JETON" railway whoami >/dev/null 2>&1; then
-            echo "Jeton de compte Railway détecté : liaison au projet $RAILWAY_PROJECT_ID ($RAILWAY_ENVIRONMENT)."
+          # (2) jeton de COMPTE ou d'ÉQUIPE : on lie directement le projet (`whoami` échoue
+          #     avec un jeton d'équipe, pourtant valide pour déployer).
+          elif sortie_compte="$(RAILWAY_API_TOKEN="$JETON" railway link --project "$RAILWAY_PROJECT_ID"                  --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_SERVICE" 2>&1)"; then
+            echo "Jeton de compte / d'équipe Railway détecté : projet $RAILWAY_PROJECT_ID lié ($RAILWAY_ENVIRONMENT)."
             export RAILWAY_API_TOKEN="$JETON"
-            railway link --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_SERVICE"
           else
-            echo "::error title=Jeton Railway refusé::Le secret RAILWAY_TOKEN_TEST n'est accepté ni comme jeton de projet ni comme jeton de compte (expiré, révoqué, ou mal copié). Recréez-le : Railway › sdgps-test › Settings › Tokens (environnement production)."
+            echo "Réponse de Railway — jeton de projet : $sortie_projet"
+            echo "Réponse de Railway — jeton de compte  : $sortie_compte"
+            echo "::error title=Jeton Railway refusé::Le secret RAILWAY_TOKEN_TEST n'est accepté ni comme jeton de projet ni comme jeton de compte (expiré, révoqué, mal copié, ou créé pour un autre projet / environnement). Détail de Railway ci-dessus."
             exit 1
           fi
           railway up --service "$RAILWAY_SERVICE" --ci
