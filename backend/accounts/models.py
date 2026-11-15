@@ -692,6 +692,17 @@ class AuditEvent(models.Model):
     ACTION_IA_APPEL = 'AI_CALL'
     ACTION_IA_CONFIG = 'AI_CONFIG_CHANGED'
     ACTION_JOURNAL_EXPORTE = 'AUDIT_EXPORTED'
+    ACTION_DOSSIER_EXPORTE = 'DOSSIER_EXPORTED'
+    ACTION_DOSSIER_IMPORTE = 'DOSSIER_IMPORTED'
+    ACTION_2FA_ACTIVEE = 'MFA_ENABLED'
+    ACTION_2FA_DESACTIVEE = 'MFA_DISABLED'
+    ACTION_2FA_ECHEC = 'MFA_FAILED'
+    ACTION_SESSION_REVOQUEE = 'SESSION_REVOKED'
+    ACTION_COMPTE_DESACTIVE = 'ACCOUNT_DEACTIVATED'
+    ACTION_ALERTE_SECURITE = 'SECURITY_ALERT'
+    ACTION_SAUVEGARDE = 'BACKUP_CREATED'
+    ACTION_SAUVEGARDE_TELECHARGEE = 'BACKUP_DOWNLOADED'
+    ACTION_SAUVEGARDE_RESTAUREE = 'BACKUP_RESTORED'
 
     ACTIONS = [
         (ACTION_CONNEXION, 'Connexion réussie'),
@@ -708,6 +719,17 @@ class AuditEvent(models.Model):
         (ACTION_IA_APPEL, "Appel à l'intelligence artificielle"),
         (ACTION_IA_CONFIG, "Configuration de l'IA modifiée"),
         (ACTION_JOURNAL_EXPORTE, "Journal d'audit exporté"),
+        (ACTION_DOSSIER_EXPORTE, 'Dossier exporté (ZIP)'),
+        (ACTION_DOSSIER_IMPORTE, 'Dossier importé en masse'),
+        (ACTION_2FA_ACTIVEE, 'Double authentification activée'),
+        (ACTION_2FA_DESACTIVEE, 'Double authentification désactivée'),
+        (ACTION_2FA_ECHEC, 'Code de double authentification refusé'),
+        (ACTION_SESSION_REVOQUEE, 'Session révoquée'),
+        (ACTION_COMPTE_DESACTIVE, 'Compte désactivé (inactivité)'),
+        (ACTION_ALERTE_SECURITE, 'Alerte de sécurité'),
+        (ACTION_SAUVEGARDE, 'Sauvegarde créée'),
+        (ACTION_SAUVEGARDE_TELECHARGEE, 'Sauvegarde téléchargée'),
+        (ACTION_SAUVEGARDE_RESTAUREE, 'Sauvegarde restaurée'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

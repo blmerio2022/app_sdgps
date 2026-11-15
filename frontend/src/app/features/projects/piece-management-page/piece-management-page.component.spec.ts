@@ -1,5 +1,6 @@
 import { fakeAsync, tick } from '@angular/core/testing';
 import { of, throwError, Subject } from 'rxjs';
+import { HttpHeaders, HttpResponse } from '@angular/common/http';
 import { PieceManagementPageComponent } from './piece-management-page.component';
 import { Piece } from '../../../core/models/piece.model';
 
@@ -1019,7 +1020,7 @@ describe('PieceManagementPageComponent — contrôle de cohérence', () => {
  */
 describe('PieceManagementPageComponent — cycle de vie du dossier', () => {
   let cmp: PieceManagementPageComponent;
-  let projectsSvc: jasmine.SpyObj<{ transitionSsdgps: any }>;
+  let projectsSvc: jasmine.SpyObj<{ transitionSsdgps: any; exportSsdgpsZip: any }>;
   let toast: any;
 
   function ssdgps(over: any = {}): any {
@@ -1031,7 +1032,7 @@ describe('PieceManagementPageComponent — cycle de vie du dossier', () => {
   }
 
   beforeEach(() => {
-    projectsSvc = jasmine.createSpyObj('ProjectsService', ['transitionSsdgps']);
+    projectsSvc = jasmine.createSpyObj('ProjectsService', ['transitionSsdgps', 'exportSsdgpsZip']);
     toast = jasmine.createSpyObj('ToastService', ['success', 'error']);
     const stub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
     cmp = new PieceManagementPageComponent(
@@ -1050,6 +1051,20 @@ describe('PieceManagementPageComponent — cycle de vie du dossier', () => {
 
     cmp.ssdgps = ssdgps({ statut: 'soumis', transitions: ['valider', 'rejeter'] });
     expect(cmp.availableTransitions).toEqual(['valider', 'rejeter'] as any);
+  });
+
+  it('export ZIP : télécharge sous le nom donné par le serveur ; 413 → message clair', () => {
+    projectsSvc.exportSsdgpsZip.and.returnValue(of(new HttpResponse({
+      body: new Blob(['PK']), headers: new HttpHeaders({ 'Content-Disposition': 'attachment; filename="SDGPS_P_SD1_N2.zip"' }) })));
+    spyOn(URL, 'createObjectURL').and.returnValue('blob:x');
+    const clic = spyOn(HTMLAnchorElement.prototype, 'click');
+    cmp.exporterZip();
+    expect(projectsSvc.exportSsdgpsZip).toHaveBeenCalledWith('s1');
+    expect(clic).toHaveBeenCalled();
+    expect(cmp.exportZip).toBeFalse();
+    projectsSvc.exportSsdgpsZip.and.returnValue(throwError(() => ({ status: 413 })));
+    cmp.exporterZip();
+    expect(toast.error).toHaveBeenCalledWith('Export du dossier', 'Dossier trop volumineux pour un export ZIP.');
   });
 
   it('n’offre aucune décision dans la corbeille', () => {

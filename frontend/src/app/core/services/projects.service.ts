@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { environment } from '../../../environments/environment';
@@ -89,6 +89,11 @@ export class ProjectsService {
    * les pièces validées pour soumettre, motif pour rejeter) et son contrôle de rôle.
    * `motif` est obligatoire pour `rejeter` et `rouvrir`.
    */
+  /** Archive ZIP complète du dossier (fiche, données CSV, sources, photos, dernier rapport). */
+  exportSsdgpsZip(id: string): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.base}ssdgps/${id}/export-zip/`, { responseType: 'blob', observe: 'response' });
+  }
+
   transitionSsdgps(id: string, action: SsdgpsTransition, motif = ''): Observable<Ssdgps> {
     return this.http.post<Ssdgps>(`${this.base}ssdgps/${id}/transition/`, { action, motif });
   }

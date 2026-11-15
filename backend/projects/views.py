@@ -431,6 +431,29 @@ class SsdgpsViewSet(BaseOrgScopedViewSet):
             **cumul_pieces_annotations(),
         ).annotate(nbr_total_pieces=CUMUL_PIECES_TOTAL)
 
+    # --- Export complet du dossier (ZIP) ---------------------------------------------
+
+    @action(detail=True, methods=['get'], url_path='export-zip')
+    def export_zip(self, request, pk=None):
+        """
+        GET /api/v1/ssdgps/<id>/export-zip/ — archive ZIP du dossier : fiche, données CSV,
+        fichiers sources, photos, dernier rapport. Lecture seule : ouverte même sur un
+        dossier figé. Journalisé (`ACTION_DOSSIER_EXPORTE`). Cf. `projects/export_dossier.py`.
+        """
+        from django.http import FileResponse
+        from .export_dossier import ExportTropVolumineux, construire_zip
+
+        ssdgps = self.get_object()
+        try:
+            fichier, nom, stats = construire_zip(ssdgps)
+        except ExportTropVolumineux as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
+        journaliser(AuditEvent.ACTION_DOSSIER_EXPORTE, request=request, cible=ssdgps,
+                    cible_libelle=str(ssdgps), fichier=nom, **stats)
+        reponse = FileResponse(fichier, as_attachment=True, filename=nom, content_type='application/zip')
+        reponse['Access-Control-Expose-Headers'] = 'Content-Disposition'
+        return reponse
+
     # --- File de validation (encadrement) ------------------------------------------
 
     @action(detail=False, methods=['get'], url_path='a-valider')

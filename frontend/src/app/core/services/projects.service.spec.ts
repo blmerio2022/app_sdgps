@@ -113,4 +113,14 @@ describe('ProjectsService', () => {
       req.flush({});
     });
   });
+
+  describe('exportSsdgpsZip()', () => {
+    it('télécharge l’archive en blob avec ses en-têtes', () => {
+      service.exportSsdgpsZip('s1').subscribe();
+      const req = httpMock.expectOne(`${BASE}ssdgps/s1/export-zip/`);
+      expect(req.request.method).toBe('GET');
+      expect(req.request.responseType).toBe('blob');
+      req.flush(new Blob(['PK']));
+    });
+  });
 });

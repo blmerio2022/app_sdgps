@@ -873,6 +873,29 @@ export class PieceManagementPageComponent implements OnInit {
       : "Suivre ce dossier pièce par pièce à partir d'un modèle";
   }
 
+  /** Export ZIP du dossier en cours. */
+  exportZip = false;
+
+  exporterZip(): void {
+    if (!this.ssdgps || this.exportZip) return;
+    this.exportZip = true;
+    this.projectsService.exportSsdgpsZip(this.ssdgps.id).subscribe({
+      next: rep => {
+        this.exportZip = false;
+        const dispo = rep.headers.get('Content-Disposition') || '';
+        const nom = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(dispo)?.[1] || 'dossier-sdgps.zip';
+        const url = URL.createObjectURL(rep.body as Blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = decodeURIComponent(nom); a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      },
+      error: e => {
+        this.exportZip = false;
+        this.toast.error('Export du dossier', e?.status === 413 ? 'Dossier trop volumineux pour un export ZIP.' : 'Export impossible.');
+      },
+    });
+  }
+
   openInAssistant(): void {
     const base = this.router.url.startsWith('/admin') ? '/admin/projets' : '/projets';
     this.router.navigate([base, 'assistant'], { queryParams: { ssdgps: this.ssdgps.id, projet: this.projectId } });

@@ -689,6 +689,17 @@ version actuelle, restauration confirmée). ⚠ Ne jamais modifier `payload` par
 `QuerySet.update()` : le signal ne passerait pas. Tests : `pieces/tests_versions.py`,
 `piece-versions.component.spec.ts`.
 
+**Export complet d'un dossier (ZIP).** `GET /api/v1/ssdgps/<id>/export-zip/`
+(`projects/export_dossier.py`, portée RBAC du SDGPS, ouvert même sur un dossier figé) :
+`LISEZMOI.txt` + `dossier.json` (fiche : hiérarchie, statut, motif, pièces), `donnees/` (CSV
+Excel FR par pièce, colonnes libellées du catalogue + colonnes hors catalogue en fin),
+`sources/` (fichiers importés), `photos/<pièce>/` (images, nom du point rattaché),
+`rapport/` (dernier rapport TERMINÉ conservé — l'export ne relance pas de rendu). Pièces en
+corbeille exclues ; archive construite dans un fichier temporaire ; refus 413 au-delà de
+`PLAFOND_OCTETS` (500 Mo). Journalisé `ACTION_DOSSIER_EXPORTE`. Front : bouton « Exporter
+(ZIP) » de la page des pièces (`ProjectsService.exportSsdgpsZip`, blob + nom du serveur).
+Tests : `projects/tests_export_dossier.py`.
+
 **Version de l'application : `v<majeure>.<mineure>.<n>`, calculée depuis git.** Visible par
 TOUS, connecté ou non : pied de la page de connexion, bas du menu latéral (clic → « À
 propos » : commit, dates, environnement), API **publique** `GET /api/version/` (inscrite

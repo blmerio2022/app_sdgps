@@ -68,6 +68,11 @@
               [title]="assistantTitle">
         <i class="fas fa-list-check"></i> Assistant
       </button>
+      <!-- Archive complète du dossier (fiche, CSV, sources, photos, dernier rapport) -->
+      <button class="btn btn-assistant" *ngIf="!showDeleted && ssdgps" (click)="exporterZip()" [disabled]="exportZip"
+              title="Télécharger tout le dossier en ZIP : fiche récapitulative, données CSV, fichiers sources, photos, dernier rapport">
+        <i class="fas" [ngClass]="exportZip ? 'fa-spinner fa-spin' : 'fa-file-zipper'"></i> Exporter (ZIP)
+      </button>
       <!-- N°6 : brouillons rédigés par l'IA (observations des pièces, note de synthèse) -->
       <app-ia-redaction *ngIf="!showDeleted && ssdgps" [ssdgpsId]="ssdgps.id" [verrouille]="isLocked"
                         (enregistre)="onObservationsIa($event)"></app-ia-redaction>
