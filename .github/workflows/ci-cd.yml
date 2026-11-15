@@ -131,7 +131,10 @@ jobs:
         # réel du déploiement, au lieu de réussir dès l'envoi (`--detach`).
         run: |
           npm install -g @railway/cli --allow-scripts=@railway/cli
-          JETON="$(printf '%s' "$JETON" | tr -d '[:space:]')"   # espaces / retour ligne collés
+          # Copier-coller tolérant : espaces / retours ligne, guillemets, et préfixe
+          # « RAILWAY_TOKEN= » (Railway affiche le jeton sous cette forme, prête à coller
+          # dans un .env — c'est souvent toute la ligne qui finit dans le secret).
+          JETON="$(printf '%s' "$JETON" | tr -d '[:space:]"'"'"'' | sed -E 's/^(export)?[A-Za-z_]*TOKEN=//')"
           echo "Jeton : ${#JETON} caractères."
           # (1) jeton de PROJET : `status` lit le projet et l'environnement portés par le jeton.
           if sortie_projet="$(RAILWAY_TOKEN="$JETON" railway status 2>&1)"; then
