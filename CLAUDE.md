@@ -283,6 +283,46 @@ génération complète pour rien.
 - tests : `backend/pieces/tests_rapport_apercu.py`, `pieces.service.spec.ts`,
   `piece-management-page.component.spec.ts`.
 
+**Cachet + signature apposés sur les pages du rapport (option, strictement personnel).**
+L'opérateur tamponnait et signait à la main chaque page imprimée. Il enregistre désormais
+une fois la photo de son cachet signé ; l'application en retire le fond et l'appose, s'il
+le demande, sur les pages du rapport.
+- traitement : `backend/pieces/signature_image.py::traiter` — **Pillow seul** (ni numpy
+  ni OpenCV : l'image de prod n'a que Pillow). Fond estimé par filtre maximum basse
+  résolution (ombres, dégradés, quadrillage de cahier retirés), force de l'encre = écart
+  au fond sur le canal le plus marqué, seuil automatique calé sur le bruit du papier et
+  réglé par la `sensibilite`, rampe douce (bords lissés), encre `origine` (teinte
+  « dé-mélangée » du blanc) / `bleu` / `noir`, recadrage automatique, PNG ≤ 1 200 px.
+  `ImageMath.lambda_eval` en arithmétique **entière** (les flottants y sont refusés) ;
+- modèle `pieces.models.CachetSignature` (`image_originale` conservée pour reprendre le
+  traitement, `image` = PNG détouré, `parametres`, `par_defaut` unique par opérateur,
+  suppression logique). **Personnel** : queryset = celui du seul appelant, quel que soit
+  son rôle (admins compris) ; un id étranger répond 404 / « Cachet introuvable » ;
+- API `/api/v1/cachets-signatures/` (`views_cachets.py`) : CRUD, `apercu/` (traitement
+  **à blanc**, rien n'est enregistré — c'est l'aperçu interactif de l'éditeur),
+  `<id>/originale/`. Images livrées en **data URL**, jamais par URL de média ;
+- apposition : `pieces/cachet.py`, fusionnée **en dernier** dans
+  `report._overlay_global_pagination` (par-dessus le contenu, comme un tampon), à 12 mm du
+  bord et au-dessus du pied de page ; jamais sur une page blanche de calage. Image ramenée
+  à 300 dpi et embarquée **une seule fois** (calque unique + `merge_transformed_page`).
+  Toutes les pages sont désormais recompressées (`compress_content_streams`) : rapport
+  ~10 % plus léger, avec ou sans cachet ;
+- paramètres de requête de `report/`, `report-async/`, `report-cover/` (lus par
+  `_resoudre_portee_rapport`) : `cachet`, `cachet_position` (`bas-droite|bas-centre|
+  bas-gauche`), `cachet_taille` (25–90 mm), `cachet_pages` (`toutes|sauf-garde`). La tâche
+  de fond garde `RapportGeneration.cachet` + `cachet_options` et **échoue clairement** si
+  le cachet a été supprimé entre-temps. Le cachet apposé figure dans le journal
+  `ACTION_RAPPORT_GENERE` ;
+- front : `shared/components/cachet-signature/` — `<app-cachet-editor>` (dépôt / Ctrl+V,
+  recadrage, rotation **appliquée dans le navigateur** → le serveur reçoit toujours
+  `rotation: 0`, sensibilité, encre, avant/après sur damier ou page), `<app-cachet-library>`
+  (`mode` `choisir`|`gerer`), `<app-cachet-picker>` (interrupteur de la modale *Rapport PDF*,
+  page A4 miniature dont la géométrie est le **miroir** de `cachet.geometrie` —
+  `cachet.util.ts::boiteCachet`, dernier choix mémorisé dans le navigateur). Page
+  *Paramètres › Cachets et signatures* (`/parametres/cachets-signatures`) ;
+- tests : `backend/pieces/tests_cachets.py` (58 cas) + specs `cachets-signatures.service`,
+  `cachet.util`, `cachet-editor`, `cachet-library`, `cachet-picker`, `pieces.service`.
+
 **Contrôle de cohérence avant génération.** `GET /api/v1/pieces/report-check/` (même
 portée, mêmes droits, même `_resoudre_portee_rapport`, appelée avec
 `exiger_pieces=False`) renvoie les anomalies du SDGPS sans rien modifier ni rendre :

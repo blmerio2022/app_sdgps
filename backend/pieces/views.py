@@ -30,6 +30,7 @@ from .catalog import (serialize_catalog, get_piece_def, champs_with_meta, valid_
 from .report import (EXCLUDED_TYPES, PHOTO_TYPES, order_pieces_for_synthesis,
                      render_report_pdf, render_cover_pdf, report_filename,
                      _sorted_only, _sorted_renumbered, sort_versions)
+from .cachet import OptionsCachetInvalides, lire_options as lire_options_cachet
 from .coherence import analyser_coherence
 from .imaging import extract_image_metadata, make_png_preview, NON_WEB_FORMATS
 from .models import Piece, PieceImage, RapportGeneration
@@ -42,6 +43,15 @@ from .serializers import PieceSerializer, RapportGenerationSerializer
 from .tasks import generer_rapport
 
 logger = logging.getLogger(__name__)
+
+
+def _marquer_cachet_utilise(options):
+    """Horodate la dernière apposition d'un cachet (tri « récemment utilisé »)."""
+    if options is None or not options.cachet_id:
+        return
+    from .models import CachetSignature
+    CachetSignature.objects.filter(pk=options.cachet_id).update(
+        derniere_utilisation=timezone.now())
 
 
 def _veut_le_flux_brut(request):
@@ -1261,7 +1271,8 @@ class PieceViewSet(viewsets.ModelViewSet):
 
         Returns:
             `(contexte, None)` en cas de succès, où `contexte` porte `ssdgps`,
-            `session`, `sessions_plage`, `pieces` et `duplex` ; sinon `(None, Response)`
+            `session`, `sessions_plage`, `pieces`, `duplex` et `cachet` (options
+            d'apposition, ou `None`) ; sinon `(None, Response)`
             portant l'erreur à renvoyer telle quelle.
         """
         ssdgps_id = request.query_params.get('ssdgps')
@@ -1334,6 +1345,12 @@ class PieceViewSet(viewsets.ModelViewSet):
         # pied de page en miroir) si `duplex` vaut 1/true, recto seul sinon.
         duplex = str(request.query_params.get('duplex', '')).strip().lower() in ('1', 'true', 'yes')
 
+        # Cachet + signature à apposer sur les pages (facultatif). Le cachet doit être
+        # celui de l'appelant : une signature est personnelle (cf. `pieces/cachet.py`).
+        try:
+            cachet = lire_options_cachet(request.query_params, request.user)
+        except OptionsCachetInvalides as exc:
+            return None, Response({'detail': str(exc)}, status=400)
 
         return {
             'ssdgps': ssdgps,
@@ -1341,6 +1358,7 @@ class PieceViewSet(viewsets.ModelViewSet):
             'sessions_plage': sessions_plage,
             'pieces': pieces,
             'duplex': duplex,
+            'cachet': cachet,
         }, None
 
     @action(detail=False, methods=['get'], url_path='report')
@@ -1378,7 +1396,8 @@ class PieceViewSet(viewsets.ModelViewSet):
             pdf_bytes = render_report_pdf(ssdgps, session, pieces,
                                           sort_config=sort_config, fields_config=fields_config,
                                           duplex=duplex,
-                                          tolerances=getattr(request.user, 'tolerances_config', None))
+                                          tolerances=getattr(request.user, 'tolerances_config', None),
+                                          cachet=contexte['cachet'])
         except RuntimeError as exc:
             # Chaîne PDF indisponible (dépendance / bibliothèque native manquante) :
             # message actionnable, levé AVANT le rendu par `check_pdf_toolchain`.
@@ -1407,7 +1426,9 @@ class PieceViewSet(viewsets.ModelViewSet):
             sessions=([s.numero_session for s in sessions_plage]
                       if sessions_plage else None),
             octets=len(pdf_bytes),
+            cachet=(contexte['cachet'].resume() if contexte['cachet'] else None),
         )
+        _marquer_cachet_utilise(contexte['cachet'])
 
         # Réponse JSON base64 (par défaut pour le front) : le PDF est transporté encodé
         # dans un JSON, puis reconstruit en Blob côté client. On évite ainsi qu'un
@@ -1510,7 +1531,7 @@ class PieceViewSet(viewsets.ModelViewSet):
 
         try:
             pdf_bytes = render_cover_pdf(ssdgps, contexte['session'], contexte['pieces'],
-                                         duplex=contexte['duplex'])
+                                         duplex=contexte['duplex'], cachet=contexte['cachet'])
         except RuntimeError as exc:
             logger.error("Aperçu de page de garde indisponible (SSDGPS %s) : %s", ssdgps.pk, exc)
             return Response({'detail': str(exc)}, status=status.HTTP_501_NOT_IMPLEMENTED)
@@ -1565,6 +1586,8 @@ class PieceViewSet(viewsets.ModelViewSet):
             session=contexte['session'],
             sessions_plage=[str(s.pk) for s in (contexte['sessions_plage'] or [])],
             duplex=contexte['duplex'],
+            cachet_id=(contexte['cachet'].cachet_id if contexte['cachet'] else None),
+            cachet_options=(contexte['cachet'].resume() if contexte['cachet'] else {}),
             pieces_total=len(contexte['pieces']),
             created_by=request.user,
             etape="En file d'attente",

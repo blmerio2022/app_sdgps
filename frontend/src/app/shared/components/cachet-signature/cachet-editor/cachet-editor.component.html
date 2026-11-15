@@ -1,0 +1,157 @@
+<div class="ce-overlay" (click)="fermer()">
+  <div class="ce-modal" [class.wide]="prepared" (click)="$event.stopPropagation()"
+       role="dialog" aria-modal="true" aria-labelledby="ce-title">
+    <header class="ce-head">
+      <div class="ce-head-left">
+        <span class="ce-icon"><i class="fas fa-stamp"></i></span>
+        <div>
+          <h3 id="ce-title">{{ edition ? 'Modifier le cachet' : 'Nouveau cachet et signature' }}</h3>
+          <p class="ce-sub">Seule l'encre est conservée : le fond, les ombres et le grain du papier sont retirés.</p>
+        </div>
+      </div>
+      <button type="button" class="ce-close" (click)="fermer()" [disabled]="enregistrement" aria-label="Fermer">
+        <i class="fas fa-times"></i>
+      </button>
+    </header>
+
+    <div class="ce-body">
+      <p class="ce-error" *ngIf="erreur"><i class="fas fa-triangle-exclamation"></i> {{ erreur }}</p>
+
+      <!-- ============ Étape 1 : dépôt ============ -->
+      <ng-container *ngIf="!prepared">
+        <label class="ce-drop" [class.over]="survolDepot" [class.busy]="chargement"
+               (dragover)="onDragOver($event)" (dragleave)="survolDepot = false" (drop)="onDrop($event)">
+          <input type="file" accept="image/*" (change)="onFichier($event)" hidden>
+          <span class="ce-drop-art" aria-hidden="true">
+            <i class="fas" [ngClass]="chargement ? 'fa-spinner fa-spin' : 'fa-file-signature'"></i>
+          </span>
+          <span class="ce-drop-title">{{ chargement ? 'Préparation de l\'image…' : 'Déposez la photo de votre cachet signé' }}</span>
+          <span class="ce-drop-hint" *ngIf="!chargement">
+            ou <u>parcourez vos fichiers</u> — vous pouvez aussi <kbd>Ctrl</kbd> + <kbd>V</kbd> une capture
+          </span>
+          <span class="ce-drop-formats" *ngIf="!chargement">JPEG, PNG, WebP, TIFF · 15 Mo au maximum</span>
+        </label>
+
+        <ul class="ce-tips">
+          <li><i class="fas fa-sun"></i><span><strong>Lumière franche</strong>, sans ombre du téléphone sur la feuille</span></li>
+          <li><i class="fas fa-file"></i><span><strong>Feuille blanche</strong>, posée bien à plat</span></li>
+          <li><i class="fas fa-crop-simple"></i><span><strong>Cadrez serré</strong> : vous pourrez affiner ensuite</span></li>
+        </ul>
+      </ng-container>
+
+      <!-- ============ Étape 2 : réglages + aperçu ============ -->
+      <div class="ce-work" *ngIf="prepared">
+        <!-- Image d'origine + recadrage -->
+        <section class="ce-pane">
+          <div class="ce-pane-head">
+            <span class="ce-step">1</span>
+            <h4>Image d'origine</h4>
+            <span class="ce-pane-tools">
+              <button type="button" class="ce-tool" (click)="tourner(-1)" title="Tourner à gauche" aria-label="Tourner à gauche">
+                <i class="fas fa-rotate-left"></i></button>
+              <button type="button" class="ce-tool" (click)="tourner(1)" title="Tourner à droite" aria-label="Tourner à droite">
+                <i class="fas fa-rotate-right"></i></button>
+              <button type="button" class="ce-tool" (click)="reinitialiserCadre()" [disabled]="!cadreRecadre"
+                      title="Image entière" aria-label="Image entière"><i class="fas fa-expand"></i></button>
+              <button type="button" class="ce-tool" (click)="remplacer()" title="Changer d'image" aria-label="Changer d'image">
+                <i class="fas fa-arrow-up-from-bracket"></i></button>
+            </span>
+          </div>
+          <div class="ce-stage-wrap">
+            <div class="ce-stage" #scene>
+              <img [src]="prepared.dataUrl" alt="Image d'origine" draggable="false">
+              <div class="ce-crop"
+                   [style.left.%]="cadre.x * 100" [style.top.%]="cadre.y * 100"
+                   [style.width.%]="cadre.l * 100" [style.height.%]="cadre.h * 100"
+                   (pointerdown)="debutGlisse($event, 'deplacer', scene)">
+                <span class="ce-grid" aria-hidden="true"></span>
+                <span class="ce-handle no" (pointerdown)="debutGlisse($event, 'no', scene)"></span>
+                <span class="ce-handle ne" (pointerdown)="debutGlisse($event, 'ne', scene)"></span>
+                <span class="ce-handle so" (pointerdown)="debutGlisse($event, 'so', scene)"></span>
+                <span class="ce-handle se" (pointerdown)="debutGlisse($event, 'se', scene)"></span>
+              </div>
+            </div>
+          </div>
+          <p class="ce-caption"><i class="fas fa-hand-pointer"></i> Faites glisser le cadre ou ses coins pour isoler le cachet et la signature.</p>
+        </section>
+
+        <!-- Résultat -->
+        <section class="ce-pane">
+          <div class="ce-pane-head">
+            <span class="ce-step">2</span>
+            <h4>Résultat</h4>
+            <span class="ce-seg small" role="radiogroup" aria-label="Fond de l'aperçu">
+              <button type="button" [class.on]="fond === 'damier'" (click)="fond = 'damier'" role="radio"
+                      [attr.aria-checked]="fond === 'damier'" title="Transparence"><i class="fas fa-chess-board"></i></button>
+              <button type="button" [class.on]="fond === 'document'" (click)="fond = 'document'" role="radio"
+                      [attr.aria-checked]="fond === 'document'" title="Sur une page du rapport"><i class="fas fa-file-lines"></i></button>
+            </span>
+          </div>
+          <div class="ce-result" [ngClass]="fond">
+            <span class="ce-doc-lines" *ngIf="fond === 'document'" aria-hidden="true"></span>
+            <img *ngIf="apercu && !apercuErreur" [src]="apercu.image" alt="Cachet détouré"
+                 [class.dim]="apercuEnCours">
+            <div class="ce-result-state" *ngIf="apercuEnCours && !apercu">
+              <i class="fas fa-wand-magic-sparkles fa-beat-fade"></i> Détourage de l'encre…
+            </div>
+            <div class="ce-result-state error" *ngIf="apercuErreur && !apercuEnCours">
+              <i class="fas fa-circle-exclamation"></i> {{ apercuErreur }}
+            </div>
+            <span class="ce-spinner" *ngIf="apercuEnCours && apercu"><i class="fas fa-spinner fa-spin"></i></span>
+          </div>
+
+          <div class="ce-controls">
+            <div class="ce-ctrl">
+              <div class="ce-ctrl-head">
+                <span><i class="fas fa-sliders"></i> Sensibilité</span>
+                <span class="ce-ctrl-val">{{ libelleSensibilite }}</span>
+              </div>
+              <input type="range" min="0" max="100" step="1" class="ce-range"
+                     [(ngModel)]="sensibilite" (ngModelChange)="demanderApercu()"
+                     [style.--p]="sensibilite + '%'" aria-label="Sensibilité">
+              <div class="ce-range-ends"><span>Encre franche</span><span>Traits pâles</span></div>
+            </div>
+
+            <div class="ce-ctrl">
+              <div class="ce-ctrl-head"><span><i class="fas fa-droplet"></i> Encre</span></div>
+              <div class="ce-seg" role="radiogroup" aria-label="Couleur de l'encre">
+                <button type="button" *ngFor="let c of couleurs" [class.on]="couleur === c.valeur"
+                        (click)="choisirCouleur(c.valeur)" role="radio" [attr.aria-checked]="couleur === c.valeur">
+                  <span class="ce-swatch" [style.background]="c.pastille"></span>{{ c.libelle }}
+                </button>
+              </div>
+            </div>
+
+            <label class="ce-switch">
+              <input type="checkbox" [(ngModel)]="lissage" (ngModelChange)="demanderApercu()">
+              <span class="ce-switch-track"><span class="ce-switch-thumb"></span></span>
+              <span class="ce-switch-text">Lisser les bords et effacer les points isolés</span>
+            </label>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <footer class="ce-foot">
+      <div class="ce-foot-fields" *ngIf="prepared">
+        <label class="ce-name">
+          <i class="fas fa-tag"></i>
+          <input type="text" [(ngModel)]="nom" maxlength="120" placeholder="Nom du cachet (ex. Cabinet — signature du gérant)"
+                 aria-label="Nom du cachet">
+        </label>
+        <label class="ce-check">
+          <input type="checkbox" [(ngModel)]="parDefaut">
+          <span><i class="fas fa-star"></i> Cachet par défaut</span>
+        </label>
+      </div>
+      <span class="ce-foot-spacer" *ngIf="!prepared"></span>
+      <div class="ce-foot-actions">
+        <button type="button" class="ce-btn ghost" (click)="fermer()" [disabled]="enregistrement">Annuler</button>
+        <button type="button" class="ce-btn primary" *ngIf="prepared" (click)="enregistrer()" [disabled]="!peutEnregistrer">
+          <i class="fas" [ngClass]="enregistrement ? 'fa-spinner fa-spin' : 'fa-check'"></i>
+          {{ edition ? 'Enregistrer les modifications' : 'Enregistrer le cachet' }}
+        </button>
+      </div>
+    </footer>
+  </div>
+</div>

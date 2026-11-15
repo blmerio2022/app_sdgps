@@ -1,0 +1,72 @@
+<div class="cl" [ngClass]="mode">
+  <p class="cl-error" *ngIf="erreur"><i class="fas fa-triangle-exclamation"></i> {{ erreur }}
+    <button type="button" (click)="charger()">Réessayer</button></p>
+
+  <div class="cl-loading" *ngIf="chargement">
+    <span class="cl-skeleton" *ngFor="let i of [1, 2, 3]"></span>
+  </div>
+
+  <!-- Bibliothèque vide : une invitation, pas un vide -->
+  <div class="cl-empty" *ngIf="!chargement && !erreur && !cachets.length">
+    <span class="cl-empty-art" aria-hidden="true"><i class="fas fa-stamp"></i></span>
+    <div class="cl-empty-text">
+      <strong>Aucun cachet enregistré</strong>
+      <span>Déposez une seule fois la photo de votre cachet signé : il sera apposé
+        sur chaque page du rapport.</span>
+    </div>
+    <button type="button" class="cl-btn" (click)="nouveau()"><i class="fas fa-plus"></i> Créer mon cachet</button>
+  </div>
+
+  <div class="cl-grid" *ngIf="!chargement && cachets.length">
+    <div *ngFor="let c of cachets; trackBy: trackById" class="cl-card"
+         [class.selected]="mode === 'choisir' && c.id === selectedId"
+         [class.confirm]="aSupprimer === c.id"
+         [attr.role]="mode === 'choisir' ? 'radio' : null"
+         [attr.aria-checked]="mode === 'choisir' ? c.id === selectedId : null"
+         [attr.tabindex]="mode === 'choisir' ? 0 : null"
+         (click)="choisir(c)" (keydown.enter)="choisir(c)" (keydown.space)="choisir(c); $event.preventDefault()">
+      <span class="cl-check" *ngIf="mode === 'choisir'" aria-hidden="true"><i class="fas fa-check"></i></span>
+      <span class="cl-default" *ngIf="c.par_defaut" title="Cachet par défaut"><i class="fas fa-star"></i></span>
+
+      <div class="cl-thumb">
+        <img *ngIf="c.image" [src]="c.image" [alt]="c.nom">
+        <i *ngIf="!c.image" class="fas fa-image"></i>
+      </div>
+
+      <div class="cl-meta">
+        <span class="cl-name" [title]="c.nom">{{ c.nom }}</span>
+        <span class="cl-date" *ngIf="mode === 'gerer'">
+          {{ c.derniere_utilisation ? ('Apposé le ' + (c.derniere_utilisation | date:'dd/MM/yyyy')) : 'Jamais apposé' }}
+        </span>
+      </div>
+
+      <div class="cl-actions" *ngIf="aSupprimer !== c.id">
+        <button type="button" (click)="definirDefaut(c, $event)" [disabled]="c.par_defaut || occupe === c.id"
+                [title]="c.par_defaut ? 'Cachet par défaut' : 'Définir par défaut'" aria-label="Définir par défaut">
+          <i class="fa-star" [ngClass]="c.par_defaut ? 'fas' : 'far'"></i></button>
+        <button type="button" (click)="modifier(c, $event)" title="Reprendre le traitement" aria-label="Modifier">
+          <i class="fas fa-pen"></i></button>
+        <button type="button" class="danger" (click)="demanderSuppression(c, $event)" title="Supprimer" aria-label="Supprimer">
+          <i class="fas fa-trash-can"></i></button>
+      </div>
+
+      <div class="cl-confirm" *ngIf="aSupprimer === c.id" (click)="$event.stopPropagation()">
+        <span>Supprimer ce cachet ?</span>
+        <div>
+          <button type="button" class="ghost" (click)="annulerSuppression($event)">Non</button>
+          <button type="button" class="danger" (click)="confirmerSuppression(c, $event)" [disabled]="occupe === c.id">
+            <i class="fas" [ngClass]="occupe === c.id ? 'fa-spinner fa-spin' : 'fa-trash-can'"></i> Oui</button>
+        </div>
+      </div>
+    </div>
+
+    <button type="button" class="cl-card cl-add" (click)="nouveau()">
+      <span class="cl-add-icon"><i class="fas fa-plus"></i></span>
+      <span>Nouveau cachet</span>
+    </button>
+  </div>
+</div>
+
+<app-cachet-editor *ngIf="editeurOuvert" [cachet]="enEdition"
+                   (saved)="onEnregistre($event)" (closed)="editeurOuvert = false; enEdition = null">
+</app-cachet-editor>

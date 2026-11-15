@@ -1,6 +1,7 @@
 import { formatDateTime, formatFieldDate } from '../../../shared/utils/date-format.util';
 import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from '../../../shared/components/table-pagination/table-pagination.component';
 import { Component, HostListener, OnInit, ViewChild } from '@angular/core';
+import { CachetRapportOptions } from '../../../core/models/cachet-signature.model';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { forkJoin, of } from 'rxjs';
@@ -813,6 +814,8 @@ export class PieceManagementPageComponent implements OnInit {
    *    qu'une fois, les pièces spécifiques sont déclinées pour chaque session.
    */
   reportScope: 'courant' | 'synthese' = 'courant';
+  /** Cachet + signature à apposer sur les pages (null : aucun). Émis par `<app-cachet-picker>`. */
+  reportCachet: CachetRapportOptions | null = null;
   reportSessionFrom: string | null = null;
   reportSessionTo: string | null = null;
   /** false = écran de configuration (choix du mode) ; true = génération lancée. */
@@ -920,6 +923,7 @@ export class PieceManagementPageComponent implements OnInit {
       range ? null : (this.currentSessionId || undefined),
       this.reportDuplex,
       range,
+      this.reportCachet,
     ).subscribe({
       next: (job) => this.onReportJob(job),
       error: (err) => this.failReport(err),
@@ -1231,6 +1235,8 @@ export class PieceManagementPageComponent implements OnInit {
       range ? null : (this.currentSessionId || undefined),
       this.reportDuplex,
       range,
+      // L'aperçu montre le cachet là où le rapport le posera.
+      this.reportCachet,
     ).subscribe({
       next: (res) => {
         const blob = this.base64ToBlob(res.data, res.content_type || 'application/pdf');

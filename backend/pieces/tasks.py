@@ -61,6 +61,30 @@ def _pieces_de_la_generation(generation):
     return list(qs.order_by('ordre', 'type_piece', 'numero'))
 
 
+class CachetIndisponible(Exception):
+    pass
+
+
+def _cachet_de_la_generation(generation):
+    """Options de cachet de la demande, relues en base — ou `None` sans cachet.
+
+    Le cachet a pu être supprimé entre la demande et le rendu : on échoue alors avec un
+    message clair plutôt que de livrer, sans prévenir, un rapport non tamponné."""
+    from .cachet import depuis_cachet
+
+    options = generation.cachet_options or {}
+    if not options:
+        return None
+    cachet = generation.cachet
+    if cachet is None or cachet.is_deleted or not cachet.image:
+        raise CachetIndisponible(
+            'Le cachet choisi a été supprimé depuis la demande : relancez la génération '
+            'avec un autre cachet, ou sans cachet.')
+    return depuis_cachet(cachet, position=options.get('position', 'bas-droite'),
+                         largeur_mm=options.get('taille', 45),
+                         pages=options.get('pages', 'toutes'))
+
+
 def _echouer(generation, message):
     generation.statut = generation.Statut.ECHEC
     generation.erreur = message
@@ -77,7 +101,7 @@ def generer_rapport(self, generation_id):
     from .models import RapportGeneration
 
     generation = RapportGeneration.objects.select_related(
-        'ssdgps', 'session', 'created_by',
+        'ssdgps', 'session', 'created_by', 'cachet',
     ).filter(pk=generation_id).first()
     if generation is None:
         logger.warning('Génération de rapport introuvable : %s', generation_id)
@@ -106,6 +130,7 @@ def generer_rapport(self, generation_id):
             )
 
         auteur = generation.created_by
+        cachet = _cachet_de_la_generation(generation)
         sort_config = getattr(auteur, 'piece_sort_config', None) or {}
         fields_config = getattr(auteur, 'piece_fields_config', None) or {}
 
@@ -115,6 +140,7 @@ def generer_rapport(self, generation_id):
             duplex=generation.duplex,
             # Les tolérances de celui qui a DEMANDÉ le rapport, comme ses champs et son tri.
             tolerances=getattr(auteur, 'tolerances_config', None),
+            cachet=cachet,
             on_progress=lambda faites, total, etape: generation.marquer_progression(
                 faites, total, etape,
             ),
@@ -138,9 +164,16 @@ def generer_rapport(self, generation_id):
             cible_libelle=str(generation.ssdgps), fichier=nom,
             sessions=([s.numero_session for s in sessions_plage] if sessions_plage else None),
             octets=len(pdf_bytes), asynchrone=True,
+            cachet=(cachet.resume() if cachet else None),
         )
+        if cachet is not None:
+            from .models import CachetSignature
+            CachetSignature.objects.filter(pk=cachet.cachet_id).update(
+                derniere_utilisation=timezone.now())
         return str(generation.pk)
 
+    except CachetIndisponible as exc:
+        _echouer(generation, str(exc))
     except RuntimeError as exc:
         # Chaîne PDF indisponible (bibliothèque native manquante) : message actionnable.
         logger.error('Rapport PDF indisponible (SSDGPS %s) : %s', generation.ssdgps_id, exc)

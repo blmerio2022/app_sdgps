@@ -6,6 +6,8 @@ import { HttpClientModule } from '@angular/common/http';
 import { PieceSortSettingsComponent } from '../profile/components/piece-sort-settings/piece-sort-settings.component';
 import { PieceFieldsSettingsComponent } from '../profile/components/piece-fields-settings/piece-fields-settings.component';
 import { TolerancesSettingsComponent } from '../profile/components/tolerances-settings/tolerances-settings.component';
+import { CachetsSettingsComponent } from './cachets-settings/cachets-settings.component';
+import { SharedModule } from '../../shared/shared.module';
 
 /**
  * Module « Paramètres » (préférences d'affichage des pièces : tri + champs par défaut).
@@ -20,15 +22,18 @@ const routes: Routes = [
   { path: 'tri-pieces', component: PieceSortSettingsComponent },
   { path: 'champs-pieces', component: PieceFieldsSettingsComponent },
   { path: 'tolerances', component: TolerancesSettingsComponent },
+  { path: 'cachets-signatures', component: CachetsSettingsComponent },
 ];
 
 @NgModule({
-  declarations: [PieceSortSettingsComponent, PieceFieldsSettingsComponent, TolerancesSettingsComponent],
+  declarations: [PieceSortSettingsComponent, PieceFieldsSettingsComponent, TolerancesSettingsComponent,
+                 CachetsSettingsComponent],
   imports: [
     CommonModule,
     FormsModule,
     ReactiveFormsModule,
     HttpClientModule,
+    SharedModule,
     RouterModule.forChild(routes),
   ],
 })

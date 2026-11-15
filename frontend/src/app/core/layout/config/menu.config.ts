@@ -62,6 +62,14 @@ export const USER_MENU: MenuItem[] = [
         route: '/parametres/tolerances',
         type: 'link',
         description: 'Seuils signalés dans le rapport (durées, boucles, écarts)'
+      },
+      {
+        id: 'cachets-signatures',
+        title: 'Cachets et signatures',
+        icon: 'fas fa-stamp',
+        route: '/parametres/cachets-signatures',
+        type: 'link',
+        description: 'Cachet + signature apposés sur les pages du rapport PDF'
       }
     ]
   }
@@ -190,6 +198,14 @@ export const ADMIN_MENU: MenuItem[] = [
         route: '/admin/parametres/tolerances',
         type: 'link',
         description: 'Seuils signalés dans le rapport (durées, boucles, écarts)'
+      },
+      {
+        id: 'cachets-signatures',
+        title: 'Cachets et signatures',
+        icon: 'fas fa-stamp',
+        route: '/admin/parametres/cachets-signatures',
+        type: 'link',
+        description: 'Cachet + signature apposés sur les pages du rapport PDF'
       },
       {
         id: 'descriptions-champs',

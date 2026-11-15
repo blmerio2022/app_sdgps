@@ -1,0 +1,61 @@
+<section class="cp" [class.on]="etat.actif">
+  <button type="button" class="cp-head" role="switch" [attr.aria-checked]="etat.actif" (click)="basculer()">
+    <span class="cp-icon"><i class="fas fa-stamp"></i></span>
+    <span class="cp-title">
+      <strong>Cachet et signature</strong>
+      <span>Apposés automatiquement sur les pages — plus de tampon à la main après impression.</span>
+    </span>
+    <span class="cp-switch" aria-hidden="true"><span class="cp-thumb"></span></span>
+  </button>
+
+  <div class="cp-body" *ngIf="etat.actif">
+    <app-cachet-library mode="choisir" [selectedId]="etat.cachetId"
+                        (selectedIdChange)="choisir($event)" (cachetsChange)="onCachets($event)">
+    </app-cachet-library>
+
+    <div class="cp-place" *ngIf="cachetChoisi">
+      <!-- Page A4 miniature : la position et la taille se jugent d'un coup d'œil -->
+      <figure class="cp-page" aria-label="Aperçu de l'emplacement du cachet">
+        <span class="cp-page-head"></span>
+        <span class="cp-page-rows"></span>
+        <span class="cp-page-foot"></span>
+        <img class="cp-page-stamp" *ngIf="cachetChoisi.image" [src]="cachetChoisi.image" alt=""
+             [style.left.%]="boite.gauche" [style.bottom.%]="boite.bas"
+             [style.width.%]="boite.largeur" [style.height.%]="boite.hauteur">
+      </figure>
+
+      <div class="cp-settings">
+        <div class="cp-field">
+          <span class="cp-label">Position</span>
+          <div class="cp-seg" role="radiogroup" aria-label="Position du cachet">
+            <button type="button" *ngFor="let p of positions" [class.on]="etat.position === p.valeur"
+                    (click)="choisirPosition(p.valeur)" role="radio" [attr.aria-checked]="etat.position === p.valeur"
+                    [title]="'En bas ' + p.libelle.toLowerCase()">
+              <i class="fas" [ngClass]="p.icone"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="cp-field">
+          <span class="cp-label">Taille <em>{{ etat.taille }} mm</em></span>
+          <input type="range" class="cp-range" [min]="tailleMin" [max]="tailleMax" step="1"
+                 [ngModel]="etat.taille" (ngModelChange)="changerTaille($event)"
+                 [style.--p]="((etat.taille - tailleMin) / (tailleMax - tailleMin) * 100) + '%'"
+                 aria-label="Largeur du cachet en millimètres">
+        </div>
+
+        <div class="cp-field">
+          <span class="cp-label">Pages</span>
+          <div class="cp-radios" role="radiogroup" aria-label="Pages tamponnées">
+            <label *ngFor="let p of choixPages" [class.on]="etat.pages === p.valeur">
+              <input type="radio" name="cp-pages" [checked]="etat.pages === p.valeur" (change)="choisirPages(p.valeur)">
+              <span>{{ p.libelle }}</span>
+            </label>
+          </div>
+        </div>
+
+        <p class="cp-summary"><i class="fas fa-circle-check"></i> {{ resume }}</p>
+      </div>
+    </div>
+  </div>
+</section>

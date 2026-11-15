@@ -304,6 +304,14 @@ class RapportGeneration(models.Model):
         help_text="Identifiants des sessions couvertes par un rapport de synthèse.",
     )
     duplex = models.BooleanField(default=False, verbose_name="Recto-verso")
+    cachet = models.ForeignKey(
+        'CachetSignature', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+', verbose_name="Cachet apposé",
+    )
+    cachet_options = models.JSONField(
+        default=dict, blank=True, verbose_name="Apposition du cachet",
+        help_text="Position, taille et pages du cachet demandé (vide : pas de cachet).",
+    )
 
     statut = models.CharField(
         max_length=16, choices=Statut.choices, default=Statut.EN_ATTENTE,
@@ -357,3 +365,52 @@ class RapportGeneration(models.Model):
         self.progression = 5 + int(90 * faites / total)
         self.etape = (etape or '')[:255]
         self.save(update_fields=['pieces_total', 'pieces_faites', 'progression', 'etape'])
+
+
+def cachet_upload_path(instance, filename):
+    """Les cachets vivent à part, rangés par propriétaire, sous un nom opaque."""
+    extension = (filename.rsplit('.', 1)[-1] if '.' in filename else 'png').lower()[:5]
+    return f'cachets/{instance.proprietaire_id}/{uuid.uuid4().hex}.{extension}'
+
+
+class CachetSignature(BaseModel):
+    """
+    Cachet + signature d'un opérateur, prêt à être apposé sur les pages d'un rapport.
+
+    - `image_originale` : la photo / le scan déposé, conservé tel quel — l'opérateur peut
+      ainsi reprendre le traitement (recadrage, sensibilité, encre) sans tout redéposer ;
+    - `image` : le PNG **détouré** produit par `signature_image.traiter` à partir de
+      l'original et de `parametres` — c'est lui qui est apposé ;
+    - **strictement personnel** : seul son propriétaire le voit, le modifie ou l'appose.
+      Une signature engage celui qui la porte ; aucun rôle, administrateur compris, n'a
+      à disposer de celle d'un autre.
+    """
+
+    proprietaire = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='cachets_signatures', verbose_name="Propriétaire",
+    )
+    nom = models.CharField(max_length=120, verbose_name="Nom")
+    image_originale = models.FileField(
+        upload_to=cachet_upload_path, verbose_name="Image d'origine",
+    )
+    image = models.FileField(
+        upload_to=cachet_upload_path, verbose_name="Image détourée (PNG)",
+    )
+    parametres = models.JSONField(
+        default=dict, blank=True, verbose_name="Paramètres de traitement",
+    )
+    largeur_px = models.PositiveIntegerField(default=0, verbose_name="Largeur (px)")
+    hauteur_px = models.PositiveIntegerField(default=0, verbose_name="Hauteur (px)")
+    par_defaut = models.BooleanField(default=False, verbose_name="Cachet par défaut")
+    derniere_utilisation = models.DateTimeField(
+        null=True, blank=True, verbose_name="Dernière utilisation",
+    )
+
+    class Meta:
+        ordering = ['-par_defaut', '-updated_at']
+        verbose_name = "Cachet et signature"
+        verbose_name_plural = "Cachets et signatures"
+
+    def __str__(self):
+        return self.nom

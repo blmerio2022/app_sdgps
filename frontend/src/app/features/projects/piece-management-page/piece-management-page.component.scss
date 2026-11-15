@@ -316,6 +316,8 @@
   width: 95%; max-width: 540px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 25px 70px rgba(0, 0, 0, 0.5); overflow: hidden;
   &.modal-column-config { max-width: 920px; max-height: 80vh; }
   &.small { max-width: 440px; }
+  /* Rapport PDF : un peu plus large pour loger l'option « Cachet et signature ». */
+  &.small.report-modal { max-width: 560px; }
 
   .modal-header {
     display: flex; align-items: center; justify-content: space-between; padding: 18px 22px;

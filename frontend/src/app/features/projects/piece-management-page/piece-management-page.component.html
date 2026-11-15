@@ -530,7 +530,7 @@
 
 <!-- ========== Modale génération du rapport PDF ========== -->
 <div class="modal-overlay" *ngIf="showReportModal" (click)="closeReportModal()">
-  <div class="modal-content small" (click)="$event.stopPropagation()">
+  <div class="modal-content small report-modal" (click)="$event.stopPropagation()">
     <div class="modal-header">
       <div class="modal-header-left"><span class="header-icon"><i class="fas fa-file-pdf"></i></span><h3>Rapport PDF</h3></div>
       <button class="close-btn" (click)="closeReportModal()" [disabled]="reportGenerating"><i class="fas fa-times"></i></button>
@@ -645,6 +645,9 @@
             <span class="mode-desc">Identification à droite, pagination à gauche du pied de page.</span>
           </button>
         </div>
+
+        <!-- Cachet + signature apposés sur les pages (mémorisé d'un rapport à l'autre) -->
+        <app-cachet-picker (optionsChange)="reportCachet = $event"></app-cachet-picker>
       </ng-container>
 
       <!-- Étape 2 : génération / résultat -->

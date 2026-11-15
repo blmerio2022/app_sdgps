@@ -1,7 +1,7 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
-from .models import Piece, PieceImage, RapportGeneration
+from .models import CachetSignature, Piece, PieceImage, RapportGeneration
 from .validators import validate_piece_coherence, points_without_photo
 from accounts.fields import AuthorDisplayField
 from analytics.quotas import ensure_within_quota, organization_of_user
@@ -159,7 +159,7 @@ class RapportGenerationSerializer(serializers.ModelSerializer):
     class Meta:
         model = RapportGeneration
         fields = [
-            'id', 'ssdgps', 'session', 'sessions_plage', 'duplex',
+            'id', 'ssdgps', 'session', 'sessions_plage', 'duplex', 'cachet_options',
             'statut', 'statut_display', 'progression', 'etape',
             'pieces_total', 'pieces_faites',
             'nom_fichier', 'octets', 'erreur',
@@ -172,3 +172,37 @@ class RapportGenerationSerializer(serializers.ModelSerializer):
             return None
         nom = f'{obj.created_by.first_name} {obj.created_by.last_name}'.strip()
         return nom or obj.created_by.email
+
+
+class CachetSignatureSerializer(serializers.ModelSerializer):
+    """Cachet + signature — tel que la bibliothèque du front l'affiche.
+
+    L'image détourée est livrée en **data URL** et non par une URL de média : une
+    signature n'a pas à être joignable hors de l'API authentifiée. L'original (plus
+    lourd) n'est servi qu'à la demande, pour reprendre le traitement
+    (`GET cachets-signatures/<id>/originale/`)."""
+
+    image = serializers.SerializerMethodField()
+    created_by_email = AuthorDisplayField(source='created_by', read_only=True)
+    updated_by_email = AuthorDisplayField(source='updated_by', read_only=True)
+    deleted_by_email = AuthorDisplayField(source='deleted_by', read_only=True)
+
+    class Meta:
+        model = CachetSignature
+        fields = [
+            'id', 'nom', 'image', 'parametres', 'largeur_px', 'hauteur_px', 'par_defaut',
+            'derniere_utilisation',
+            'created_by_email', 'created_at', 'updated_by_email', 'updated_at',
+            'is_deleted', 'deleted_by_email', 'deleted_at',
+        ]
+        read_only_fields = fields
+
+    def get_image(self, obj):
+        import base64
+        if not obj.image:
+            return None
+        try:
+            with obj.image.open('rb') as f:
+                return 'data:image/png;base64,' + base64.b64encode(f.read()).decode('ascii')
+        except (OSError, ValueError):
+            return None

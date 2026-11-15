@@ -144,6 +144,15 @@ describe('PiecesService', () => {
       req.flush({});
     });
 
+    it('montre le cachet choisi sur l’aperçu', () => {
+      service.previewReportCover('s1', null, false, null,
+        { cachetId: 'c9', position: 'bas-droite', taille: 45, pages: 'toutes' }).subscribe();
+      const req = httpMock.expectOne(r => r.url === `${BASE}report-cover/`);
+      expect(req.request.params.get('cachet')).toBe('c9');
+      expect(req.request.params.get('cachet_pages')).toBe('toutes');
+      req.flush({});
+    });
+
     it('envoie la plage en mode synthèse, sans session', () => {
       service.previewReportCover('s1', 'sess-2', false, { from: 'a', to: 'b' }).subscribe();
       const req = httpMock.expectOne(r => r.url === `${BASE}report-cover/`);
@@ -178,6 +187,25 @@ describe('PiecesService', () => {
       expect(req.request.params.get('session')).toBeNull();
       expect(req.request.params.get('session_from')).toBe('a');
       expect(req.request.params.get('session_to')).toBe('b');
+      req.flush({});
+    });
+
+    it('startReport() transmet le cachet + signature à apposer', () => {
+      service.startReport('s1', null, false, null,
+        { cachetId: 'c1', position: 'bas-centre', taille: 50, pages: 'sauf-garde' }).subscribe();
+      const req = httpMock.expectOne(r => r.url === `${BASE}report-async/`);
+      expect(req.request.params.get('cachet')).toBe('c1');
+      expect(req.request.params.get('cachet_position')).toBe('bas-centre');
+      expect(req.request.params.get('cachet_taille')).toBe('50');
+      expect(req.request.params.get('cachet_pages')).toBe('sauf-garde');
+      req.flush({});
+    });
+
+    it('startReport() sans cachet n’envoie aucun paramètre de cachet', () => {
+      service.startReport('s1', null, false, null, null).subscribe();
+      const req = httpMock.expectOne(r => r.url === `${BASE}report-async/`);
+      expect(req.request.params.has('cachet')).toBeFalse();
+      expect(req.request.params.has('cachet_position')).toBeFalse();
       req.flush({});
     });
 

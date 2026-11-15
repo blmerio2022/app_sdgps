@@ -1,0 +1,18 @@
+/* La zone de contenu est en `overflow: hidden` : la page gère son propre défilement. */
+:host { display: block; flex: 1 1 auto; min-height: 0; }
+.cs-page {
+  height: 100%; box-sizing: border-box; overflow-y: auto; padding: 20px 24px 32px;
+  > * { max-width: 1180px; }
+}
+.page-header {
+  margin-bottom: 18px;
+  h1 { margin: 0; font-size: 20px; color: var(--text-color); display: flex; align-items: center; gap: 10px;
+    i { color: var(--accent-color); } }
+  .subtitle { margin: 6px 0 0; font-size: 13.5px; color: var(--text-muted); max-width: 860px; line-height: 1.5;
+    strong { color: var(--text-color); font-weight: 600; } }
+}
+.cs-count {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; font-size: 12.5px; font-weight: 600;
+  color: var(--text-color); i { color: var(--accent-color); }
+  .cs-hint { margin-left: auto; font-weight: 400; color: var(--text-muted); i { color: #f1c40f; } }
+}

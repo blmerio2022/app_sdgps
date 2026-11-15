@@ -8,6 +8,9 @@ import { ColumnFilterComponent } from './components/column-filter/column-filter.
 import { PermanentDeleteConfirmComponent } from './components/permanent-delete-confirm/permanent-delete-confirm.component';
 import { TablePaginationComponent } from './components/table-pagination/table-pagination.component';
 import { ColumnConfigComponent } from './components/column-config/column-config.component';
+import { CachetEditorComponent } from './components/cachet-signature/cachet-editor/cachet-editor.component';
+import { CachetLibraryComponent } from './components/cachet-signature/cachet-library/cachet-library.component';
+import { CachetPickerComponent } from './components/cachet-signature/cachet-picker/cachet-picker.component';
 
 @NgModule({
   declarations: [
@@ -17,7 +20,10 @@ import { ColumnConfigComponent } from './components/column-config/column-config.
     ColumnFilterComponent,
     PermanentDeleteConfirmComponent,
     TablePaginationComponent,
-    TableHeaderTooltipDirective
+    TableHeaderTooltipDirective,
+    CachetEditorComponent,
+    CachetLibraryComponent,
+    CachetPickerComponent
   ],
   imports: [
     CommonModule,
@@ -30,7 +36,10 @@ import { ColumnConfigComponent } from './components/column-config/column-config.
     ColumnFilterComponent,
     PermanentDeleteConfirmComponent,
     TablePaginationComponent,
-    TableHeaderTooltipDirective
+    TableHeaderTooltipDirective,
+    CachetEditorComponent,
+    CachetLibraryComponent,
+    CachetPickerComponent
   ]
 })
 export class SharedModule { }

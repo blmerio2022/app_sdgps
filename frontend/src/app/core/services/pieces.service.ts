@@ -3,6 +3,8 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { environment } from '../../../environments/environment';
+import { CachetRapportOptions } from '../models/cachet-signature.model';
+import { withCachetParams } from './cachets-signatures.service';
 import { Piece, PieceImage, PieceImportPreview, PieceTypeDef } from '../models/piece.model';
 
 interface PieceParent {
@@ -440,7 +442,8 @@ export class PiecesService {
    * refuse les deux ensemble.
    */
   downloadReport(ssdgpsId: string, sessionId?: string | null, duplex = false,
-                 sessionRange?: { from: string; to: string } | null):
+                 sessionRange?: { from: string; to: string } | null,
+                 cachet?: CachetRapportOptions | null):
       Observable<{ filename: string; content_type: string; data: string }> {
     let params = new HttpParams().set('ssdgps', ssdgpsId);
     if (sessionRange) {
@@ -450,6 +453,7 @@ export class PiecesService {
       params = params.set('session', sessionId);
     }
     if (duplex) params = params.set('duplex', '1');
+    params = withCachetParams(params, cachet);
     return this.http.get<{ filename: string; content_type: string; data: string }>(
       `${this.base}report/`, { params });
   }
@@ -463,7 +467,8 @@ export class PiecesService {
    * délai sur un gros SDGPS.
    */
   startReport(ssdgpsId: string, sessionId?: string | null, duplex = false,
-              sessionRange?: { from: string; to: string } | null): Observable<RapportGeneration> {
+              sessionRange?: { from: string; to: string } | null,
+              cachet?: CachetRapportOptions | null): Observable<RapportGeneration> {
     let params = new HttpParams().set('ssdgps', ssdgpsId);
     if (sessionRange) {
       params = params.set('session_from', sessionRange.from)
@@ -472,6 +477,8 @@ export class PiecesService {
       params = params.set('session', sessionId);
     }
     if (duplex) params = params.set('duplex', '1');
+    // Cachet + signature à apposer sur les pages (cf. backend `pieces/cachet.py`).
+    params = withCachetParams(params, cachet);
     return this.http.post<RapportGeneration>(`${this.base}report-async/`, {}, { params });
   }
 
@@ -506,7 +513,8 @@ export class PiecesService {
    * rapport.
    */
   previewReportCover(ssdgpsId: string, sessionId?: string | null, duplex = false,
-                     sessionRange?: { from: string; to: string } | null):
+                     sessionRange?: { from: string; to: string } | null,
+                     cachet?: CachetRapportOptions | null):
       Observable<{ filename: string; content_type: string; data: string }> {
     let params = new HttpParams().set('ssdgps', ssdgpsId);
     if (sessionRange) {
@@ -516,6 +524,7 @@ export class PiecesService {
       params = params.set('session', sessionId);
     }
     if (duplex) params = params.set('duplex', '1');
+    params = withCachetParams(params, cachet);
     return this.http.get<{ filename: string; content_type: string; data: string }>(
       `${this.base}report-cover/`, { params });
   }

@@ -1014,7 +1014,7 @@ def build_cover_context(ssdgps, session, pieces):
     return build_report_context(ssdgps, session, pieces, avec_contenu=False)
 
 
-def render_cover_pdf(ssdgps, session, pieces, duplex=False):
+def render_cover_pdf(ssdgps, session, pieces, duplex=False, cachet=None):
     """Rend la seule PAGE DE GARDE en PDF (bytes) — prévisualisation avant génération.
 
     Même gabarit, même en-tête et même tableau que le rapport complet : l'opérateur voit
@@ -1025,6 +1025,9 @@ def render_cover_pdf(ssdgps, session, pieces, duplex=False):
     d'une pièce dans le rapport assemblé dépend de la pagination de TOUTES les pièces,
     qu'il faudrait précisément rendre pour la connaître (cf. `render_report_pdf`, boucle
     de convergence). L'annoncer vide est honnête ; l'inventer ne le serait pas.
+
+    `cachet` (`cachet.OptionsCachet`) : l'aperçu montre le cachet exactement là où le
+    rapport le posera — sauf s'il est demandé « sauf page de garde », bien sûr.
     """
     check_pdf_toolchain()
     from weasyprint import HTML
@@ -1038,7 +1041,12 @@ def render_cover_pdf(ssdgps, session, pieces, duplex=False):
         'cover_rows': context['cover_rows'],
         'total': context['total'],
     })
-    return HTML(string=html).write_pdf()
+    document = HTML(string=html).render()
+    pdf_bytes = document.write_pdf()
+    if cachet is None:
+        return pdf_bytes
+    from .cachet import apposer_sur_pdf
+    return apposer_sur_pdf(pdf_bytes, cachet, pages_garde=len(document.pages))
 
 
 #: Marge haute par défaut des pages de contenu (mm), qui loge l'en-tête répété.
@@ -1083,7 +1091,7 @@ def required_content_margin_mm(doc):
 
 
 def render_report_pdf(ssdgps, session, pieces, sort_config=None, fields_config=None,
-                      duplex=False, on_progress=None, tolerances=None):
+                      duplex=False, on_progress=None, tolerances=None, cachet=None):
     """Rend le rapport en PDF (bytes). Lève `RuntimeError` si une dépendance de la
     chaîne PDF (WeasyPrint et ses bibliothèques natives, pypdf, reportlab) manque sur
     l'environnement d'exécution — vérification faite **en amont** du rendu, qui dure
@@ -1102,7 +1110,10 @@ def render_report_pdf(ssdgps, session, pieces, sort_config=None, fields_config=N
 
     `on_progress(faites, total, etape)` — rappel facultatif appelé avant chaque pièce,
     puis à l'assemblage. Il alimente la progression réelle de la génération en tâche de
-    fond (`pieces/tasks.py`) ; une exception de sa part n'interrompt jamais le rendu."""
+    fond (`pieces/tasks.py`) ; une exception de sa part n'interrompt jamais le rendu.
+
+    `cachet` (`cachet.OptionsCachet`, facultatif) : cachet + signature de l'opérateur,
+    apposé par-dessus le contenu de chaque page non blanche (cf. `pieces/cachet.py`)."""
     # Toute la chaîne est contrôlée d'un coup, AVANT le rendu : un `reportlab` manquant
     # ne doit pas se révéler après une minute de rendu perdu (cf. check_pdf_toolchain).
     check_pdf_toolchain()
@@ -1254,7 +1265,8 @@ def render_report_pdf(ssdgps, session, pieces, sort_config=None, fields_config=N
 
     pdf_bytes = documents[0].copy(final_pages).write_pdf()
     return _overlay_global_pagination(pdf_bytes, pages_meta, duplex,
-                                      pages_pieces=pages_pieces)
+                                      pages_pieces=pages_pieces, cachet=cachet,
+                                      pages_garde=len(cover_doc.pages))
 
 
 # Conversion pixels CSS (96 dpi, unité des boîtes WeasyPrint) → points PDF (72 dpi).
@@ -1385,7 +1397,8 @@ def _resolve_piece_links(writer, pages_pieces):
     return resolus
 
 
-def _overlay_global_pagination(pdf_bytes, pages_meta, duplex, pages_pieces=None):
+def _overlay_global_pagination(pdf_bytes, pages_meta, duplex, pages_pieces=None,
+                               cachet=None, pages_garde=0):
     """Superpose « Page i/n » (pagination GLOBALE du rapport) au bas de chaque page non
     blanche, du côté OPPOSÉ à l'identification :
     - recto seul   : identification à droite → pagination à GAUCHE ;
@@ -1396,7 +1409,12 @@ def _overlay_global_pagination(pdf_bytes, pages_meta, duplex, pages_pieces=None)
 
     `pages_pieces` ({n° de pièce: index de sa page-séparateur}) sert à résoudre les liens
     cliquables de la page de garde (cf. `_resolve_piece_links`) — c'est ici qu'on le fait,
-    une fois toutes les pages présentes dans le `writer`."""
+    une fois toutes les pages présentes dans le `writer`.
+
+    `cachet` : cachet + signature, fusionné EN DERNIER — donc par-dessus le contenu, comme
+    un tampon réel. `pages_garde` (nombre de pages de la garde du SDGPS) sert l'option
+    « sauf page de garde ». Cf. `pieces/cachet.py`."""
+    from .cachet import apposer, doit_apposer
     from io import BytesIO
     from pypdf import PdfReader, PdfWriter
     from reportlab.pdfgen import canvas
@@ -1442,7 +1460,13 @@ def _overlay_global_pagination(pdf_bytes, pages_meta, duplex, pages_pieces=None)
         # numéro projeté en (0,0) sur les pages de contenu).
         stamp = PdfReader(buf).pages[0]
         stamp.merge_page(page)
+        if doit_apposer(cachet, idx, pages_garde, blanche=False):
+            apposer(stamp, cachet, w_pt, h_pt)
         writer.add_page(stamp)
+        # Les fusions laissent le flux de contenu DÉCOMPRESSÉ : le recompresser allège le
+        # rapport d'environ 10 % (l'image du cachet, elle, n'est embarquée qu'une fois —
+        # cf. `cachet.apposer`).
+        writer.pages[-1].compress_content_streams()
 
     # Toutes les pages sont en place : les destinations des liens de la page de garde
     # peuvent enfin être pointées sur les bonnes pages.
