@@ -22,6 +22,10 @@
         <span class="idle" *ngSwitchDefault><i class="fas fa-bolt"></i> Les modifications sont enregistrées automatiquement</span>
       </span>
 
+      <button type="button" class="head-history" (click)="historiqueOuvert = true" title="Historique des versions de cette pièce">
+        <i class="fas fa-clock-rotate-left"></i> Historique
+      </button>
+
       <div class="mode-switch" role="group" aria-label="Mode d'affichage de la pièce">
         <button type="button" class="mode-seg" [class.active]="mode==='view'"
                 [attr.aria-pressed]="mode==='view'" (click)="goToView()">
@@ -36,7 +40,7 @@
   </header>
 
   <div class="page-body">
-    <app-piece-detail-modal
+    <app-piece-detail-modal *ngIf="vueActive"
       [embedded]="true"
       [initialMode]="mode"
       [piece]="piece"
@@ -53,3 +57,6 @@
 <div class="page-loading" *ngIf="loading && !piece">
   <i class="fas fa-spinner fa-spin"></i> Chargement…
 </div>
+
+<app-piece-versions *ngIf="historiqueOuvert && piece" [pieceId]="piece.id" [verrouille]="!!ssdgps?.verrouille"
+                    (fermee)="historiqueOuvert = false" (restauree)="onRestauree($event)"></app-piece-versions>

@@ -24,6 +24,10 @@ export class PieceDetailPageComponent implements OnInit, OnDestroy {
   loading = false;
   mode: 'view' | 'edit' = 'view';
   piece: Piece | null = null;
+  /** Modale « Historique des versions ». */
+  historiqueOuvert = false;
+  /** Passe brièvement à faux pour recréer la vue de la pièce après une restauration. */
+  vueActive = true;
   ssdgps!: Ssdgps;
   sessions: Session[] = [];
   catalog: PieceTypeDef[] = [];
@@ -155,6 +159,14 @@ export class PieceDetailPageComponent implements OnInit, OnDestroy {
   }
 
   onSaved(updated: Piece): void { this.piece = updated; }
+
+  /** Version restaurée : on recharge la pièce affichée (nouvel objet → la vue se réinitialise). */
+  onRestauree(p: Piece): void {
+    this.piece = { ...p };
+    // La vue embarquée lit la pièce à son initialisation : on la recrée.
+    this.vueActive = false;
+    setTimeout(() => (this.vueActive = true));
+  }
 
   /** État de la sauvegarde automatique, remonté par le composant hébergé : la mention est
    * affichée dans l'en-tête de page (et non dans le corps) pour économiser une bande. */

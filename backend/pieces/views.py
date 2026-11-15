@@ -505,6 +505,86 @@ class PieceViewSet(viewsets.ModelViewSet):
         piece.save(update_fields=['payload', 'updated_by', 'updated_at'])
         return True
 
+    # --- Historique des versions (cf. `pieces/versions.py`) ---------------------------
+
+    @staticmethod
+    def _nom_auteur(user):
+        if user is None:
+            return ''
+        return f"{user.first_name or ''} {user.last_name or ''}".strip() or user.email
+
+    def _version_dict(self, v, avec_payload=False):
+        from .versions import resume
+        d = {'numero': v.numero, 'statut': v.statut, 'origine': v.origine,
+             'auteur': self._nom_auteur(v.auteur), 'date_contenu': v.date_contenu,
+             'remplacee_par': self._nom_auteur(v.remplacee_par), 'archivee_le': v.created_at,
+             **resume(v.payload)}
+        if avec_payload:
+            d['payload'] = v.payload
+        return d
+
+    @action(detail=True, methods=['get'], url_path='versions')
+    def versions(self, request, pk=None):
+        """GET pieces/<id>/versions/ — la version courante puis les versions archivées."""
+        from .versions import resume
+        piece = self.get_object()
+        return Response({
+            'courante': {'numero': None, 'statut': piece.statut, 'auteur': self._nom_auteur(
+                piece.updated_by or piece.created_by), 'date_contenu': piece.updated_at, **resume(piece.payload)},
+            'versions': [self._version_dict(v) for v in piece.versions.select_related('auteur', 'remplacee_par')],
+        })
+
+    def _version_ou_404(self, piece, numero):
+        return piece.versions.select_related('auteur', 'remplacee_par').filter(numero=numero).first()
+
+    @action(detail=True, methods=['get'], url_path=r'versions/(?P<numero>[0-9]+)')
+    def version(self, request, pk=None, numero=None):
+        piece = self.get_object()
+        v = self._version_ou_404(piece, numero)
+        if v is None:
+            return Response({'detail': 'Version introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(self._version_dict(v, avec_payload=True))
+
+    @action(detail=True, methods=['get'], url_path=r'versions/(?P<numero>[0-9]+)/comparer')
+    def comparer_version(self, request, pk=None, numero=None):
+        """GET …/versions/<n>/comparer/?avec=courante|<m> — ce qui a changé de <n> vers l'autre."""
+        from .versions import comparer
+        piece = self.get_object()
+        v = self._version_ou_404(piece, numero)
+        if v is None:
+            return Response({'detail': 'Version introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+        avec = request.query_params.get('avec') or 'courante'
+        if avec == 'courante':
+            cible = piece.payload
+        else:
+            autre = self._version_ou_404(piece, avec) if str(avec).isdigit() else None
+            if autre is None:
+                return Response({'detail': 'Version de comparaison introuvable.'},
+                                status=status.HTTP_404_NOT_FOUND)
+            cible = autre.payload
+        return Response({'de': int(numero), 'vers': avec, **comparer(v.payload, cible)})
+
+    @action(detail=True, methods=['post'], url_path=r'versions/(?P<numero>[0-9]+)/restaurer')
+    def restaurer_version(self, request, pk=None, numero=None):
+        """POST …/versions/<n>/restaurer/ — reprend le contenu de la version <n>.
+
+        Le contenu courant est lui-même archivé (rien ne se perd). Refusé sur un dossier
+        figé (verrou appliqué par `get_object` → `check_object_permissions`). La pièce
+        repasse en brouillon : son contenu a changé, elle doit être revalidée.
+        """
+        from .versions import ATTR_AUTEUR, ATTR_ORIGINE
+        piece = self.get_object()
+        v = self._version_ou_404(piece, numero)
+        if v is None:
+            return Response({'detail': 'Version introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+        piece.payload = v.payload
+        piece.statut = Piece.Statut.BROUILLON
+        piece.updated_by = request.user
+        setattr(piece, ATTR_AUTEUR, request.user)
+        setattr(piece, ATTR_ORIGINE, 'restauration')
+        piece.save()
+        return Response(self.get_serializer(piece).data)
+
     @action(detail=True, methods=['post'], url_path='set-sort')
     def set_sort(self, request, pk=None):
         """

@@ -414,3 +414,36 @@ class CachetSignature(BaseModel):
 
     def __str__(self):
         return self.nom
+
+
+class PieceVersion(models.Model):
+    """Version ANTÉRIEURE des données d'une pièce (historique, append-only).
+
+    Ré-importer ou modifier une pièce écrasait son contenu : après un rejet, impossible
+    de dire ce qui avait changé depuis la soumission, ni de revenir en arrière. Avant
+    chaque changement de `payload`, l'ancien contenu est conservé ici (cf.
+    `pieces/versions.py`), avec son auteur et sa date d'origine.
+    """
+
+    piece = models.ForeignKey(Piece, on_delete=models.CASCADE, related_name='versions',
+                              verbose_name="Pièce")
+    numero = models.PositiveIntegerField(verbose_name="N° de version")
+    payload = models.JSONField(default=dict, blank=True, verbose_name="Données")
+    statut = models.CharField(max_length=10, blank=True, default='', verbose_name="Statut de la pièce")
+    auteur = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+                               blank=True, related_name='+', verbose_name="Auteur du contenu")
+    date_contenu = models.DateTimeField(null=True, blank=True, verbose_name="Date du contenu")
+    remplacee_par = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+                                      blank=True, related_name='+', verbose_name="Remplacée par")
+    origine = models.CharField(max_length=20, blank=True, default='modification',
+                               verbose_name="Origine du remplacement")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Archivée le")
+
+    class Meta:
+        ordering = ['-numero']
+        verbose_name = "Version de pièce"
+        verbose_name_plural = "Versions de pièces"
+        constraints = [models.UniqueConstraint(fields=['piece', 'numero'], name='unique_version_par_piece')]
+
+    def __str__(self):
+        return f"{self.piece_id} v{self.numero}"

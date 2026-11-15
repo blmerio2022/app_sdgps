@@ -674,6 +674,21 @@ obligatoire au rejet). ⚠ Exception assumée aux règles de tableaux : file de 
 ordonnée par ancienneté, pas une liste d'entités. Tests : `projects/tests_file_validation.py`,
 `file-validation.component.spec.ts`.
 
+**Historique des versions d'une pièce.** Ré-importer ou modifier une pièce écrasait son
+contenu. Désormais, avant CHAQUE changement de `Piece.payload`, l'ancien contenu est archivé
+en `pieces.models.PieceVersion` (signal `pre_save` de `pieces/versions.py`, branché dans
+`PiecesConfig.ready` : couvre l'écran, les ré-imports, les recalculs, la restauration ; rien
+à la création ni si seul un autre champ change), avec l'auteur et la date du contenu
+remplacé et qui l'a remplacé. Au plus `MAX_VERSIONS` (50) par pièce. API (portée RBAC de la
+pièce) : `GET pieces/<id>/versions/`, `versions/<n>/`, `versions/<n>/comparer/?avec=courante|<m>`
+(lignes rapprochées par `id`, sinon par position : ajoutées / supprimées / modifiées avec
+leurs cellules, autres clés du payload), `POST versions/<n>/restaurer/` (archive le contenu
+courant, repasse la pièce en **brouillon**, refusé sur un dossier figé). Front : bouton
+« Historique » de la page d'une pièce → `<app-piece-versions>` (liste, comparaison avec la
+version actuelle, restauration confirmée). ⚠ Ne jamais modifier `payload` par
+`QuerySet.update()` : le signal ne passerait pas. Tests : `pieces/tests_versions.py`,
+`piece-versions.component.spec.ts`.
+
 **Version de l'application : `v<majeure>.<mineure>.<n>`, calculée depuis git.** Visible par
 TOUS, connecté ou non : pied de la page de connexion, bas du menu latéral (clic → « À
 propos » : commit, dates, environnement), API **publique** `GET /api/version/` (inscrite

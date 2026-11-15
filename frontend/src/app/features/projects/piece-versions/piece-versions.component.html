@@ -1,0 +1,85 @@
+<div class="pv-fond" (click)="fermer()">
+  <div class="pv-modale" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-label="Historique des versions">
+    <header class="pv-tete">
+      <h3><i class="fas fa-clock-rotate-left"></i> Historique des versions</h3>
+      <button type="button" class="pv-x" (click)="fermer()" aria-label="Fermer"><i class="fas fa-xmark"></i></button>
+    </header>
+
+    <p class="pv-erreur" *ngIf="erreur"><i class="fas fa-triangle-exclamation"></i> {{ erreur }}</p>
+    <div class="pv-chargement" *ngIf="chargement"><i class="fas fa-spinner fa-spin"></i> Chargement…</div>
+
+    <div class="pv-corps" *ngIf="historique && !chargement">
+      <aside class="pv-liste">
+        <div class="pv-version courante">
+          <span class="num">Actuelle</span>
+          <span class="meta">{{ historique.courante.lignes }} ligne(s) · {{ historique.courante.auteur || '—' }}</span>
+          <span class="meta">{{ historique.courante.date_contenu | date:'dd/MM/yyyy HH:mm' }}</span>
+        </div>
+        <div class="pv-vide" *ngIf="!historique.versions.length">
+          <i class="fas fa-box-open"></i>
+          <p>Aucune version antérieure : le contenu n'a pas changé depuis sa création.</p>
+        </div>
+        <button type="button" class="pv-version" *ngFor="let v of historique.versions"
+                [class.on]="selection?.numero === v.numero" (click)="choisir(v)">
+          <span class="num">Version {{ v.numero }}</span>
+          <span class="meta">{{ v.lignes }} ligne(s) · {{ v.auteur || '—' }}</span>
+          <span class="meta">{{ v.date_contenu | date:'dd/MM/yyyy HH:mm' }}</span>
+          <span class="meta repl">{{ origine(v) }}<span *ngIf="v.remplacee_par"> par {{ v.remplacee_par }}</span>
+            le {{ v.archivee_le | date:'dd/MM/yyyy HH:mm' }}</span>
+        </button>
+      </aside>
+
+      <section class="pv-diff" *ngIf="selection">
+        <div class="pv-diff-tete">
+          <div>
+            <h4>Version {{ selection.numero }} → version actuelle</h4>
+            <p *ngIf="diff && !identique">
+              <span class="pastille ajout">+{{ diff.ajoutees.length }} ajoutée(s)</span>
+              <span class="pastille suppr">−{{ diff.supprimees.length }} supprimée(s)</span>
+              <span class="pastille modif">~{{ diff.modifiees.length }} modifiée(s)</span>
+              <span class="pastille">{{ diff.identiques }} identique(s)</span>
+            </p>
+          </div>
+          <div class="pv-restaurer">
+            <ng-container *ngIf="!confirmation">
+              <button type="button" class="btn" (click)="confirmation = true" [disabled]="verrouille"
+                      [title]="verrouille ? 'Dossier figé : demandez sa réouverture pour restaurer' : 'Reprendre le contenu de cette version'">
+                <i class="fas fa-rotate-left"></i> Restaurer cette version</button>
+            </ng-container>
+            <ng-container *ngIf="confirmation">
+              <span class="conf">Le contenu actuel sera archivé et la pièce repassera en brouillon.</span>
+              <button type="button" class="btn secondaire" (click)="confirmation = false" [disabled]="restauration">Annuler</button>
+              <button type="button" class="btn" (click)="restaurer()" [disabled]="restauration">
+                <i class="fas fa-spinner fa-spin" *ngIf="restauration"></i> Confirmer</button>
+            </ng-container>
+          </div>
+        </div>
+
+        <div class="pv-chargement" *ngIf="chargementDiff"><i class="fas fa-spinner fa-spin"></i></div>
+        <div class="pv-identique" *ngIf="diff && identique"><i class="fas fa-equals"></i> Contenu identique à la version actuelle.</div>
+
+        <div class="pv-blocs" *ngIf="diff && !identique">
+          <p class="pv-autres" *ngIf="diff.autres_cles.length"><i class="fas fa-sliders"></i>
+            Autres réglages modifiés : {{ diff.autres_cles.join(', ') }}</p>
+
+          <div class="pv-ligne modif" *ngFor="let m of diff.modifiees">
+            <span class="sigle">~</span>
+            <div class="cellules">
+              <span class="cell" *ngFor="let c of m.colonnes">
+                <b>{{ c }}</b> <del>{{ valeur(m.avant?.[c]) }}</del> <i class="fas fa-arrow-right"></i> <ins>{{ valeur(m.apres?.[c]) }}</ins>
+              </span>
+            </div>
+          </div>
+          <div class="pv-ligne ajout" *ngFor="let r of diff.ajoutees">
+            <span class="sigle">+</span>
+            <div class="cellules"><span class="cell" *ngFor="let c of colonnes(r)"><b>{{ c }}</b> {{ valeur(r[c]) }}</span></div>
+          </div>
+          <div class="pv-ligne suppr" *ngFor="let r of diff.supprimees">
+            <span class="sigle">−</span>
+            <div class="cellules"><span class="cell" *ngFor="let c of colonnes(r)"><b>{{ c }}</b> {{ valeur(r[c]) }}</span></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
