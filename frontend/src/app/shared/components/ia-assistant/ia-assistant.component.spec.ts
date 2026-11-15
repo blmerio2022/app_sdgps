@@ -87,6 +87,17 @@ describe('IaAssistantComponent (n°5)', () => {
     expect(router.navigateByUrl).toHaveBeenCalledWith('/admin/parametres/cachets-signatures');
   });
 
+  it('le gras Markdown est rendu, les titres nettoyés, sans HTML interprété', () => {
+    expect(cmp.segments('Allez dans **Paramètres** puis **Cachets**.')).toEqual([
+      { texte: 'Allez dans ', gras: false }, { texte: 'Paramètres', gras: true },
+      { texte: ' puis ', gras: false }, { texte: 'Cachets', gras: true }, { texte: '.', gras: false },
+    ]);
+    expect(cmp.lignes('## Étapes\n1. **Enregistrer**')).toEqual([
+      { texte: 'Étapes', puce: false }, { texte: '**Enregistrer**', puce: true },
+    ]);
+    expect(cmp.segments('<img src=x>')).toEqual([{ texte: '<img src=x>', gras: false }]);
+  });
+
   it('les puces de la réponse sont repérées, sans HTML injecté', () => {
     const l = cmp.lignes('Titre\n- un\n2) deux\n<b>gras</b>');
     expect(l).toEqual([

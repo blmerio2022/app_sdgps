@@ -48,7 +48,10 @@ class Command(BaseCommand):
 
         # 1) Modèles accessibles avec cette clé.
         try:
-            ids = [m.id for m in sdk.models.list(limit=1000)]
+            # PREMIÈRE page seulement (`.data`) : itérer la page enchaîne les requêtes, et une
+            # passerelle qui ne renvoie pas `has_more` fait alors boucler le SDK sans fin.
+            page = sdk.models.list(limit=1000)
+            ids = [m.id for m in (getattr(page, 'data', None) or page)]
         except anthropic.AuthenticationError:
             self.stdout.write(ko('Clé refusée par le service (401).'))
             return

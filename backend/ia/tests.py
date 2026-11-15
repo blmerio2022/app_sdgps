@@ -528,6 +528,19 @@ class CommandeVerifierTests(SimpleTestCase):
         self.assertIn("Appel d'essai réussi", texte)
         self.assertNotIn('sk-test-factice', texte)                  # la clé n'apparaît jamais
 
+    @override_settings(**PASSERELLE)
+    def test_premiere_page_seulement(self):
+        # Régression : OmniRoute ne renvoie pas `has_more` ; itérer la page faisait boucler
+        # le SDK de requête en requête. Seule `page.data` est lue.
+        class Page:
+            data = [SimpleNamespace(id='cc/claude-opus-5-5')]
+
+            def __iter__(self):
+                raise AssertionError('la pagination automatique ne doit pas être utilisée')
+
+        sdk = SimpleNamespace(models=SimpleNamespace(list=lambda limit: Page()))
+        self.assertIn('cc/claude-opus-5-5  ← IA_MODELE', self._executer(sdk, sans_appel=True))
+
     @override_settings(**{**PASSERELLE, 'IA_MODELE': 'inexistant'})
     def test_signale_un_modele_absent_sans_appel(self):
         sdk = SimpleNamespace(models=SimpleNamespace(list=lambda limit: [SimpleNamespace(id='glm/glm-5.2')]))

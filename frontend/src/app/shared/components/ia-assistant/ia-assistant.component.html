@@ -34,8 +34,7 @@
       <div *ngFor="let m of messages" class="ias-msg" [ngClass]="m.role">
         <div class="ias-bulle">
           <ng-container *ngFor="let l of lignes(m.content)">
-            <p *ngIf="!l.puce">{{ l.texte }}</p>
-            <p *ngIf="l.puce" class="puce">{{ l.texte }}</p>
+            <p [class.puce]="l.puce"><ng-container *ngFor="let s of segments(l.texte)"><strong *ngIf="s.gras">{{ s.texte }}</strong><ng-container *ngIf="!s.gras">{{ s.texte }}</ng-container></ng-container></p>
           </ng-container>
         </div>
         <div class="ias-actions" *ngIf="m.actions?.length">

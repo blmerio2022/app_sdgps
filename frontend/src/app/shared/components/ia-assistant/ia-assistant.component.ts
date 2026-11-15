@@ -123,12 +123,21 @@ export class IaAssistantComponent implements OnInit, AfterViewChecked {
     this.ouvert = false;
   }
 
-  /** Lignes d'un message, puces repérées (rendu sans HTML injecté). */
+  /** Lignes d'un message, puces repérées (rendu sans HTML injecté). Les titres Markdown
+   * (`## …`) deviennent du texte ; le gras (`**…**`) est rendu par `segments`. */
   lignes(contenu: string): { texte: string; puce: boolean }[] {
     return (contenu || '').split('\n').filter(l => l.trim()).map(l => {
       const m = l.match(/^\s*(?:[-•*]|\d+[.)])\s+(.*)$/);
-      return m ? { texte: m[1], puce: true } : { texte: l, puce: false };
+      const texte = (m ? m[1] : l).replace(/^\s*#{1,6}\s+/, '');
+      return { texte, puce: !!m };
     });
+  }
+
+  /** Découpe une ligne en segments normaux / gras (`**…**`), affichés par interpolation :
+   * aucun HTML venu du modèle n'est jamais interprété. */
+  segments(texte: string): { texte: string; gras: boolean }[] {
+    return (texte || '').split(/\*\*/).map((t, i) => ({ texte: t, gras: i % 2 === 1 }))
+      .filter(s => s.texte);
   }
 
   get derniereSansReponse(): boolean {
