@@ -116,12 +116,33 @@ jobs:
 
       - name: Déployer sur Railway (sdgps-test)
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_TEST }}
+          JETON: ${{ secrets.RAILWAY_TOKEN_TEST }}
           RAILWAY_SERVICE: ${{ vars.RAILWAY_TEST_SERVICE || 'app' }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_TEST_PROJECT_ID || 'd9f8bb0b-2da6-4536-9214-8fc67c7003fb' }}
+          RAILWAY_ENVIRONMENT: ${{ vars.RAILWAY_TEST_ENVIRONMENT || 'production' }}
+        # Railway délivre deux sortes de jetons, lus par deux variables DIFFÉRENTES :
+        #  - jeton de PROJET (projet › Settings › Tokens) → RAILWAY_TOKEN, déjà lié à
+        #    un projet et un environnement ;
+        #  - jeton de COMPTE / d'ÉQUIPE (paramètres du compte) → RAILWAY_API_TOKEN, qui
+        #    exige de désigner le projet et l'environnement (`railway link`).
+        # On détecte la sorte de jeton plutôt que d'exiger la bonne : l'erreur
+        # « Invalid RAILWAY_TOKEN » d'un jeton de compte est trompeuse.
         # `--ci` : suit la construction et échoue si elle échoue — le job reflète l'état
         # réel du déploiement, au lieu de réussir dès l'envoi (`--detach`).
         run: |
-          npm install -g @railway/cli
+          npm install -g @railway/cli --allow-scripts=@railway/cli
+          JETON="$(printf '%s' "$JETON" | tr -d '[:space:]')"   # espaces / retour ligne collés
+          if RAILWAY_TOKEN="$JETON" railway status >/dev/null 2>&1; then
+            echo "Jeton de projet Railway détecté."
+            export RAILWAY_TOKEN="$JETON"
+          elif RAILWAY_API_TOKEN="$JETON" railway whoami >/dev/null 2>&1; then
+            echo "Jeton de compte Railway détecté : liaison au projet $RAILWAY_PROJECT_ID ($RAILWAY_ENVIRONMENT)."
+            export RAILWAY_API_TOKEN="$JETON"
+            railway link --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_SERVICE"
+          else
+            echo "::error title=Jeton Railway refusé::Le secret RAILWAY_TOKEN_TEST n'est accepté ni comme jeton de projet ni comme jeton de compte (expiré, révoqué, ou mal copié). Recréez-le : Railway › sdgps-test › Settings › Tokens (environnement production)."
+            exit 1
+          fi
           railway up --service "$RAILWAY_SERVICE" --ci
 
       - name: Contrôler la version en ligne
