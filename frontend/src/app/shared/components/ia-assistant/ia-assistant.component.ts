@@ -35,6 +35,9 @@ export interface Segment { texte: string; gras: boolean; marque: boolean; }
  * l'utilisateur) ; pour agir, il propose des boutons que l'utilisateur clique.
  * Masqué tant que l'IA n'est pas activée sur l'instance.
  */
+/** Classe posée sur <body> tant que le bouton flottant de l'assistant est affiché. */
+export const ASSISTANT_CLASSE_BODY = 'ias-actif';
+
 @Component({
   selector: 'app-ia-assistant',
   templateUrl: './ia-assistant.component.html',
@@ -82,13 +85,21 @@ export class IaAssistantComponent implements OnInit, AfterViewChecked, OnDestroy
   constructor(private ia: IaService, private router: Router) {}
 
   ngOnInit(): void {
-    this.abonnements.push(this.ia.disponible$.subscribe(d => (this.disponible = d)));
+    this.abonnements.push(this.ia.disponible$.subscribe(d => {
+      this.disponible = d;
+      // Le bouton flottant occupe le coin bas-droit de l'écran : la classe permet aux barres
+      // de pagination de lui réserver la place (styles.scss) au lieu d'être recouvertes.
+      document.body.classList.toggle(ASSISTANT_CLASSE_BODY, d);
+    }));
     this.abonnements.push(this.recherche$.pipe(debounceTime(300), distinctUntilChanged())
       .subscribe(() => this.chargerListe()));
     this.agrandi = localStorage.getItem(CLE_AGRANDI) === '1';
   }
 
-  ngOnDestroy(): void { this.abonnements.forEach(a => a.unsubscribe()); }
+  ngOnDestroy(): void {
+    this.abonnements.forEach(a => a.unsubscribe());
+    document.body.classList.remove(ASSISTANT_CLASSE_BODY);
+  }
 
   ngAfterViewChecked(): void {
     if (this.recalculer) { this.recalculer = false; this.compterOccurrences(); }

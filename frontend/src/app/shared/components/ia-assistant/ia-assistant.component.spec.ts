@@ -1,5 +1,5 @@
 import { of, throwError } from 'rxjs';
-import { CLE_AGRANDI, CLE_DISCUSSION, IaAssistantComponent } from './ia-assistant.component';
+import { ASSISTANT_CLASSE_BODY, CLE_AGRANDI, CLE_DISCUSSION, IaAssistantComponent } from './ia-assistant.component';
 
 function msg(id: number, role: 'user' | 'assistant', contenu: string): any {
   return { id, role, contenu, actions: [], outils: [], modele: 'm', created_at: '2026-11-15T10:00:00Z' };
@@ -43,6 +43,17 @@ describe('IaAssistantComponent (n°5 — discussions)', () => {
     const autre = new IaAssistantComponent(ia, router);
     autre.ngOnInit();
     expect(autre.disponible).toBeFalse();
+  });
+
+  it('réserve la place du bouton flottant (classe sur <body>) tant qu’il est affiché', () => {
+    expect(document.body.classList.contains(ASSISTANT_CLASSE_BODY)).toBeTrue();
+    cmp.ngOnDestroy();
+    expect(document.body.classList.contains(ASSISTANT_CLASSE_BODY)).toBeFalse();
+    ia.disponible$ = of(false);
+    const autre = new IaAssistantComponent(ia, router);
+    autre.ngOnInit();
+    expect(document.body.classList.contains(ASSISTANT_CLASSE_BODY)).toBeFalse();
+    autre.ngOnDestroy();
   });
 
   it('à l’ouverture : charge la liste et rouvre la dernière discussion', () => {

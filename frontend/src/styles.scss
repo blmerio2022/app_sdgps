@@ -363,3 +363,10 @@ body {
     b { color: var(--accent-color); }
   }
 }
+
+/* =====================================================================
+   ASSISTANT IA — place réservée au bouton flottant (coin bas-droit)
+   Tant que le bouton est affiché (classe posée par <app-ia-assistant>), les barres de
+   pagination se décalent pour que leur dernier bouton ne passe jamais dessous.
+   ===================================================================== */
+body.ias-actif app-table-pagination { display: block; padding-right: 72px; }

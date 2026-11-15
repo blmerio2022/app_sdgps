@@ -166,6 +166,21 @@ class SeedBusinessDataTests(TestCase):
         self.assertEqual(summary.get('projets_created', 0), 0)
         self.assertFalse(Projet.objects.filter(pk=PROJ_ID).exists())
 
+    def test_numero_ssdgps_deja_pris_dans_l_application_n_interrompt_pas_le_seed(self):
+        # Un SSDGPS créé dans l'application a pris le n°1 de l'affaire : le seed écarte la
+        # ligne du snapshot (et ses pièces) au lieu de planter sur la contrainte d'unicité,
+        # et ne touche pas à la donnée de l'opérateur.
+        import uuid
+        run_seed(data=REFERENCE, business_data=BUSINESS)
+        Ssdgps.objects.filter(pk=SS_ID).delete()
+        local = Ssdgps.objects.create(affaire_id=AFF_ID, nature_ssdgps='DDC/GPS', numero_ssdgps=1,
+                                      type_ssdgps='mono-session', id=uuid.uuid4())
+        run_seed(data=REFERENCE, business_data=BUSINESS)   # ne lève pas
+        self.assertFalse(Ssdgps.objects.filter(pk=SS_ID).exists())
+        local.refresh_from_db()
+        self.assertEqual(local.nature_ssdgps, 'DDC/GPS')
+        self.assertFalse(Piece.objects.filter(pk=PIECE_ID, ssdgps_id=SS_ID).exists())
+
     def test_business_data_vide_ne_cree_pas_les_entites_du_snapshot(self):
         # Un dict métier vide n'injecte aucune entité du snapshot (rétro-compatibilité).
         # NB : la base de test contient déjà des projets de démo (migrations de données) ;

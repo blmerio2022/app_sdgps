@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, Injector } from '@angular/core';
 import {
   HttpInterceptor,
   HttpRequest,
@@ -17,7 +17,16 @@ export class AuthInterceptor implements HttpInterceptor {
   private isRefreshing = false;
   private refreshDone$ = new BehaviorSubject<string | null>(null);
 
-  constructor(private router: Router, private authService: AuthService) {}
+  /**
+   * `AuthService` est résolu À LA DEMANDE, pas injecté au constructeur : il dépend de
+   * `HttpClient`, qui dépend des intercepteurs — donc de celui-ci. Au démarrage avec un jeton
+   * en mémoire, son constructeur lance une requête (contrôle du changement de mot de passe)
+   * qui construisait cet intercepteur pendant que `AuthService` était encore en cours de
+   * création : dépendance circulaire NG0200 dans la console.
+   */
+  constructor(private router: Router, private injector: Injector) {}
+
+  private get authService(): AuthService { return this.injector.get(AuthService); }
 
   intercept(request: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
     const token = localStorage.getItem('authToken');

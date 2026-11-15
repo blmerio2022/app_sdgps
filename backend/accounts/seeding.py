@@ -335,6 +335,19 @@ def _seed_business_rows(data, upsert, audit_fields, o1_by_code, o2_by_code, org_
     seeded_projets, seeded_proprietes, seeded_affaires = set(), set(), set()
     seeded_ssdgps, seeded_sessions, seeded_pieces = set(), set(), set()
 
+    def occupe(model, pk, libelle, **cle):
+        """Une AUTRE ligne (créée dans l'application) tient-elle déjà cette clé naturelle ?
+
+        Le jeu d'initialisation ne doit jamais écraser ni dupliquer une donnée saisie par un
+        opérateur : sa ligne est alors écartée (avec sa descendance), et le seed continue.
+        Sans ce garde-fou, un numéro attribué localement faisait planter tout le seed
+        (IntegrityError sur la contrainte d'unicité).
+        """
+        if model._base_manager.filter(**cle).exclude(pk=pk).exists():
+            log(f"    {libelle} ignoré(e) : {cle} est déjà utilisé par une autre ligne")
+            return True
+        return False
+
     # --- Projets (org requise) ---
     for row in data.get('projets', []):
         org = org_by_code.get(row['organization_code'])
@@ -373,6 +386,9 @@ def _seed_business_rows(data, upsert, audit_fields, o1_by_code, o2_by_code, org_
     for row in data.get('affaires', []):
         if row['propriete_id'] not in seeded_proprietes:
             continue
+        if occupe(Affaire, row['id'], 'Affaire', propriete_id=row['propriete_id'],
+                  numero_sd_affaire=row['numero_sd_affaire']):
+            continue
         upsert(Affaire, row['id'], {
             'propriete_id': row['propriete_id'], 'numero_sd_affaire': row['numero_sd_affaire'],
             'nature_procedure_affaire': row['nature_procedure_affaire'],
@@ -387,6 +403,9 @@ def _seed_business_rows(data, upsert, audit_fields, o1_by_code, o2_by_code, org_
     for row in data.get('ssdgps', []):
         if row['affaire_id'] not in seeded_affaires:
             continue
+        if occupe(Ssdgps, row['id'], 'SSDGPS', affaire_id=row['affaire_id'],
+                  numero_ssdgps=row['numero_ssdgps']):
+            continue
         upsert(Ssdgps, row['id'], {
             'affaire_id': row['affaire_id'], 'nature_ssdgps': row['nature_ssdgps'],
             'numero_ssdgps': row['numero_ssdgps'], 'type_ssdgps': row['type_ssdgps'],
@@ -398,6 +417,9 @@ def _seed_business_rows(data, upsert, audit_fields, o1_by_code, o2_by_code, org_
     # --- Sessions ---
     for row in data.get('sessions', []):
         if row['ssdgps_id'] not in seeded_ssdgps:
+            continue
+        if occupe(Session, row['id'], 'Session', ssdgps_id=row['ssdgps_id'],
+                  numero_session=row['numero_session']):
             continue
         upsert(Session, row['id'], {
             'ssdgps_id': row['ssdgps_id'], 'numero_session': row['numero_session'],
