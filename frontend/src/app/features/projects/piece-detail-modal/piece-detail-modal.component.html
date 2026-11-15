@@ -304,6 +304,7 @@
                 *ngIf="reimportPreview"
                 [champs]="reimportPreview.champs"
                 [preview]="reimportPreview"
+                [typePiece]="piece.type_piece"
                 (mappingChange)="onReimportMappingChange($event)">
               </app-piece-column-mapper>
               <div class="section-actions">

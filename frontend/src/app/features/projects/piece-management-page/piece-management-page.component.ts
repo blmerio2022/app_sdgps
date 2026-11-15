@@ -205,6 +205,8 @@ export class PieceManagementPageComponent implements OnInit {
         this.catalog = catalog;
         this.updateTopbarBreadcrumb();
         this.loadPieces();
+        // Arrivée depuis l'assistant IA (« Générer le rapport ») : la modale s'ouvre seule.
+        if (this.route.snapshot.queryParamMap.get('rapport') === '1') this.ouvrirRapportDemande();
       },
       error: () => { this.toast.error('Erreur', 'SSDGPS introuvable'); this.goBack(); },
     });
@@ -214,6 +216,18 @@ export class PieceManagementPageComponent implements OnInit {
       next: (p) => { this.projet = p; this.updateTopbarBreadcrumb(); },
       error: () => {},
     });
+  }
+
+  /** Ouvre la modale Rapport PDF dès que les pièces sont chargées (lien `?rapport=1`). */
+  private ouvrirRapportDemande(tentatives = 40): void {
+    if (!this.loading) { this.openReportModal(); return; }
+    if (tentatives > 0) setTimeout(() => this.ouvrirRapportDemande(tentatives - 1), 150);
+  }
+
+  /** Observations rédigées par l'IA puis enregistrées : on recharge la liste. */
+  onObservationsIa(n: number): void {
+    this.toast.success('Observations enregistrées', `${n} observation(s) mise(s) à jour.`);
+    this.loadPieces();
   }
 
   ngOnDestroy(): void {

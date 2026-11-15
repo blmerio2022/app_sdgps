@@ -1,6 +1,8 @@
-import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from '@angular/core';
+import { Component, EventEmitter, Input, OnChanges, OnInit, Output, SimpleChanges } from '@angular/core';
 import { FormBuilder, FormGroup } from '@angular/forms';
 import { PieceChampDef, PieceImportPreview } from '../../../core/models/piece.model';
+import { IaConfiance } from '../../../core/models/ia.model';
+import { IaService, messageErreurIa } from '../../../core/services/ia.service';
 
 const IGNORE = '';
 
@@ -13,17 +15,32 @@ const IGNORE = '';
   templateUrl: './piece-column-mapper.component.html',
   styleUrls: ['./piece-column-mapper.component.scss'],
 })
-export class PieceColumnMapperComponent implements OnChanges {
+export class PieceColumnMapperComponent implements OnChanges, OnInit {
   @Input() champs: PieceChampDef[] = [];
   @Input() preview!: PieceImportPreview;
+  /** Code du type de pièce : requis pour la proposition par l'IA (champs du catalogue). */
+  @Input() typePiece: string | null = null;
   @Output() mappingChange = new EventEmitter<Record<string, string>>();
+
+  /** N°4 — Correspondance proposée par l'IA (masquée si l'IA n'est pas activée). */
+  iaDisponible = false;
+  iaEnCours = false;
+  iaMessage = '';
+  iaErreur = '';
+  /** Associations posées par l'IA, avec confiance et raison — badge sur la ligne tant que
+   * l'opérateur ne l'a pas changée. */
+  iaSuggestions: Record<string, { colonne: string; confiance: IaConfiance; raison: string }> = {};
 
   readonly ignoreValue = IGNORE;
   form: FormGroup;
   private originalSuggestions: Record<string, string> = {};
 
-  constructor(private fb: FormBuilder) {
+  constructor(private fb: FormBuilder, private ia: IaService) {
     this.form = this.fb.group({});
+  }
+
+  ngOnInit(): void {
+    this.ia.disponible$.subscribe(d => (this.iaDisponible = d));
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -44,6 +61,9 @@ export class PieceColumnMapperComponent implements OnChanges {
    * d'un autre (ex. « Réf. antenne » ⊃ « Antenne » → sinon `ref_antenne` volait « Antenne »).
    */
   private buildForm(): void {
+    this.iaSuggestions = {};
+    this.iaMessage = '';
+    this.iaErreur = '';
     const group: Record<string, any> = {};
     this.originalSuggestions = {};
     const cols = (this.preview?.columns || []).map(raw => ({ raw, norm: this.normalize(raw) }));
@@ -88,6 +108,59 @@ export class PieceColumnMapperComponent implements OnChanges {
 
   resetAllToSuggestions(): void {
     this.form.patchValue(this.originalSuggestions);
+  }
+
+  /** Champs encore sans colonne ET colonnes encore libres : l'IA a-t-elle de quoi compléter ? */
+  get peutCompleterAvecIa(): boolean {
+    return !!this.typePiece && this.mappedCount < this.totalChamps
+      && this.unmappedSourceColumns.length > 0;
+  }
+
+  /**
+   * Demande à l'IA de COMPLÉTER la correspondance : les champs déjà associés restent tels
+   * quels (le serveur ne les propose même pas), seules les associations manquantes sont
+   * posées — chacune marquée d'un badge de confiance, à vérifier par l'opérateur.
+   */
+  completerAvecIa(): void {
+    if (!this.peutCompleterAvecIa || this.iaEnCours) return;
+    this.iaEnCours = true;
+    this.iaMessage = '';
+    this.iaErreur = '';
+    const deja: Record<string, string> = {};
+    Object.entries(this.form.value).forEach(([c, col]) => { if (col) deja[c] = col as string; });
+    this.ia.mappingColonnes(this.typePiece!, this.preview.columns, this.previewSampleRows, deja)
+      .subscribe({
+        next: ({ propositions }) => {
+          this.iaEnCours = false;
+          let posees = 0;
+          for (const p of propositions || []) {
+            const ctrl = this.form.get(p.champ);
+            if (!ctrl || ctrl.value) continue;          // jamais par-dessus un choix existant
+            if (!this.preview.columns.includes(p.colonne)) continue;
+            this.iaSuggestions[p.champ] = { colonne: p.colonne, confiance: p.confiance, raison: p.raison };
+            ctrl.setValue(p.colonne);
+            posees++;
+          }
+          this.iaMessage = posees
+            ? `${posees} association(s) proposée(s) par l'IA — vérifiez-les avant d'importer.`
+            : "L'IA n'a trouvé aucune association sûre à ajouter.";
+        },
+        error: (err) => { this.iaEnCours = false; this.iaErreur = messageErreurIa(err); },
+      });
+  }
+
+  /** Badge IA d'un champ, tant que sa valeur est encore celle proposée. */
+  suggestionIa(champName: string) {
+    const s = this.iaSuggestions[champName];
+    return s && this.form.value[champName] === s.colonne ? s : null;
+  }
+
+  titreSuggestion(raison: string): string {
+    return `Proposé par l'IA — ${raison}`;
+  }
+
+  libelleConfiance(c: IaConfiance): string {
+    return c === 'haute' ? 'sûre' : c === 'moyenne' ? 'probable' : 'à vérifier';
   }
 
   private emitMapping(): void {

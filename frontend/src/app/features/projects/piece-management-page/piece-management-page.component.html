@@ -68,6 +68,9 @@
               [title]="assistantTitle">
         <i class="fas fa-list-check"></i> Assistant
       </button>
+      <!-- N°6 : brouillons rédigés par l'IA (observations des pièces, note de synthèse) -->
+      <app-ia-redaction *ngIf="!showDeleted && ssdgps" [ssdgpsId]="ssdgps.id" [verrouille]="isLocked"
+                        (enregistre)="onObservationsIa($event)"></app-ia-redaction>
       <button class="btn btn-report" *ngIf="!showDeleted"
               [disabled]="validCount === 0"
               [title]="validCount === 0 ? 'Aucune pièce valide à inclure dans le rapport' : 'Générer le rapport PDF des pièces valides'"

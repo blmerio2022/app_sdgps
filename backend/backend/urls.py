@@ -34,6 +34,7 @@ urlpatterns = [
     path('api/v1/', include('pieces.urls')),  # ← AJOUT: Pièces SSDGPS/Session (Phase 6.5)
     path('api/v1/analytics/', include('analytics.urls')),
     path('api/v1/reseau-gps/', include('reseaux.urls')),  # Réseau de triangulation GPS (tous rôles)
+    path('api/v1/ia/', include('ia.urls')),  # Intelligence artificielle (inerte sans IA_ACTIVE)
 ]
 
 # Fichiers médias (uploads). En DEBUG, Django les sert nativement. En production (DEBUG=False),

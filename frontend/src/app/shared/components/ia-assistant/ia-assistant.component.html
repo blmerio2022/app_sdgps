@@ -1,0 +1,65 @@
+<ng-container *ngIf="disponible">
+  <!-- Bouton flottant -->
+  <button type="button" class="ias-fab" [class.ouvert]="ouvert" (click)="basculer()"
+          [attr.aria-expanded]="ouvert" [title]="ouvert ? 'Fermer l\'assistant' : 'Assistant SDGPS'"
+          aria-label="Assistant SDGPS">
+    <i class="fas" [ngClass]="ouvert ? 'fa-xmark' : 'fa-wand-magic-sparkles'"></i>
+  </button>
+
+  <!-- Panneau de discussion -->
+  <section class="ias-panel" *ngIf="ouvert" role="dialog" aria-label="Assistant SDGPS">
+    <header class="ias-head">
+      <span class="ias-avatar"><i class="fas fa-wand-magic-sparkles"></i></span>
+      <div class="ias-title">
+        <strong>Assistant SDGPS</strong>
+        <span>Consulte vos dossiers, ne modifie rien — vérifiez ses réponses.</span>
+      </div>
+      <button type="button" class="ias-icon-btn" (click)="nouvelleConversation()" [disabled]="enCours || !messages.length"
+              title="Nouvelle conversation" aria-label="Nouvelle conversation"><i class="fas fa-pen-to-square"></i></button>
+      <button type="button" class="ias-icon-btn" (click)="basculer()" title="Fermer" aria-label="Fermer">
+        <i class="fas fa-minus"></i></button>
+    </header>
+
+    <div class="ias-fil" #fil>
+      <!-- Accueil -->
+      <div class="ias-accueil" *ngIf="!messages.length">
+        <span class="ias-accueil-art"><i class="fas fa-wand-magic-sparkles"></i></span>
+        <h4>Bonjour, que puis-je faire pour vous ?</h4>
+        <p>Je retrouve vos dossiers, j'en résume l'état et je vous oriente dans l'application.</p>
+        <div class="ias-suggestions">
+          <button type="button" *ngFor="let s of suggestions" (click)="envoyer(s)">{{ s }}</button>
+        </div>
+      </div>
+
+      <div *ngFor="let m of messages" class="ias-msg" [ngClass]="m.role">
+        <div class="ias-bulle">
+          <ng-container *ngFor="let l of lignes(m.content)">
+            <p *ngIf="!l.puce">{{ l.texte }}</p>
+            <p *ngIf="l.puce" class="puce">{{ l.texte }}</p>
+          </ng-container>
+        </div>
+        <div class="ias-actions" *ngIf="m.actions?.length">
+          <button type="button" *ngFor="let a of m.actions" (click)="agir(a)">
+            <i class="fas fa-arrow-right"></i> {{ a.libelle }}
+          </button>
+        </div>
+      </div>
+
+      <div class="ias-msg assistant" *ngIf="enCours">
+        <div class="ias-bulle ias-frappe" aria-label="L'assistant réfléchit"><span></span><span></span><span></span></div>
+      </div>
+
+      <div class="ias-erreur" *ngIf="erreur">
+        <i class="fas fa-triangle-exclamation"></i> <span>{{ erreur }}</span>
+        <button type="button" *ngIf="derniereSansReponse" (click)="reessayer()">Réessayer</button>
+      </div>
+    </div>
+
+    <footer class="ias-saisie">
+      <textarea #saisie rows="1" [(ngModel)]="brouillon" (keydown)="onToucheSaisie($event)" maxlength="4000"
+                placeholder="Posez votre question…" aria-label="Votre question" [disabled]="enCours"></textarea>
+      <button type="button" class="ias-envoyer" (click)="envoyer()" [disabled]="!brouillon.trim() || enCours"
+              aria-label="Envoyer"><i class="fas fa-paper-plane"></i></button>
+    </footer>
+  </section>
+</ng-container>

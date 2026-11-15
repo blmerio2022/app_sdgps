@@ -436,6 +436,7 @@
             *ngIf="importPreview"
             [champs]="importPreview.champs"
             [preview]="importPreview"
+            [typePiece]="selectedType?.code || null"
             (mappingChange)="onMappingChange($event)">
           </app-piece-column-mapper>
         </div>

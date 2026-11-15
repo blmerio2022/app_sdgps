@@ -15,6 +15,8 @@ import { ClickOutsideDirective } from './directives/click-outside.directive';
 // Services
 import { LayoutService } from './services/layout.service';
 
+import { SharedModule } from '../../shared/shared.module';
+
 @NgModule({
   declarations: [
     DashboardLayoutComponent,
@@ -26,7 +28,8 @@ import { LayoutService } from './services/layout.service';
     CommonModule,    // ← Nécessaire pour *ngIf, *ngFor, async pipe
     RouterModule,    // ← Nécessaire pour routerLink, router-outlet
     FormsModule,
-    VersionModule    // Version déployée en bas du menu
+    VersionModule,   // Version déployée en bas du menu
+    SharedModule     // Assistant IA (bouton flottant, inerte sans IA activée)
   ],
   exports: [
     DashboardLayoutComponent,

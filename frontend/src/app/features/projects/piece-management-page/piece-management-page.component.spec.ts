@@ -1,3 +1,4 @@
+import { fakeAsync, tick } from '@angular/core/testing';
 import { of, throwError, Subject } from 'rxjs';
 import { PieceManagementPageComponent } from './piece-management-page.component';
 import { Piece } from '../../../core/models/piece.model';
@@ -1138,5 +1139,39 @@ describe('PieceManagementPageComponent — cycle de vie du dossier', () => {
 
     expect(cmp.pendingTransition).toBeNull();
     expect(cmp.transitionMotif).toBe('');
+  });
+});
+
+/** Intelligence artificielle sur la page des pièces : rapport ouvert depuis l'assistant
+ * (`?rapport=1`) et observations rédigées par l'IA puis enregistrées. */
+describe('PieceManagementPageComponent (intégration IA)', () => {
+  let cmp: PieceManagementPageComponent;
+  let toast: jasmine.SpyObj<any>;
+
+  beforeEach(() => {
+    toast = jasmine.createSpyObj('ToastService', ['success', 'error']);
+    const stub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
+    cmp = new PieceManagementPageComponent(
+      {} as any, {} as any, toast, { navigate: () => {} } as any, {} as any, {} as any, stub, stub,
+      {} as any,
+    );
+    spyOn(cmp, 'loadPieces');
+    spyOn(cmp, 'openReportModal');
+  });
+
+  it('?rapport=1 : la modale Rapport PDF s’ouvre une fois les pièces chargées', fakeAsync(() => {
+    cmp.loading = true;
+    (cmp as any).ouvrirRapportDemande();
+    tick(150);
+    expect(cmp.openReportModal).not.toHaveBeenCalled();
+    cmp.loading = false;
+    tick(150);
+    expect(cmp.openReportModal).toHaveBeenCalledTimes(1);
+  }));
+
+  it('observations enregistrées : message et rechargement de la liste', () => {
+    cmp.onObservationsIa(3);
+    expect(toast.success).toHaveBeenCalledWith('Observations enregistrées', '3 observation(s) mise(s) à jour.');
+    expect(cmp.loadPieces).toHaveBeenCalled();
   });
 });

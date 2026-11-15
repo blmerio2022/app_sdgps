@@ -4,10 +4,21 @@
     <span class="mapper-completion" [class.warning]="mappedCount === 0">
       <i class="fas fa-check-circle"></i> {{ mappedCount }} / {{ totalChamps }} champs mappés
     </span>
+    <!-- N°4 : l'IA complète les associations manquantes (en-têtes + 5 lignes d'exemple) -->
+    <button type="button" class="ia-btn" *ngIf="iaDisponible" (click)="completerAvecIa()"
+            [disabled]="!peutCompleterAvecIa || iaEnCours"
+            [title]="peutCompleterAvecIa ? 'Proposer les associations manquantes à partir des en-têtes et des valeurs' : 'Tous les champs ou toutes les colonnes sont déjà associés'">
+      <i class="fas" [ngClass]="iaEnCours ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'"></i>
+      <ng-container *ngIf="iaEnCours">Analyse…</ng-container>
+      <ng-container *ngIf="!iaEnCours">Compléter avec l'IA</ng-container>
+    </button>
     <button class="reset-all-btn" (click)="resetAllToSuggestions()" title="Réinitialiser toutes les suggestions">
       <i class="fas fa-undo"></i> Réinitialiser
     </button>
   </div>
+
+  <p class="ia-note" *ngIf="iaMessage"><i class="fas fa-wand-magic-sparkles"></i> {{ iaMessage }}</p>
+  <p class="ia-note erreur" *ngIf="iaErreur"><i class="fas fa-triangle-exclamation"></i> {{ iaErreur }}</p>
 
   <div class="unmapped-warning" *ngIf="unmappedSourceColumns.length">
     <i class="fas fa-exclamation-triangle"></i>
@@ -23,6 +34,10 @@
           {{ champ.label }}
           <i class="fas fa-circle-info champ-info" *ngIf="champ.description || champ.tooltip"
              [title]="champ.description || champ.tooltip"></i>
+        </span>
+        <span class="ia-badge" *ngIf="suggestionIa(champ.name) as s" [ngClass]="s.confiance"
+              [title]="titreSuggestion(s.raison)">
+          <i class="fas fa-wand-magic-sparkles"></i> {{ libelleConfiance(s.confiance) }}
         </span>
         <select [formControlName]="champ.name">
           <option [value]="ignoreValue">— ignorer —</option>

@@ -91,6 +91,7 @@ INSTALLED_APPS = [
     'pieces',  # ← AJOUT: Pièces SSDGPS/Session (Phase 6.5)
     'analytics',  # ← AJOUT: Analytique de stockage (dashboard admin)
     'reseaux',  # Conception de réseaux de triangulation GPS (module indépendant, sans modèle)
+    'ia',  # Intelligence artificielle : mapping d'import, rédaction, assistant (inerte par défaut)
 ]
 
 MIDDLEWARE = [
@@ -359,8 +360,23 @@ REST_FRAMEWORK = {
         'verify_code_email': '10/hour',
         'reset_password_ip': '15/hour',
         'reset_password_email': '10/hour',
+        # Fonctions d'IA : chaque appel est facturé — un plafond par utilisateur borne le
+        # coût d'un usage abusif ou d'un script qui boucle.
+        'ia': config('IA_DEBIT', default='120/hour'),
     },
 }
+
+# ── Intelligence artificielle (app `ia/`) ───────────────────────────────────────────
+# INERTE par défaut : aucune donnée ne quitte le serveur tant que l'IA n'est pas
+# EXPLICITEMENT activée (IA_ACTIVE=True) ET qu'une clé est fournie. Les dossiers
+# fonciers sont des données nominatives : l'activation suppose l'accord de l'ANCFCC et
+# le respect de la loi 09-08 (CNDP). Cf. CLAUDE.md, « Intelligence artificielle ».
+IA_ACTIVE = config('IA_ACTIVE', default=False, cast=bool)
+ANTHROPIC_API_KEY = config('ANTHROPIC_API_KEY', default='')
+IA_MODELE = config('IA_MODELE', default='claude-opus-5-5')
+# Délai maximal d'un appel (secondes) : une requête HTTP de l'application ne doit pas
+# rester suspendue indéfiniment derrière le fournisseur.
+IA_DELAI = config('IA_DELAI', default=90, cast=int)
 
 # Cache : support des compteurs de limitation de débit, du verrouillage de compte et des
 # codes de réinitialisation. En environnement serveur, gunicorn lance PLUSIEURS workers ;

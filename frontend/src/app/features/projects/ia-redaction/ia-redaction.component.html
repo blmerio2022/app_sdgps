@@ -1,0 +1,94 @@
+<div class="iar" *ngIf="disponible">
+  <button type="button" class="iar-btn" (click)="basculerMenu($event)" [attr.aria-expanded]="menuOuvert"
+          title="Rédiger les textes du dossier avec l'IA (brouillons à relire)">
+    <i class="fas fa-wand-magic-sparkles"></i> Rédiger
+    <i class="fas fa-chevron-down iar-caret"></i>
+  </button>
+  <div class="iar-menu" *ngIf="menuOuvert" role="menu">
+    <button type="button" role="menuitem" (click)="ouvrirObservations()" [disabled]="verrouille"
+            [title]="verrouille ? 'Dossier figé : les observations ne sont plus modifiables' : ''">
+      <i class="fas fa-pen-to-square"></i>
+      <span><strong>Observations des pièces</strong>
+        <small>Une observation par pièce, pour la page de garde</small></span>
+    </button>
+    <button type="button" role="menuitem" (click)="ouvrirSynthese()">
+      <i class="fas fa-file-lines"></i>
+      <span><strong>Note de synthèse du dossier</strong>
+        <small>État du dossier, contrôles, reste à faire</small></span>
+    </button>
+  </div>
+</div>
+
+<!-- ===================== Modale : observations ===================== -->
+<div class="iar-overlay" *ngIf="modale" (click)="fermer()">
+  <div class="iar-modal" [class.large]="modale === 'observations'" (click)="$event.stopPropagation()"
+       role="dialog" aria-modal="true">
+    <header class="iar-head">
+      <span class="iar-icon"><i class="fas fa-wand-magic-sparkles"></i></span>
+      <div>
+        <h3>{{ modale === 'observations' ? 'Observations proposées' : 'Note de synthèse du dossier' }}</h3>
+        <p>Brouillon rédigé par l'IA à partir des données du dossier — relisez avant d'utiliser.</p>
+      </div>
+      <button type="button" class="iar-close" (click)="fermer()" [disabled]="enregistrement" aria-label="Fermer">
+        <i class="fas fa-times"></i>
+      </button>
+    </header>
+
+    <div class="iar-body">
+      <div class="iar-loading" *ngIf="chargement">
+        <i class="fas fa-wand-magic-sparkles fa-beat-fade"></i>
+        <span>{{ modale === 'observations' ? 'Rédaction des observations…' : 'Rédaction de la note…' }}</span>
+      </div>
+      <p class="iar-error" *ngIf="erreur"><i class="fas fa-triangle-exclamation"></i> {{ erreur }}</p>
+
+      <!-- Observations : relecture ligne à ligne -->
+      <ng-container *ngIf="modale === 'observations' && !chargement && lignes.length">
+        <div class="iar-tools">
+          <span>{{ nbRetenues }} / {{ lignes.length }} retenue(s)</span>
+          <button type="button" (click)="toutCocher(true)">Tout cocher</button>
+          <button type="button" (click)="toutCocher(false)">Tout décocher</button>
+        </div>
+        <ul class="iar-list">
+          <li *ngFor="let l of lignes" [class.off]="!l.retenue">
+            <label class="iar-check">
+              <input type="checkbox" [(ngModel)]="l.retenue" [attr.aria-label]="'Retenir ' + l.designation">
+            </label>
+            <div class="iar-item">
+              <span class="iar-designation">{{ l.designation }}</span>
+              <span class="iar-actuelle" *ngIf="l.observation_actuelle">
+                Actuellement : « {{ l.observation_actuelle }} »
+              </span>
+              <textarea rows="2" [(ngModel)]="l.observation" [maxlength]="longueurMax"
+                        [disabled]="!l.retenue" [attr.aria-label]="'Observation de ' + l.designation"></textarea>
+              <span class="iar-count" [class.full]="l.observation.length >= longueurMax">
+                {{ l.observation.length }} / {{ longueurMax }}
+              </span>
+            </div>
+          </li>
+        </ul>
+      </ng-container>
+
+      <!-- Synthèse : texte éditable, à copier -->
+      <ng-container *ngIf="modale === 'synthese' && !chargement && synthese">
+        <textarea class="iar-synthese" [(ngModel)]="synthese" rows="14" aria-label="Note de synthèse"></textarea>
+      </ng-container>
+    </div>
+
+    <footer class="iar-foot">
+      <button type="button" class="iar-ghost" (click)="fermer()" [disabled]="enregistrement">Fermer</button>
+      <ng-container *ngIf="modale === 'synthese'">
+        <button type="button" class="iar-ghost" (click)="genererSynthese()" [disabled]="chargement">
+          <i class="fas fa-rotate"></i> Régénérer
+        </button>
+        <button type="button" class="iar-primary" (click)="copierSynthese()" [disabled]="!synthese">
+          <i class="fas" [ngClass]="copie ? 'fa-check' : 'fa-copy'"></i> {{ copie ? 'Copié' : 'Copier' }}
+        </button>
+      </ng-container>
+      <button type="button" class="iar-primary" *ngIf="modale === 'observations'"
+              (click)="enregistrerObservations()" [disabled]="!nbRetenues || enregistrement || chargement">
+        <i class="fas" [ngClass]="enregistrement ? 'fa-spinner fa-spin' : 'fa-check'"></i>
+        Enregistrer {{ nbRetenues }} observation(s)
+      </button>
+    </footer>
+  </div>
+</div>

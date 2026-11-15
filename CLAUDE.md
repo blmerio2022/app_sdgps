@@ -342,6 +342,41 @@ le demande, sur les pages du rapport.
 - tests : `backend/pieces/tests_cachets.py` (58 cas) + specs `cachets-signatures.service`,
   `cachet.util`, `cachet-editor`, `cachet-library`, `cachet-picker`, `pieces.service`.
 
+**Intelligence artificielle (app `ia/`) : INERTE par défaut (règle stricte).** Trois
+fonctions, toutes « l'IA propose, l'opérateur décide » — aucune n'écrit en base sur la seule
+foi d'une réponse du modèle :
+- **activation** : `IA_ACTIVE=True` **et** `ANTHROPIC_API_KEY` (settings, `.env`). Sans les
+  deux, rien ne part, `GET /api/v1/ia/statut/` répond `disponible: false` et le front masque
+  tous les boutons IA. Les dossiers fonciers sont nominatifs : activer l'IA suppose l'accord
+  de l'ANCFCC et le respect de la loi 09-08 (CNDP). Modèle : `IA_MODELE` (défaut
+  `claude-opus-5-5`), délai `IA_DELAI`, plafond par utilisateur `IA_DEBIT` (throttle `ia`) ;
+- **point de passage unique** : `ia/client.py::appeler(...)` — jamais le SDK `anthropic` en
+  direct. Il journalise chaque appel (`AuditEvent.ACTION_IA_APPEL` : fonction, modèle, jetons,
+  erreur), traduit les erreurs du fournisseur en `IaErreur` (message en français), active le
+  repli serveur en cas de refus (`fallbacks="default"`, bêta `server-side-fallback-2026-07-01`)
+  et ne désactive JAMAIS `thinking` (refusé par Opus 5.5 — régler `effort`) ;
+- **N°4 — correspondance des colonnes** (`ia/mapping.py`, `POST ia/mapping-colonnes/`) : l'IA
+  COMPLÈTE les associations manquantes (en-têtes + 5 lignes tronquées) ; les associations
+  faites sont fixes ; réponse contrainte par schéma (énumérations) puis re-validée
+  (`filtrer`). Front : bouton « Compléter avec l'IA » de `piece-column-mapper` (input
+  `typePiece`), badge de confiance par ligne ;
+- **N°6 — rédaction** (`ia/redaction.py`) : `POST ia/observations/` (une observation ≤ 160
+  car. par pièce, refusé sur un dossier figé) et `POST ia/synthese/` (note de synthèse). Les
+  FAITS sont calculés par l'application (comptages, tolérances, cohérence) ; seules des
+  données techniques partent (ni propriétaire ni requérant). Front : `IaRedactionComponent`
+  (bouton « Rédiger » de la page des pièces) ; les observations retenues s'enregistrent par
+  l'API habituelle des pièces (`commentaire`) ;
+- **N°5 — assistant** (`ia/assistant.py`, `POST ia/assistant/`) : outils en LECTURE SEULE,
+  tous filtrés par `scope_queryset` ; pour agir, l'outil `proposer_action` renvoie un bouton
+  (route relative validée côté serveur) que l'utilisateur clique — `?rapport=1` ouvre la
+  modale Rapport PDF. Historique tenu par le navigateur (`sessionStorage`), texte seul ;
+  `MAX_TOURS` appels d'outils par question. Front : `<app-ia-assistant>` (bouton flottant)
+  dans `DashboardLayoutComponent` ;
+- tests : `backend/ia/tests.py` (faux client, aucun appel réseau ; une 5xx se teste sous
+  `assertLogs('django.request')` — sous Python 3.14 son journal plante sinon) + specs
+  `ia.service`, `piece-column-mapper`, `ia-redaction`, `ia-assistant`,
+  `piece-management-page`.
+
 **Contrôle de cohérence avant génération.** `GET /api/v1/pieces/report-check/` (même
 portée, mêmes droits, même `_resoudre_portee_rapport`, appelée avec
 `exiger_pieces=False`) renvoie les anomalies du SDGPS sans rien modifier ni rendre :

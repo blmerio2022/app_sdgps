@@ -22,8 +22,11 @@ import { PdfPageEditorComponent } from './pdf-page-editor/pdf-page-editor.compon
 import { ProjectFlatListComponent } from './project-flat-list/project-flat-list.component';
 import { SousNiveauxMenuComponent } from './sous-niveaux-menu/sous-niveaux-menu.component';
 
+import { IaRedactionComponent } from './ia-redaction/ia-redaction.component';
+
 @NgModule({
   declarations: [
+    IaRedactionComponent,
     ProjectListComponent, ProjectExplorerComponent, ProjectSsdgpsListComponent,
     PieceColumnMapperComponent, PieceManagementPageComponent, PieceAddWizardComponent,
     PieceDetailModalComponent, PieceImageGalleryComponent,

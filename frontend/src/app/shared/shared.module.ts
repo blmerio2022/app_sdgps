@@ -11,6 +11,7 @@ import { ColumnConfigComponent } from './components/column-config/column-config.
 import { CachetEditorComponent } from './components/cachet-signature/cachet-editor/cachet-editor.component';
 import { CachetLibraryComponent } from './components/cachet-signature/cachet-library/cachet-library.component';
 import { CachetPickerComponent } from './components/cachet-signature/cachet-picker/cachet-picker.component';
+import { IaAssistantComponent } from './components/ia-assistant/ia-assistant.component';
 
 @NgModule({
   declarations: [
@@ -23,7 +24,8 @@ import { CachetPickerComponent } from './components/cachet-signature/cachet-pick
     TableHeaderTooltipDirective,
     CachetEditorComponent,
     CachetLibraryComponent,
-    CachetPickerComponent
+    CachetPickerComponent,
+    IaAssistantComponent
   ],
   imports: [
     CommonModule,
@@ -39,7 +41,8 @@ import { CachetPickerComponent } from './components/cachet-signature/cachet-pick
     TableHeaderTooltipDirective,
     CachetEditorComponent,
     CachetLibraryComponent,
-    CachetPickerComponent
+    CachetPickerComponent,
+    IaAssistantComponent
   ]
 })
 export class SharedModule { }
