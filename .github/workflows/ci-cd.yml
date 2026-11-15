@@ -1,6 +1,9 @@
 name: CI/CD
 
 # Stratégie « tag-based, rebuild par palier » :
+#   push feature/**               → TESTS → `railway up` sur le projet de TEST (sdgps-test) :
+#                                   chaque commit poussé de la version en cours est en ligne
+#                                   quelques minutes plus tard (job `deploy-test`, upstream).
 #   push develop                  → BUILD → GHCR :sha-<court> + :staging → redeploy Railway STAGING.
 #   tag git v*.*.*-rc.* (PREPROD) → BUILD depuis le tag → :<tag> + :preprod → redeploy PREPROD.
 #   tag git v*.*.* (PRODUCTION)   → BUILD depuis le tag → :<tag> + :production → redeploy PRODUCTION.
@@ -17,7 +20,7 @@ name: CI/CD
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, "feature/**"]
     tags: ["v*"]
   pull_request:
     branches: [main, develop]
@@ -67,6 +70,77 @@ jobs:
         run: npm run test:ci
       - name: Builder le frontend
         run: npx ng build --configuration production
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # TEST (push feature/**) : TESTS → envoi de l'arbre de travail → Railway `sdgps-test`.
+  #
+  # Chaque commit de la branche de version, poussé aussitôt (règle du dépôt), met à jour
+  # l'application de test SANS geste manuel — l'ancien `railway up` depuis un poste
+  # oubliait régulièrement des commits. Le déploiement attend les DEUX suites de tests :
+  # un commit rouge n'est jamais mis en ligne.
+  #
+  # Tourne dans l'UPSTREAM (blmerio2022), contrairement aux jobs d'image : le projet de
+  # test n'a pas d'image GHCR, Railway construit le Dockerfile racine depuis l'envoi.
+  # Secret requis : RAILWAY_TOKEN_TEST = jeton de PROJET Railway (sdgps-test, environnement
+  # « production »). Variables facultatives : RAILWAY_TEST_SERVICE (défaut « app »),
+  # RAILWAY_TEST_URL (défaut : domaine public actuel) pour le contrôle après déploiement.
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy-test:
+    needs: [test-backend, test-frontend]
+    if: github.repository == 'blmerio2022/app_sdgps' && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/feature/')
+    runs-on: ubuntu-latest
+    # Des pushes rapprochés : seul le DERNIER commit compte — un déploiement en cours d'un
+    # commit déjà dépassé est annulé plutôt que de mettre en ligne une version périmée.
+    concurrency:
+      group: deploy-test
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Historique + tags complets : la version (v1.0.N) se calcule depuis git.
+          fetch-depth: 0
+
+      - name: Vérifier le jeton Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_TEST }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "::error title=Déploiement de test impossible::Secret RAILWAY_TOKEN_TEST absent. Railway › sdgps-test › Settings › Tokens : créer un jeton de projet (environnement production), puis : gh secret set RAILWAY_TOKEN_TEST --repo blmerio2022/app_sdgps"
+            exit 1
+          fi
+
+      - name: Calculer la version (build-info/version.json)
+        # Le serveur n'a pas l'historique git : la version est figée avant l'envoi
+        # (`.railwayignore` force l'envoi de ce fichier ignoré par git).
+        run: python3 backend/backend/version.py --ecrire build-info/version.json
+
+      - name: Déployer sur Railway (sdgps-test)
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_TEST }}
+          RAILWAY_SERVICE: ${{ vars.RAILWAY_TEST_SERVICE || 'app' }}
+        # `--ci` : suit la construction et échoue si elle échoue — le job reflète l'état
+        # réel du déploiement, au lieu de réussir dès l'envoi (`--detach`).
+        run: |
+          npm install -g @railway/cli
+          railway up --service "$RAILWAY_SERVICE" --ci
+
+      - name: Contrôler la version en ligne
+        env:
+          URL: ${{ vars.RAILWAY_TEST_URL || 'https://app-production-4e77e566.up.railway.app' }}
+        # Le nouveau conteneur peut mettre quelques instants à prendre le relais : on sonde
+        # `/api/version/` (public) jusqu'à y lire le commit qui vient d'être poussé.
+        run: |
+          attendu="$(git rev-parse --short HEAD)"   # même forme que backend/backend/version.py
+          for i in $(seq 1 30); do
+            en_ligne="$(curl -fsS "$URL/api/version/" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("commit",""))' || true)"
+            if [ "$en_ligne" = "$attendu" ]; then
+              echo "✅ En ligne : commit $en_ligne — $URL"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error title=Version en ligne inattendue::attendu $attendu, en ligne « $en_ligne » ($URL)"
+          exit 1
 
   # ─────────────────────────────────────────────────────────────────────────────
   # STAGING (push develop) : BUILD → :sha-<court> + :staging → redeploy STAGING.

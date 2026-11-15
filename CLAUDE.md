@@ -41,7 +41,19 @@ textes d'interface). Respecter cette convention lors de l'ajout de code.
 - Tests unitaires (Karma/Jasmine) : `npm test` / `ng test`
 
 ### Déploiement de TEST sur Railway (projet `sdgps-test`)
-- Depuis la racine du dépôt, CLI Railway connectée et liée au service `app` :
+- **Automatique à chaque push sur `feature/**`** (job `deploy-test` de
+  `.github/workflows/ci-cd.yml`, dans l'upstream) : tests backend + frontend → version
+  figée (`build-info/version.json`) → `railway up --service app --ci` → contrôle que
+  `/api/version/` en ligne porte bien le commit poussé. Un commit rouge n'est jamais mis
+  en ligne ; des pushes rapprochés n'en déploient que le dernier (`concurrency`).
+  Prérequis : secret GitHub **`RAILWAY_TOKEN_TEST`** = jeton de **projet** Railway
+  (sdgps-test › Settings › Tokens, environnement `production`), posé par
+  `gh secret set RAILWAY_TOKEN_TEST --repo blmerio2022/app_sdgps`. Variables facultatives
+  `RAILWAY_TEST_SERVICE` (défaut `app`) et `RAILWAY_TEST_URL` (défaut
+  `https://app-production-4e77e566.up.railway.app`). Comme le dépôt pousse chaque commit
+  aussitôt, « commit » ⇒ « en ligne » en quelques minutes ; un commit **non poussé** n'est
+  pas déployé (le déploiement se fait toujours depuis l'état de GitHub, tests à l'appui).
+- Déploiement manuel (dépannage), depuis la racine du dépôt, CLI Railway connectée et liée au service `app` :
   `python backend/backend/version.py --ecrire build-info/version.json` puis
   `railway up --service app --detach` (envoie l'arbre de travail, construit le
   `Dockerfile` racine). Secrets générés : `backend/.env.railway-test` (gitignoré).
