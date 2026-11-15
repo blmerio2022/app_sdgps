@@ -1,0 +1,117 @@
+<div class="aj-page">
+  <header class="page-header">
+    <div>
+      <h1><i class="fas fa-clipboard-list"></i> Journal d'audit</h1>
+      <p class="subtitle">Qui a fait quoi, et quand — connexions, rôles, rapports, consultations…
+        Le journal est <strong>inaltérable</strong> : aucun événement ne peut être modifié ni supprimé.</p>
+    </div>
+    <button type="button" class="btn principal" (click)="exporter()" [disabled]="export || !total"
+            title="Exporter les événements filtrés (CSV) — l'export est lui-même journalisé">
+      <i class="fas" [ngClass]="export ? 'fa-spinner fa-spin' : 'fa-file-csv'"></i> Exporter (CSV)
+    </button>
+  </header>
+
+  <!-- ===== Synthèse de la sélection ===== -->
+  <section class="aj-kpis" *ngIf="synthese as s">
+    <div class="kpi"><span class="val">{{ s.total }}</span><span class="lib">événement(s)</span></div>
+    <div class="kpi"><span class="val">{{ s.acteurs_distincts }}</span><span class="lib">acteur(s) distinct(s)</span></div>
+    <div class="kpi" [class.alerte]="s.echecs_connexion > 0">
+      <span class="val">{{ s.echecs_connexion }}</span><span class="lib">échec(s) de connexion</span></div>
+    <div class="kpi periode"><span class="val small">
+        {{ s.premier ? (s.premier | date:'dd/MM/yyyy HH:mm') : '—' }}
+        <i class="fas fa-arrow-right"></i>
+        {{ s.dernier ? (s.dernier | date:'dd/MM/yyyy HH:mm') : '—' }}</span>
+      <span class="lib">période couverte</span></div>
+  </section>
+
+  <div class="aj-puces" *ngIf="synthese?.par_action?.length">
+    <button type="button" *ngFor="let a of synthese!.par_action" class="puce" [ngClass]="famille(a.action)"
+            [class.on]="filtres.action === a.action" (click)="filtrerAction(a.action)"
+            [title]="filtres.action === a.action ? 'Retirer ce filtre' : 'Ne montrer que : ' + a.label">
+      {{ a.label }} <span class="n">{{ a.total }}</span>
+    </button>
+  </div>
+
+  <!-- ===== Filtres ===== -->
+  <section class="aj-filtres">
+    <label class="recherche">
+      <i class="fas fa-magnifying-glass"></i>
+      <input [(ngModel)]="filtres.q" (ngModelChange)="onRecherche()"
+             placeholder="Rechercher : acteur, email, objet, identifiant, adresse IP…" aria-label="Recherche">
+    </label>
+    <select [(ngModel)]="filtres.action" (ngModelChange)="recharger()" aria-label="Action">
+      <option [ngValue]="undefined">Toutes les actions</option>
+      <option *ngFor="let a of options.actions" [ngValue]="a.value">{{ a.label }}</option>
+    </select>
+    <select [(ngModel)]="filtres.cible_type" (ngModelChange)="recharger()" aria-label="Type d'objet">
+      <option [ngValue]="undefined">Tous les objets</option>
+      <option *ngFor="let t of options.types_cible" [ngValue]="t">{{ t }}</option>
+    </select>
+    <div class="periodes" role="radiogroup" aria-label="Période">
+      <button type="button" [class.on]="periode === 'jour'" (click)="choisirPeriode('jour')">Aujourd'hui</button>
+      <button type="button" [class.on]="periode === '7j'" (click)="choisirPeriode('7j')">7 jours</button>
+      <button type="button" [class.on]="periode === '30j'" (click)="choisirPeriode('30j')">30 jours</button>
+      <button type="button" [class.on]="periode === 'tout'" (click)="choisirPeriode('tout')">Tout</button>
+    </div>
+    <label class="date">Du <input type="date" [(ngModel)]="filtres.depuis" (ngModelChange)="onDates()" aria-label="Du"></label>
+    <label class="date">au <input type="date" [(ngModel)]="filtres.jusqu_a" (ngModelChange)="onDates()" aria-label="Au"></label>
+    <button type="button" class="btn secondaire" (click)="reinitialiser()" *ngIf="filtresActifs">
+      <i class="fas fa-rotate-left"></i> Réinitialiser</button>
+  </section>
+
+  <p class="msg erreur" *ngIf="erreur"><i class="fas fa-triangle-exclamation"></i> {{ erreur }}</p>
+
+  <!-- ===== Événements ===== -->
+  <section class="aj-tableau">
+    <table>
+      <thead>
+        <tr>
+          <th class="quand">
+            <button type="button" class="tri" (click)="basculerOrdre()" [title]="filtres.ordre === 'asc' ? 'Plus anciens d\'abord' : 'Plus récents d\'abord'">
+              Horodatage <i class="fas" [ngClass]="filtres.ordre === 'asc' ? 'fa-arrow-up-short-wide' : 'fa-arrow-down-wide-short'"></i>
+            </button>
+          </th>
+          <th>Action</th>
+          <th>Acteur</th>
+          <th>Objet</th>
+          <th class="ip">Adresse IP</th>
+          <th class="det" aria-label="Détails"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngIf="chargement && !evenements.length"><td colspan="6" class="vide"><i class="fas fa-spinner fa-spin"></i> Chargement…</td></tr>
+        <tr *ngIf="!chargement && !evenements.length"><td colspan="6" class="vide">Aucun événement pour ces critères.</td></tr>
+        <ng-container *ngFor="let e of evenements">
+          <tr class="ligne" [class.ouverte]="ouvert === e.id" [class.dim]="chargement" (click)="basculerDetail(e)">
+            <td class="quand mono">{{ e.created_at | date:'dd/MM/yyyy HH:mm:ss' }}</td>
+            <td><span class="badge" [ngClass]="famille(e.action)">{{ e.action_display }}</span></td>
+            <td class="acteur">
+              <span class="nom">{{ e.acteur_nom || '—' }}</span>
+              <span class="email" *ngIf="e.acteur_email && e.acteur_email !== e.acteur_nom">{{ e.acteur_email }}</span>
+            </td>
+            <td class="objet">
+              <span class="type" *ngIf="e.cible_type">{{ e.cible_type }}</span>
+              <span>{{ e.cible_libelle || e.cible_id || '—' }}</span>
+            </td>
+            <td class="ip mono">{{ e.adresse_ip || '—' }}</td>
+            <td class="det"><i class="fas" [ngClass]="ouvert === e.id ? 'fa-chevron-up' : 'fa-chevron-down'"></i></td>
+          </tr>
+          <tr class="detail" *ngIf="ouvert === e.id">
+            <td colspan="6">
+              <dl>
+                <div><dt>Identifiant de l'événement</dt><dd class="mono">{{ e.id }}</dd></div>
+                <div *ngIf="e.cible_id"><dt>Identifiant de l'objet</dt><dd class="mono">{{ e.cible_id }}</dd></div>
+                <div *ngFor="let d of details(e)"><dt>{{ d.cle }}</dt><dd>{{ d.valeur }}</dd></div>
+              </dl>
+              <p class="aucun" *ngIf="!details(e).length">Aucun détail complémentaire.</p>
+            </td>
+          </tr>
+        </ng-container>
+      </tbody>
+    </table>
+    <app-table-pagination [page]="page" [pageSize]="taille" [total]="total" [pageSizeOptions]="taillesPage"
+                          entityPlural="événements" (pageSizeChange)="changerTaille($event)"
+                          (first)="allerPage(1)" (prev)="allerPage(page - 1)"
+                          (next)="allerPage(page + 1)" (last)="allerPage(nbPages)"></app-table-pagination>
+  </section>
+</div>

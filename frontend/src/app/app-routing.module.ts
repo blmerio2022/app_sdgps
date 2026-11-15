@@ -11,6 +11,7 @@ import { OrganismeListComponent } from './features/admin/organismes/organisme-li
 import { PieceFieldDescriptionsComponent } from './features/admin/piece-field-descriptions/piece-field-descriptions.component';
 import { StorageDashboardComponent } from './features/admin/storage/storage-dashboard.component';
 import { StorageQuotasComponent } from './features/admin/storage-quotas/storage-quotas.component';
+import { AuditJournalComponent } from './features/admin/audit-journal/audit-journal.component';
 
 // Aucune route « en cours de développement » : une entrée de menu qui mène à une page
 // vide est pire qu'une entrée absente. Les modules à venir seront routés le jour où ils
@@ -121,6 +122,12 @@ export const routes: Routes = [
         path: 'quotas/limites',
         component: StorageQuotasComponent,
         data: { title: 'Quotas de stockage' }
+      },
+      {
+        // Réservé à l'administration de l'application (le backend renvoie 403 sinon).
+        path: 'journal-audit',
+        component: AuditJournalComponent,
+        data: { title: "Journal d'audit" }
       },
       {
         // Feature Projets (Phase 5) accessible aux Agents d'organisation.

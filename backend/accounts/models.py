@@ -691,6 +691,7 @@ class AuditEvent(models.Model):
     ACTION_SUPPRESSION_DEFINITIVE = 'PERMANENT_DELETE'
     ACTION_IA_APPEL = 'AI_CALL'
     ACTION_IA_CONFIG = 'AI_CONFIG_CHANGED'
+    ACTION_JOURNAL_EXPORTE = 'AUDIT_EXPORTED'
 
     ACTIONS = [
         (ACTION_CONNEXION, 'Connexion réussie'),
@@ -706,6 +707,7 @@ class AuditEvent(models.Model):
         (ACTION_SUPPRESSION_DEFINITIVE, 'Suppression définitive'),
         (ACTION_IA_APPEL, "Appel à l'intelligence artificielle"),
         (ACTION_IA_CONFIG, "Configuration de l'IA modifiée"),
+        (ACTION_JOURNAL_EXPORTE, "Journal d'audit exporté"),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

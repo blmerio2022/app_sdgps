@@ -617,10 +617,23 @@ trace des actions qui ne modifient rien. Le journal, lui, enregistre QUI / QUOI 
   (changement, réinitialisation), compte créé, **rôle modifié** (avant/après), membre
   rattaché à une organisation, **rapport généré**, suppression définitive. Ajouter une
   action = une constante `ACTION_*` + son libellé dans `AuditEvent.ACTIONS` ;
-- lecture : `GET /api/v1/audit-events/` (+ `/actions/`), **réservé à l'administration de
-  l'application** (`IsApplicationAdmin`), filtres `action` / `acteur` / `acteur_email` /
-  `cible_id` / `depuis` / `jusqu_a`. Pas d'écran frontend à ce stade ;
-- tests : `backend/accounts/tests_audit_journal.py`.
+- lecture : `GET /api/v1/audit-events/` (+ `actions/`, `filtres/`, `synthese/`,
+  `export/`), **réservé à l'administration de l'application** (`IsApplicationAdmin`).
+  Filtres communs (`audit_views.filtrer`) : `action` (plusieurs, virgules), `acteur`,
+  `acteur_email`, `cible_type`, `cible_id`, `q` (acteur, objet, IP), `depuis` / `jusqu_a`
+  (une date seule = journée entière), `ordre`. Pagination **facultative** : active dès que
+  `page` est fourni (`page_size` ≤ 200), liste complète sinon (appelants historiques).
+  Export CSV (Excel FR : `;`, BOM UTF-8, ≤ 20 000 lignes) **lui-même journalisé**
+  (`ACTION_JOURNAL_EXPORTE`) ;
+- **écran** *Journal d'audit* (`/admin/journal-audit`, menu admin, Super Admin + Admin
+  Système) : `features/admin/audit-journal/` — synthèse de la sélection (événements,
+  acteurs, échecs de connexion, période), puces par action, recherche, filtres, périodes
+  rapides, pagination serveur, détail dépliable, export. ⚠ **Exception assumée** aux
+  règles « 7 colonnes d'audit / configuration des colonnes / tri multi-niveaux » : journal
+  append-only (ni modification ni suppression) paginé côté serveur dans l'ordre
+  chronologique — un tri client ne porterait que sur une page ;
+- tests : `backend/accounts/tests_audit_journal.py`, `tests_audit_ecran.py` ; specs
+  `audit.service`, `audit-journal`.
 
 **Version de l'application : `v<majeure>.<mineure>.<n>`, calculée depuis git.** Visible par
 TOUS, connecté ou non : pied de la page de connexion, bas du menu latéral (clic → « À

@@ -283,5 +283,15 @@ export const ADMIN_MENU: MenuItem[] = [
     type: 'link',
     description: 'Plafond de stockage par organisation',
     roles: SUPER_ONLY,
+  },
+  {
+    // Lecture du journal d'audit : administration de l'application seulement.
+    id: 'journal-audit',
+    title: "Journal d'audit",
+    icon: 'fas fa-clipboard-list',
+    route: '/admin/journal-audit',
+    type: 'link',
+    description: 'Qui a fait quoi, et quand (connexions, rôles, rapports, consultations)',
+    roles: SUPER_OR_SYSTEME,
   }
 ];
