@@ -1,15 +1,14 @@
 <div class="iar" *ngIf="disponible">
   <button type="button" class="iar-btn" (click)="basculerMenu($event)" [attr.aria-expanded]="menuOuvert"
-          title="Rédiger les textes du dossier avec l'IA (brouillons à relire)">
+          title="Rédiger et gérer les textes du dossier avec l'IA">
     <i class="fas fa-wand-magic-sparkles"></i> Rédiger
     <i class="fas fa-chevron-down iar-caret"></i>
   </button>
   <div class="iar-menu" *ngIf="menuOuvert" role="menu">
-    <button type="button" role="menuitem" (click)="ouvrirObservations()" [disabled]="verrouille"
-            [title]="verrouille ? 'Dossier figé : les observations ne sont plus modifiables' : ''">
+    <button type="button" role="menuitem" (click)="ouvrirObservations()">
       <i class="fas fa-pen-to-square"></i>
       <span><strong>Observations des pièces</strong>
-        <small>Une observation par pièce, pour la page de garde</small></span>
+        <small>{{ verrouille ? 'Consultation et historique (dossier figé)' : 'Rédiger, modifier, supprimer, restaurer' }}</small></span>
     </button>
     <button type="button" role="menuitem" (click)="ouvrirSynthese()">
       <i class="fas fa-file-lines"></i>
@@ -19,15 +18,16 @@
   </div>
 </div>
 
-<!-- ===================== Modale : observations ===================== -->
 <div class="iar-overlay" *ngIf="modale" (click)="fermer()">
   <div class="iar-modal" [class.large]="modale === 'observations'" (click)="$event.stopPropagation()"
        role="dialog" aria-modal="true">
     <header class="iar-head">
       <span class="iar-icon"><i class="fas fa-wand-magic-sparkles"></i></span>
       <div>
-        <h3>{{ modale === 'observations' ? 'Observations proposées' : 'Note de synthèse du dossier' }}</h3>
-        <p>Brouillon rédigé par l'IA à partir des données du dossier — relisez avant d'utiliser.</p>
+        <h3>{{ modale === 'observations' ? 'Observations des pièces' : 'Note de synthèse du dossier' }}</h3>
+        <p>{{ modale === 'observations'
+          ? 'Colonne « Observations » de la page de garde — toute version remplacée ou supprimée reste restaurable.'
+          : 'Brouillon rédigé par l\'IA à partir des données du dossier — relisez avant d\'utiliser.' }}</p>
       </div>
       <button type="button" class="iar-close" (click)="fermer()" [disabled]="enregistrement" aria-label="Fermer">
         <i class="fas fa-times"></i>
@@ -35,40 +35,99 @@
     </header>
 
     <div class="iar-body">
+      <p class="iar-error" *ngIf="erreur"><i class="fas fa-triangle-exclamation"></i> {{ erreur }}</p>
+      <p class="iar-info" *ngIf="info"><i class="fas fa-circle-info"></i> {{ info }}</p>
+      <p class="iar-fige" *ngIf="modale === 'observations' && verrouille"><i class="fas fa-lock"></i>
+        Dossier figé : les observations sont en lecture seule.</p>
+
       <div class="iar-loading" *ngIf="chargement">
         <i class="fas fa-wand-magic-sparkles fa-beat-fade"></i>
-        <span>{{ modale === 'observations' ? 'Rédaction des observations…' : 'Rédaction de la note…' }}</span>
+        <span>{{ modale === 'observations' ? 'Chargement des pièces…' : 'Rédaction de la note…' }}</span>
       </div>
-      <p class="iar-error" *ngIf="erreur"><i class="fas fa-triangle-exclamation"></i> {{ erreur }}</p>
 
-      <!-- Observations : relecture ligne à ligne -->
+      <!-- ===================== Gestionnaire d'observations ===================== -->
       <ng-container *ngIf="modale === 'observations' && !chargement && lignes.length">
+        <section class="iar-pilote" *ngIf="!verrouille">
+          <label class="iar-consigne">
+            <i class="fas fa-comment-dots"></i>
+            <input [(ngModel)]="consigne" maxlength="500"
+                   placeholder="Consigne pour l'IA (facultatif) — ex. « mentionner la projection », « ton très bref »"
+                   aria-label="Consigne pour toutes les pièces">
+          </label>
+          <button type="button" class="iar-primary" (click)="rediger()" [disabled]="redaction">
+            <i class="fas" [ngClass]="redaction ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'"></i>
+            {{ selection.length ? 'Rédiger la sélection (' + selection.length + ')' : 'Rédiger toutes les pièces' }}
+          </button>
+        </section>
+
         <div class="iar-tools">
-          <span>{{ nbRetenues }} / {{ lignes.length }} retenue(s)</span>
-          <button type="button" (click)="toutCocher(true)">Tout cocher</button>
-          <button type="button" (click)="toutCocher(false)">Tout décocher</button>
+          <label class="iar-tout" *ngIf="!verrouille">
+            <input type="checkbox" [checked]="toutSelectionne" (change)="toutSelectionner($any($event.target).checked)"
+                   aria-label="Tout sélectionner"> Tout
+          </label>
+          <span class="compte">{{ nbActuelles }} / {{ lignes.length }} pièce(s) avec observation</span>
+          <span class="espace"></span>
+          <button type="button" *ngIf="!verrouille && selection.length" (click)="supprimerSelection()">
+            <i class="fas fa-eraser"></i> Supprimer la sélection</button>
+          <ng-container *ngIf="!verrouille && nbActuelles">
+            <button type="button" class="danger" *ngIf="!confirmeTout" (click)="confirmeTout = true">
+              <i class="fas fa-trash-can"></i> Supprimer toutes les observations</button>
+            <span class="iar-confirme" *ngIf="confirmeTout">
+              Supprimer les {{ nbActuelles }} observation(s) ? (archivées, restaurables)
+              <button type="button" (click)="confirmeTout = false">Non</button>
+              <button type="button" class="danger plein" (click)="supprimerTout()">Oui, tout supprimer</button>
+            </span>
+          </ng-container>
         </div>
+
         <ul class="iar-list">
-          <li *ngFor="let l of lignes" [class.off]="!l.retenue">
-            <label class="iar-check">
-              <input type="checkbox" [(ngModel)]="l.retenue" [attr.aria-label]="'Retenir ' + l.designation">
+          <li *ngFor="let l of lignes" [class.propose]="l.propose" [class.modifie]="l.texte.trim() !== l.actuelle.trim()">
+            <label class="iar-check" *ngIf="!verrouille">
+              <input type="checkbox" [(ngModel)]="l.selection" [attr.aria-label]="'Sélectionner ' + l.designation">
             </label>
             <div class="iar-item">
-              <span class="iar-designation">{{ l.designation }}</span>
-              <span class="iar-actuelle" *ngIf="l.observation_actuelle">
-                Actuellement : « {{ l.observation_actuelle }} »
-              </span>
-              <textarea rows="2" [(ngModel)]="l.observation" [maxlength]="longueurMax"
-                        [disabled]="!l.retenue" [attr.aria-label]="'Observation de ' + l.designation"></textarea>
-              <span class="iar-count" [class.full]="l.observation.length >= longueurMax">
-                {{ l.observation.length }} / {{ longueurMax }}
-              </span>
+              <div class="iar-item-tete">
+                <span class="iar-designation">{{ l.designation }}</span>
+                <span class="badge" *ngIf="l.propose"><i class="fas fa-wand-magic-sparkles"></i> Proposée par l'IA</span>
+                <span class="badge modif" *ngIf="!l.propose && l.texte.trim() !== l.actuelle.trim()">Modifiée</span>
+                <span class="espace"></span>
+                <button type="button" class="mini" *ngIf="!verrouille" (click)="l.guider = !l.guider"
+                        [class.on]="l.guider || l.consigne" title="Guider l'IA pour cette pièce">
+                  <i class="fas fa-comment-dots"></i></button>
+                <button type="button" class="mini" *ngIf="!verrouille" (click)="regenerer(l)" [disabled]="redaction"
+                        title="Régénérer avec l'IA" aria-label="Régénérer">
+                  <i class="fas" [ngClass]="l.enCours ? 'fa-spinner fa-spin' : 'fa-rotate'"></i></button>
+                <button type="button" class="mini" *ngIf="l.texte.trim() !== l.actuelle.trim()" (click)="annulerEdition(l)"
+                        title="Revenir au texte enregistré" aria-label="Annuler"><i class="fas fa-rotate-left"></i></button>
+                <button type="button" class="mini danger" *ngIf="!verrouille && l.actuelle" (click)="supprimer(l)"
+                        title="Supprimer l'observation enregistrée (archivée)" aria-label="Supprimer"><i class="fas fa-eraser"></i></button>
+                <button type="button" class="mini" (click)="basculerHistorique(l)" [class.on]="!!l.historique"
+                        title="Historique des versions" aria-label="Historique"><i class="fas fa-clock-rotate-left"></i></button>
+              </div>
+              <input class="iar-consigne-piece" *ngIf="l.guider && !verrouille" [(ngModel)]="l.consigne" maxlength="500"
+                     placeholder="Consigne pour cette pièce — ex. « préciser les 3 points hors tolérance »"
+                     (keydown.enter)="regenerer(l)" aria-label="Consigne pour cette pièce">
+              <span class="iar-actuelle" *ngIf="l.actuelle && l.texte.trim() !== l.actuelle.trim()">
+                Enregistrée : « {{ l.actuelle }} »</span>
+              <textarea rows="2" [(ngModel)]="l.texte" [maxlength]="longueurMax" [disabled]="verrouille"
+                        [placeholder]="verrouille ? 'Aucune observation' : 'Aucune observation — saisissez-en une ou rédigez avec l\'IA'"
+                        [attr.aria-label]="'Observation de ' + l.designation"></textarea>
+              <span class="iar-count" [class.full]="l.texte.length >= longueurMax">{{ l.texte.length }} / {{ longueurMax }}</span>
+
+              <div class="iar-histo" *ngIf="l.historique">
+                <p class="vide" *ngIf="!l.historique.length">Aucune version archivée.</p>
+                <div *ngFor="let a of l.historique" class="iar-histo-ligne">
+                  <span class="quand">{{ a.created_at | date:'dd/MM/yyyy HH:mm' }} · {{ a.motif_display }}
+                    <span *ngIf="a.created_by">· {{ a.created_by }}</span></span>
+                  <span class="texte">« {{ a.texte }} »</span>
+                  <button type="button" *ngIf="!verrouille" (click)="restaurer(l, a)"><i class="fas fa-rotate-left"></i> Restaurer</button>
+                </div>
+              </div>
             </div>
           </li>
         </ul>
       </ng-container>
 
-      <!-- Synthèse : texte éditable, à copier -->
       <ng-container *ngIf="modale === 'synthese' && !chargement && synthese">
         <textarea class="iar-synthese" [(ngModel)]="synthese" rows="14" aria-label="Note de synthèse"></textarea>
       </ng-container>
@@ -78,16 +137,14 @@
       <button type="button" class="iar-ghost" (click)="fermer()" [disabled]="enregistrement">Fermer</button>
       <ng-container *ngIf="modale === 'synthese'">
         <button type="button" class="iar-ghost" (click)="genererSynthese()" [disabled]="chargement">
-          <i class="fas fa-rotate"></i> Régénérer
-        </button>
+          <i class="fas fa-rotate"></i> Régénérer</button>
         <button type="button" class="iar-primary" (click)="copierSynthese()" [disabled]="!synthese">
-          <i class="fas" [ngClass]="copie ? 'fa-check' : 'fa-copy'"></i> {{ copie ? 'Copié' : 'Copier' }}
-        </button>
+          <i class="fas" [ngClass]="copie ? 'fa-check' : 'fa-copy'"></i> {{ copie ? 'Copié' : 'Copier' }}</button>
       </ng-container>
-      <button type="button" class="iar-primary" *ngIf="modale === 'observations'"
-              (click)="enregistrerObservations()" [disabled]="!nbRetenues || enregistrement || chargement">
+      <button type="button" class="iar-primary" *ngIf="modale === 'observations' && !verrouille"
+              (click)="enregistrer()" [disabled]="!aEnregistrer.length || enregistrement || redaction">
         <i class="fas" [ngClass]="enregistrement ? 'fa-spinner fa-spin' : 'fa-check'"></i>
-        Enregistrer {{ nbRetenues }} observation(s)
+        Enregistrer {{ aEnregistrer.length }} observation(s)
       </button>
     </footer>
   </div>

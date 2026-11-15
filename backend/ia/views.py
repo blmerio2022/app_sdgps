@@ -103,7 +103,22 @@ class ObservationsView(_IaView):
             return self.erreur(
                 f"Le dossier est {ssdgps.get_statut_display().lower()} : ses pièces ne sont "
                 "plus modifiables.", status.HTTP_409_CONFLICT)
-        return self.executer(lambda: redaction.observations(request.user, ssdgps))
+        pieces = None
+        ids = request.data.get('pieces')
+        if ids:
+            if not isinstance(ids, list):
+                return self.erreur('pieces doit être une liste.')
+            from pieces.models import Piece
+            from pieces.report import EXCLUDED_TYPES
+            pieces = list(Piece.objects.filter(ssdgps=ssdgps, is_deleted=False, pk__in=[
+                i for i in ids if isinstance(i, str)]).exclude(type_piece__in=EXCLUDED_TYPES)
+                .select_related('session').order_by('ordre', 'type_piece', 'numero'))
+        consignes = request.data.get('consignes') or {}
+        if not isinstance(consignes, dict):
+            return self.erreur('consignes doit être un objet {pièce: consigne}.')
+        return self.executer(lambda: redaction.observations(
+            request.user, ssdgps, pieces=pieces, consigne=request.data.get('consigne') or '',
+            consignes=consignes))
 
 
 class SyntheseView(_IaView):

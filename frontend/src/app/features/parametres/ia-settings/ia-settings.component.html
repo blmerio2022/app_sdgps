@@ -1,0 +1,197 @@
+<div class="ias-page">
+  <header class="page-header">
+    <h1><i class="fas fa-wand-magic-sparkles"></i> Intelligence artificielle</h1>
+    <p class="subtitle">Fournisseur, modèles et clé utilisés par l'assistant, la rédaction des observations
+      et la correspondance des colonnes. L'IA <strong>propose</strong>, vous <strong>décidez</strong> :
+      rien n'est enregistré sans votre validation.</p>
+  </header>
+
+  <p class="msg erreur" *ngIf="erreur"><i class="fas fa-triangle-exclamation"></i> {{ erreur }}</p>
+  <p class="msg succes" *ngIf="succes"><i class="fas fa-circle-check"></i> {{ succes }}</p>
+  <div class="chargement" *ngIf="chargement"><i class="fas fa-spinner fa-spin"></i> Chargement…</div>
+
+  <ng-container *ngIf="config as c">
+    <!-- Suggestions de modèles : partagées par le formulaire d'administration ET le choix personnel. -->
+    <datalist id="ia-modeles"><option *ngFor="let m of modelesFiltres" [value]="m"></option></datalist>
+
+    <!-- ===== État effectif ===== -->
+    <section class="carte etat">
+      <div class="etat-tete">
+        <span class="pastille" [class.on]="c.effectif.disponible">
+          <i class="fas" [ngClass]="c.effectif.disponible ? 'fa-circle-check' : 'fa-circle-pause'"></i>
+          {{ c.effectif.disponible ? 'IA disponible' : 'IA inactive' }}
+        </span>
+        <span class="source">
+          <i class="fas" [ngClass]="c.source === 'application' ? 'fa-sliders' : 'fa-server'"></i>
+          {{ c.source === 'application' ? 'Configurée dans l\'application' : 'Configuration du serveur' }}
+        </span>
+      </div>
+      <dl class="etat-grille">
+        <div><dt>Fournisseur</dt><dd>{{ c.effectif.fournisseur_libelle }}</dd></div>
+        <div><dt>Modèle et secours</dt><dd class="mono">{{ c.effectif.modeles_essai.join(' → ') }}</dd></div>
+        <div><dt>Service</dt><dd class="mono">{{ c.effectif.adresse }}</dd></div>
+        <div><dt>Clé d'API</dt>
+          <dd>{{ c.effectif.cle_presente ? '•••• ' + (c.effectif.cle_indice || '') : 'Aucune' }}
+            <small *ngIf="c.effectif.cle_origine">({{ c.effectif.cle_origine === 'application' ? 'saisie ici' : 'serveur' }})</small></dd></div>
+      </dl>
+      <p class="meta" *ngIf="c.modifie_le">Modifiée le {{ c.modifie_le | date:'dd/MM/yyyy HH:mm' }}
+        <span *ngIf="c.modifie_par">par {{ c.modifie_par }}</span></p>
+      <p class="info" *ngIf="!c.modifiable"><i class="fas fa-lock"></i>
+        Seule l'administration de l'application modifie le fournisseur et la clé.
+        Vous pouvez choisir le modèle de <strong>votre</strong> assistant ci-dessous.</p>
+    </section>
+
+    <!-- ===== Configuration (administration) ===== -->
+    <ng-container *ngIf="c.modifiable">
+      <section class="carte">
+        <h2><span class="num">1</span> Activation</h2>
+        <div class="seg" role="radiogroup" aria-label="Activation de l'IA">
+          <button type="button" [class.on]="actif === null" (click)="actif = null">Selon le serveur</button>
+          <button type="button" [class.on]="actif === true" (click)="actif = true"><i class="fas fa-power-off"></i> Activée</button>
+          <button type="button" [class.on]="actif === false" (click)="actif = false">Désactivée</button>
+        </div>
+      </section>
+
+      <section class="carte">
+        <h2><span class="num">2</span> Fournisseur</h2>
+        <div class="fournisseurs" role="radiogroup" aria-label="Fournisseur">
+          <button type="button" class="four" [class.on]="fournisseur === ''" (click)="choisirFournisseur('')">
+            <strong><i class="fas fa-server"></i> Selon le serveur</strong>
+            <small>Variables d'environnement (IA_FOURNISSEUR…)</small>
+          </button>
+          <button type="button" *ngFor="let f of c.catalogue" class="four" [class.on]="fournisseur === f.cle"
+                  (click)="choisirFournisseur(f.cle)">
+            <strong>{{ f.libelle }}</strong>
+            <small *ngIf="f.gratuit" class="gratuit"><i class="fas fa-gift"></i> {{ f.gratuit }}</small>
+            <small class="mono">{{ f.protocole }}</small>
+          </button>
+        </div>
+        <p class="aide" *ngIf="fournisseurChoisi?.obtenir_cle as lien">
+          <i class="fas fa-key"></i> Créer une clé :
+          <a *ngIf="lien.startsWith('http')" [href]="lien" target="_blank" rel="noopener">{{ lien }}</a>
+          <span *ngIf="!lien.startsWith('http')">{{ lien }}</span>
+        </p>
+      </section>
+
+      <section class="carte">
+        <h2><span class="num">3</span> Clé d'API</h2>
+        <p class="etat-cle" *ngIf="c.saisie.cle_enregistree && !effacerCle">
+          <i class="fas fa-lock"></i> Clé enregistrée (chiffrée) : <span class="mono">•••• {{ c.saisie.cle_indice }}</span>
+          <button type="button" class="lien danger" (click)="effacerCle = true">Effacer</button>
+        </p>
+        <p class="msg alerte" *ngIf="c.saisie.cle_illisible"><i class="fas fa-triangle-exclamation"></i>
+          La clé enregistrée est illisible (secret du serveur changé) : saisissez-la à nouveau.</p>
+        <p class="msg alerte" *ngIf="effacerCle"><i class="fas fa-eraser"></i> La clé sera effacée à l'enregistrement.
+          <button type="button" class="lien" (click)="effacerCle = false">Annuler</button></p>
+        <div class="champ-cle" *ngIf="!effacerCle">
+          <input [type]="afficherCle ? 'text' : 'password'" [(ngModel)]="cle" autocomplete="off"
+                 [placeholder]="c.saisie.cle_enregistree ? 'Nouvelle clé (laisser vide pour garder l\'actuelle)' : 'Coller la clé du fournisseur'"
+                 aria-label="Clé d'API">
+          <button type="button" class="icone" (click)="afficherCle = !afficherCle" [attr.aria-label]="afficherCle ? 'Masquer' : 'Afficher'">
+            <i class="fas" [ngClass]="afficherCle ? 'fa-eye-slash' : 'fa-eye'"></i></button>
+        </div>
+        <p class="aide">Chiffrée sur le serveur, jamais réaffichée. Sans clé saisie ici, la clé du serveur
+          reste utilisée s'il s'agit du même fournisseur.</p>
+      </section>
+
+      <section class="carte">
+        <h2><span class="num">4</span> Modèles</h2>
+        <div class="ligne">
+          <label class="champ">
+            <span>Modèle par défaut</span>
+            <input [(ngModel)]="modele" list="ia-modeles" aria-label="Modèle par défaut"
+                   [placeholder]="fournisseurChoisi?.modele || 'Modèle suggéré par le fournisseur'">
+          </label>
+          <button type="button" class="btn secondaire" (click)="chargerModeles()" [disabled]="chargementModeles"
+                  title="Liste des modèles accessibles avec la configuration ENREGISTRÉE">
+            <i class="fas" [ngClass]="chargementModeles ? 'fa-spinner fa-spin' : 'fa-list'"></i> Charger les modèles
+          </button>
+        </div>
+        <p class="aide" *ngIf="modeles.length">
+          {{ modeles.length }} modèle(s) disponible(s) —
+          <input class="filtre" [(ngModel)]="filtreModeles" placeholder="filtrer (ex. :free)" aria-label="Filtrer les modèles">
+        </p>
+        <p class="msg alerte" *ngIf="erreurModeles">{{ erreurModeles }}</p>
+
+        <div class="secours">
+          <span class="lib">Modèles de secours <small>(essayés dans l'ordre si le précédent échoue : quota, panne…)</small></span>
+          <ol class="puces" *ngIf="secours.length">
+            <li *ngFor="let m of secours; let i = index">
+              <span class="mono">{{ m }}</span>
+              <button type="button" class="icone" (click)="monterSecours(i)" [disabled]="i === 0" aria-label="Monter"><i class="fas fa-arrow-up"></i></button>
+              <button type="button" class="icone" (click)="retirerSecours(i)" aria-label="Retirer"><i class="fas fa-xmark"></i></button>
+            </li>
+          </ol>
+          <div class="ligne">
+            <input [(ngModel)]="nouveauSecours" list="ia-modeles" (keydown.enter)="ajouterSecours()"
+                   placeholder="Ajouter un modèle de secours" aria-label="Modèle de secours">
+            <button type="button" class="btn secondaire" (click)="ajouterSecours()" [disabled]="!nouveauSecours.trim()">
+              <i class="fas fa-plus"></i> Ajouter</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="carte">
+        <button type="button" class="replier" (click)="avance = !avance" [attr.aria-expanded]="avance">
+          <i class="fas" [ngClass]="avance ? 'fa-chevron-down' : 'fa-chevron-right'"></i> Réglages avancés
+        </button>
+        <div class="grille-avancee" *ngIf="avance">
+          <label class="champ"><span>Adresse du service</span>
+            <input [(ngModel)]="baseUrl" [placeholder]="fournisseurChoisi?.base_url || 'https://…'" aria-label="Adresse du service"></label>
+          <label class="champ"><span>Protocole</span>
+            <select [(ngModel)]="protocole" aria-label="Protocole">
+              <option value="">Selon le fournisseur</option>
+              <option value="anthropic">Anthropic (Messages)</option>
+              <option value="openai">OpenAI (Chat Completions)</option>
+            </select></label>
+          <label class="champ"><span>Délai maximal (s)</span>
+            <input type="number" min="5" max="600" [(ngModel)]="delai" placeholder="90" aria-label="Délai"></label>
+        </div>
+        <p class="aide" *ngIf="avance">Une passerelle locale (OmniRoute : http://localhost:20128) ne sert que l'application
+          locale : le serveur en ligne doit pouvoir joindre l'adresse.</p>
+      </section>
+
+      <div class="actions">
+        <button type="button" class="btn lien-danger" (click)="reinitialiser()" [disabled]="c.source !== 'application' && !c.saisie.cle_enregistree">
+          <i class="fas fa-rotate-left"></i> Revenir à la configuration du serveur</button>
+        <span class="espace"></span>
+        <button type="button" class="btn secondaire" (click)="tester()" [disabled]="testEnCours">
+          <i class="fas" [ngClass]="testEnCours ? 'fa-spinner fa-spin' : 'fa-plug-circle-check'"></i> Tester la connexion</button>
+        <button type="button" class="btn principal" (click)="enregistrer()" [disabled]="enregistrement">
+          <i class="fas" [ngClass]="enregistrement ? 'fa-spinner fa-spin' : 'fa-check'"></i> Enregistrer</button>
+      </div>
+
+      <section class="carte test" *ngIf="test as t">
+        <h2><i class="fas" [ngClass]="t.ok ? 'fa-circle-check ok' : 'fa-circle-xmark ko'"></i>
+          {{ t.ok ? 'Connexion réussie' : 'Connexion en échec' }}</h2>
+        <p *ngIf="t.erreur" class="msg erreur">{{ t.erreur }}</p>
+        <p *ngIf="t.modeles_accessibles != null">{{ t.modeles_accessibles }} modèle(s) accessible(s) avec la clé.</p>
+        <p *ngIf="t.liste_erreur" class="msg alerte">Liste des modèles : {{ t.liste_erreur }}</p>
+        <ul class="essais">
+          <li *ngFor="let e of t.essais" [class.ok]="e.ok">
+            <i class="fas" [ngClass]="e.ok ? 'fa-check' : 'fa-xmark'"></i>
+            <span class="mono">{{ e.modele }}</span>
+            <span *ngIf="e.ok">— {{ e.duree }} s</span>
+            <span *ngIf="!e.ok" class="ko">— {{ e.erreur }}</span>
+          </li>
+        </ul>
+        <p class="aide">Le test porte sur la configuration <strong>enregistrée</strong>.</p>
+      </section>
+    </ng-container>
+
+    <!-- ===== Préférence personnelle ===== -->
+    <section class="carte">
+      <h2><i class="fas fa-user"></i> Modèle de mon assistant</h2>
+      <p class="aide">Pour l'assistant uniquement, et pour vous seul. Vide : modèle par défaut
+        (<span class="mono">{{ modeleParDefaut }}</span>). Les modèles de secours restent appliqués.</p>
+      <div class="ligne">
+        <input [(ngModel)]="modelePrefere" list="ia-modeles" [placeholder]="modeleParDefaut" aria-label="Modèle de mon assistant">
+        <button type="button" class="btn secondaire" (click)="chargerModeles()" [disabled]="chargementModeles" *ngIf="!modeles.length">
+          <i class="fas fa-list"></i> Voir les modèles</button>
+        <button type="button" class="btn principal" (click)="enregistrerPreference()" [disabled]="enregistrementPref">
+          <i class="fas" [ngClass]="prefEnregistree ? 'fa-check' : 'fa-floppy-disk'"></i>
+          {{ prefEnregistree ? 'Enregistré' : 'Enregistrer' }}</button>
+      </div>
+    </section>
+  </ng-container>
+</div>

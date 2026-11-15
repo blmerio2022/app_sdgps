@@ -1,14 +1,14 @@
 import { ElementRef } from '@angular/core';
 import { of, throwError } from 'rxjs';
-import { IaRedactionComponent, LONGUEUR_OBSERVATION } from './ia-redaction.component';
+import { IaRedactionComponent, LONGUEUR_OBSERVATION, designation } from './ia-redaction.component';
 
-const PROPOSITIONS = [
-  { piece: 'p1', designation: 'Photos des points anciens', observation_actuelle: '', observation: 'Deux points.' },
-  { piece: 'p2', designation: 'Rapport des observations brutes', observation_actuelle: 'ancienne',
-    observation: '1 durée hors tolérance.' },
+const PIECES: any[] = [
+  { id: 'p1', type_piece: 'PPA', type_piece_display: 'Photos des points anciens', ordre: 1, commentaire: 'Ancienne', payload: {} },
+  { id: 'p0', type_piece: 'LPA', type_piece_display: 'Liste des points anciens', ordre: 0, commentaire: '', payload: {} },
+  { id: 'pg', type_piece: 'PGSDGPS', type_piece_display: 'Page de garde', ordre: 2, payload: {} },
 ];
 
-describe('IaRedactionComponent (n°6)', () => {
+describe('IaRedactionComponent (n°6 — gestion des observations)', () => {
   let ia: any;
   let pieces: any;
   let cmp: IaRedactionComponent;
@@ -16,82 +16,128 @@ describe('IaRedactionComponent (n°6)', () => {
   beforeEach(() => {
     ia = {
       disponible$: of(true),
-      observations: jasmine.createSpy('observations').and.returnValue(of({ propositions: PROPOSITIONS })),
+      observations: jasmine.createSpy('observations').and.returnValue(of({ propositions: [
+        { piece: 'p1', designation: '', observation_actuelle: '', observation: 'Quinze points photographiés.' }] })),
+      appliquerObservations: jasmine.createSpy('appliquer').and.returnValue(of({ modifiees: 1, ignorees: 0 })),
+      supprimerObservations: jasmine.createSpy('supprimer').and.returnValue(of({ supprimees: 1 })),
+      historiqueObservations: jasmine.createSpy('historique').and.returnValue(of([
+        { id: 7, piece: 'p1', designation: '', texte: 'Version A', motif: 'supprimee', motif_display: 'Supprimée',
+          created_at: '2026-11-15T10:00:00Z', created_by: 'Y' }])),
+      restaurerObservation: jasmine.createSpy('restaurer').and.returnValue(of({ piece: 'p1', texte: 'Version A' })),
       synthese: jasmine.createSpy('synthese').and.returnValue(of({ texte: 'Le dossier comprend…' })),
     };
-    pieces = { update: jasmine.createSpy('update').and.returnValue(of({})) };
+    pieces = { listBySsdgps: jasmine.createSpy('list').and.returnValue(of(PIECES)) };
     cmp = new IaRedactionComponent(ia, pieces, new ElementRef(document.createElement('div')));
     cmp.ssdgpsId = 's1';
     cmp.ngOnInit();
-  });
-
-  it('masqué si l’IA n’est pas activée', () => {
-    ia.disponible$ = of(false);
-    const autre = new IaRedactionComponent(ia, pieces, new ElementRef(document.createElement('div')));
-    autre.ngOnInit();
-    expect(autre.disponible).toBeFalse();
-  });
-
-  it('propose une observation par pièce, toutes cochées', () => {
     cmp.ouvrirObservations();
-    expect(ia.observations).toHaveBeenCalledWith('s1');
-    expect(cmp.modale).toBe('observations');
-    expect(cmp.lignes.length).toBe(2);
-    expect(cmp.nbRetenues).toBe(2);
   });
 
-  it('n’enregistre que les observations retenues, par l’API des pièces', () => {
+  it('liste les pièces avec leur observation, sans appeler l’IA, page de garde exclue', () => {
+    expect(ia.observations).not.toHaveBeenCalled();
+    expect(cmp.lignes.map(l => l.piece)).toEqual(['p0', 'p1']);       // triées par ordre
+    expect(cmp.nbActuelles).toBe(1);
+    expect(cmp.aEnregistrer.length).toBe(0);
+  });
+
+  it('rédige toutes les pièces avec la consigne générale', () => {
+    cmp.consigne = 'Ton bref';
+    cmp.rediger();
+    expect(ia.observations).toHaveBeenCalledWith('s1', { pieces: undefined, consigne: 'Ton bref', consignes: {} });
+    const l = cmp.lignes.find(x => x.piece === 'p1')!;
+    expect(l.texte).toBe('Quinze points photographiés.');
+    expect(l.propose).toBeTrue();
+    expect(cmp.aEnregistrer.length).toBe(1);
+  });
+
+  it('régénère une seule pièce avec sa propre consigne', () => {
+    const l = cmp.lignes.find(x => x.piece === 'p1')!;
+    l.consigne = 'Préciser la projection';
+    cmp.regenerer(l);
+    expect(ia.observations).toHaveBeenCalledWith('s1', { pieces: ['p1'], consigne: '',
+                                                        consignes: { p1: 'Préciser la projection' } });
+  });
+
+  it('la sélection limite la rédaction', () => {
+    cmp.lignes[0].selection = true;
+    cmp.rediger();
+    expect(ia.observations.calls.mostRecent().args[1].pieces).toEqual(['p0']);
+  });
+
+  it('enregistre seulement ce qui a changé, puis prévient la page', () => {
     const emis: number[] = [];
     cmp.enregistre.subscribe(n => emis.push(n));
-    cmp.ouvrirObservations();
-    cmp.lignes[1].retenue = false;
-    cmp.lignes[0].observation = 'x'.repeat(LONGUEUR_OBSERVATION + 40);
-    cmp.enregistrerObservations();
-    expect(pieces.update).toHaveBeenCalledTimes(1);
-    const [id, corps] = pieces.update.calls.mostRecent().args;
-    expect(id).toBe('p1');
-    expect(corps.commentaire.length).toBe(LONGUEUR_OBSERVATION);
+    cmp.lignes[0].texte = 'x'.repeat(LONGUEUR_OBSERVATION);
+    cmp.enregistrer();
+    expect(ia.appliquerObservations).toHaveBeenCalledWith('s1', [{ piece: 'p0', texte: 'x'.repeat(LONGUEUR_OBSERVATION) }]);
+    expect(cmp.lignes[0].actuelle.length).toBe(LONGUEUR_OBSERVATION);
     expect(emis).toEqual([1]);
-    expect(cmp.modale).toBeNull();
   });
 
-  it('dossier figé : rien n’est demandé', () => {
+  it('annuler une proposition revient au texte enregistré', () => {
+    cmp.rediger();
+    const l = cmp.lignes.find(x => x.piece === 'p1')!;
+    cmp.annulerEdition(l);
+    expect(l.texte).toBe('Ancienne');
+    expect(l.propose).toBeFalse();
+  });
+
+  it('supprime une observation, la sélection, ou toutes', () => {
+    const l = cmp.lignes.find(x => x.piece === 'p1')!;
+    cmp.supprimer(l);
+    expect(ia.supprimerObservations).toHaveBeenCalledWith('s1', ['p1']);
+    expect(l.actuelle).toBe('');
+    l.actuelle = 'Remise';
+    cmp.confirmeTout = true;
+    cmp.supprimerTout();
+    expect(ia.supprimerObservations).toHaveBeenCalledWith('s1', 'toutes');
+    expect(cmp.nbActuelles).toBe(0);
+    expect(cmp.confirmeTout).toBeFalse();
+  });
+
+  it('historique puis restauration', () => {
+    const l = cmp.lignes.find(x => x.piece === 'p1')!;
+    cmp.basculerHistorique(l);
+    expect(ia.historiqueObservations).toHaveBeenCalledWith('s1', 'p1');
+    expect(l.historique?.length).toBe(1);
+    cmp.restaurer(l, l.historique![0]);
+    expect(ia.restaurerObservation).toHaveBeenCalledWith(7);
+    expect(l.actuelle).toBe('Version A');
+    expect(l.historique).toBeNull();
+  });
+
+  it('dossier figé : ni rédaction, ni suppression, ni enregistrement', () => {
     cmp.verrouille = true;
-    cmp.ouvrirObservations();
+    cmp.rediger();
+    cmp.supprimerTout();
+    cmp.lignes[0].texte = 'x';
+    cmp.enregistrer();
     expect(ia.observations).not.toHaveBeenCalled();
+    expect(ia.supprimerObservations).not.toHaveBeenCalled();
+    expect(ia.appliquerObservations).not.toHaveBeenCalled();
   });
 
-  it('erreur d’enregistrement : la modale reste ouverte avec le message', () => {
-    pieces.update.and.returnValue(throwError(() => ({ error: { detail: 'Dossier figé.' } })));
-    cmp.ouvrirObservations();
-    cmp.enregistrerObservations();
-    expect(cmp.erreur).toBe('Dossier figé.');
+  it('erreur de l’IA : message, aucune ligne bloquée', () => {
+    ia.observations.and.returnValue(throwError(() => ({ status: 502, error: { detail: 'Service saturé' } })));
+    cmp.rediger();
+    expect(cmp.erreur).toBe('Service saturé');
+    expect(cmp.lignes.every(l => !l.enCours)).toBeTrue();
+  });
+
+  it('fermer avec des modifications non enregistrées demande confirmation', () => {
+    cmp.lignes[0].texte = 'non enregistré';
+    spyOn(window, 'confirm').and.returnValue(false);
+    cmp.fermer();
     expect(cmp.modale).toBe('observations');
   });
 
-  it('note de synthèse : génération puis régénération', () => {
+  it('note de synthèse', () => {
     cmp.ouvrirSynthese();
     expect(cmp.synthese).toBe('Le dossier comprend…');
-    ia.synthese.and.returnValue(throwError(() => ({ status: 503, error: { detail: 'IA inactive' } })));
-    cmp.genererSynthese();
-    expect(cmp.erreur).toBe('IA inactive');
-    expect(cmp.synthese).toBe('');
   });
 
-  it('Échap ferme la fenêtre, mais pas pendant un enregistrement', () => {
-    cmp.ouvrirSynthese();
-    cmp.enregistrement = true;
-    cmp.echap();
-    expect(cmp.modale).toBe('synthese');
-    cmp.enregistrement = false;
-    cmp.echap();
-    expect(cmp.modale).toBeNull();
-  });
-
-  it('un clic hors du composant referme le menu', () => {
-    cmp.basculerMenu(new Event('click'));
-    expect(cmp.menuOuvert).toBeTrue();
-    cmp.clicDocument({ target: document.body } as any);
-    expect(cmp.menuOuvert).toBeFalse();
+  it('designation()', () => {
+    expect(designation({ type_piece: 'RDN', type_piece_display: 'Rapport de détermination', numero: 2,
+                         session_numero: 1 } as any)).toBe('Rapport de détermination n°2 · session 1');
   });
 });

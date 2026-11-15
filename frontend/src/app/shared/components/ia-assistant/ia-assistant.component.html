@@ -6,59 +6,143 @@
     <i class="fas" [ngClass]="ouvert ? 'fa-xmark' : 'fa-wand-magic-sparkles'"></i>
   </button>
 
-  <!-- Panneau de discussion -->
-  <section class="ias-panel" *ngIf="ouvert" role="dialog" aria-label="Assistant SDGPS">
-    <header class="ias-head">
-      <span class="ias-avatar"><i class="fas fa-wand-magic-sparkles"></i></span>
-      <div class="ias-title">
-        <strong>Assistant SDGPS</strong>
-        <span>Consulte vos dossiers, ne modifie rien — vérifiez ses réponses.</span>
+  <section class="ias-panel" *ngIf="ouvert" [class.agrandi]="agrandi" role="dialog" aria-label="Assistant SDGPS">
+    <!-- ================= Liste des discussions ================= -->
+    <aside class="ias-liste" *ngIf="agrandi || vueListe">
+      <div class="ias-liste-tete">
+        <strong>Discussions</strong>
+        <button type="button" class="ias-nouvelle" (click)="nouvelle()" title="Nouvelle discussion">
+          <i class="fas fa-plus"></i> Nouvelle</button>
       </div>
-      <button type="button" class="ias-icon-btn" (click)="nouvelleConversation()" [disabled]="enCours || !messages.length"
-              title="Nouvelle conversation" aria-label="Nouvelle conversation"><i class="fas fa-pen-to-square"></i></button>
-      <button type="button" class="ias-icon-btn" (click)="basculer()" title="Fermer" aria-label="Fermer">
-        <i class="fas fa-minus"></i></button>
-    </header>
-
-    <div class="ias-fil" #fil>
-      <!-- Accueil -->
-      <div class="ias-accueil" *ngIf="!messages.length">
-        <span class="ias-accueil-art"><i class="fas fa-wand-magic-sparkles"></i></span>
-        <h4>Bonjour, que puis-je faire pour vous ?</h4>
-        <p>Je retrouve vos dossiers, j'en résume l'état et je vous oriente dans l'application.</p>
-        <div class="ias-suggestions">
-          <button type="button" *ngFor="let s of suggestions" (click)="envoyer(s)">{{ s }}</button>
-        </div>
+      <label class="ias-recherche">
+        <i class="fas fa-magnifying-glass"></i>
+        <input [ngModel]="recherche" (ngModelChange)="onRecherche($event)"
+               placeholder="Rechercher (titres et messages)" aria-label="Rechercher une discussion">
+        <button type="button" *ngIf="recherche" (click)="onRecherche('')" aria-label="Effacer"><i class="fas fa-xmark"></i></button>
+      </label>
+      <div class="ias-onglets" role="tablist">
+        <button type="button" role="tab" [class.on]="etat === 'actives'" (click)="changerEtat('actives')">Actives</button>
+        <button type="button" role="tab" [class.on]="etat === 'archivees'" (click)="changerEtat('archivees')">
+          <i class="fas fa-box-archive"></i> Archivées</button>
       </div>
 
-      <div *ngFor="let m of messages" class="ias-msg" [ngClass]="m.role">
-        <div class="ias-bulle">
-          <ng-container *ngFor="let l of lignes(m.content)">
-            <p [class.puce]="l.puce"><ng-container *ngFor="let s of segments(l.texte)"><strong *ngIf="s.gras">{{ s.texte }}</strong><ng-container *ngIf="!s.gras">{{ s.texte }}</ng-container></ng-container></p>
+      <ul class="ias-discussions">
+        <li *ngIf="!chargementListe && !discussions.length" class="vide">
+          {{ recherche ? 'Aucune discussion ne correspond.' : (etat === 'archivees' ? 'Aucune discussion archivée.' : 'Aucune discussion pour l\'instant.') }}
+        </li>
+        <li *ngFor="let d of discussions" class="ias-disc" [class.active]="courante?.id === d.id" (click)="ouvrir(d.id)">
+          <ng-container *ngIf="renommage !== d.id">
+            <div class="ias-disc-tete">
+              <i class="fas fa-thumbtack epingle" *ngIf="d.epinglee" title="Épinglée"></i>
+              <span class="titre" [title]="d.titre">{{ d.titre }}</span>
+              <span class="date">{{ dateCourte(d.updated_at) }}</span>
+              <button type="button" class="ias-menu-btn" (click)="basculerMenu(d.id, $event)" aria-label="Actions">
+                <i class="fas fa-ellipsis"></i></button>
+            </div>
+            <p class="extrait" *ngIf="d.extrait">
+              <ng-container *ngFor="let s of extraitSurligne(d.extrait)"><mark *ngIf="s.marque">{{ s.texte }}</mark><ng-container *ngIf="!s.marque">{{ s.texte }}</ng-container></ng-container>
+            </p>
+            <div class="ias-menu" *ngIf="menuOuvert === d.id" (click)="$event.stopPropagation()">
+              <button type="button" (click)="commencerRenommage(d, $event)"><i class="fas fa-pen"></i> Renommer</button>
+              <button type="button" (click)="epingler(d, $event)"><i class="fas fa-thumbtack"></i> {{ d.epinglee ? 'Désépingler' : 'Épingler' }}</button>
+              <button type="button" (click)="archiver(d, $event)"><i class="fas fa-box-archive"></i> {{ d.archivee ? 'Désarchiver' : 'Archiver' }}</button>
+              <button type="button" (click)="exporter(d, $event)"><i class="fas fa-file-arrow-down"></i> Exporter (.md)</button>
+              <button type="button" class="danger" (click)="demanderSuppression(d, $event)"><i class="fas fa-trash-can"></i> Supprimer</button>
+            </div>
+            <div class="ias-confirme" *ngIf="aSupprimer === d.id" (click)="$event.stopPropagation()">
+              <span>Supprimer cette discussion ?</span>
+              <button type="button" (click)="aSupprimer = null">Non</button>
+              <button type="button" class="danger" (click)="confirmerSuppression(d, $event)">Oui</button>
+            </div>
           </ng-container>
+          <input *ngIf="renommage === d.id" class="ias-renomme" [(ngModel)]="titreEdite" (click)="$event.stopPropagation()"
+                 (keydown.enter)="validerRenommage(d)" (blur)="validerRenommage(d)" maxlength="160"
+                 aria-label="Nouveau titre" autofocus>
+        </li>
+      </ul>
+    </aside>
+
+    <!-- ================= Discussion ================= -->
+    <div class="ias-discussion" *ngIf="agrandi || !vueListe">
+      <header class="ias-head">
+        <button type="button" class="ias-icon-btn" *ngIf="!agrandi" (click)="vueListe = true; chargerListe()"
+                title="Mes discussions" aria-label="Mes discussions"><i class="fas fa-bars"></i></button>
+        <span class="ias-avatar" *ngIf="agrandi"><i class="fas fa-wand-magic-sparkles"></i></span>
+        <div class="ias-title">
+          <strong *ngIf="renommage !== 'courante'" (dblclick)="renommerCourante()"
+                  [title]="courante ? 'Double-cliquez pour renommer' : ''">{{ courante?.titre || 'Assistant SDGPS' }}</strong>
+          <input *ngIf="renommage === 'courante' && courante" class="ias-renomme tete" [(ngModel)]="titreEdite"
+                 (keydown.enter)="validerRenommage(courante)" (blur)="validerRenommage(courante)" maxlength="160" aria-label="Titre">
+          <span>Consulte vos dossiers, ne modifie rien — vérifiez ses réponses.</span>
         </div>
-        <div class="ias-actions" *ngIf="m.actions?.length">
-          <button type="button" *ngFor="let a of m.actions" (click)="agir(a)">
-            <i class="fas fa-arrow-right"></i> {{ a.libelle }}
-          </button>
+        <button type="button" class="ias-icon-btn" (click)="ouvrirRecherche()" [disabled]="!messages.length"
+                title="Rechercher dans la discussion" aria-label="Rechercher dans la discussion"><i class="fas fa-magnifying-glass"></i></button>
+        <button type="button" class="ias-icon-btn" (click)="exporter(courante)" [disabled]="!courante"
+                title="Exporter (.md)" aria-label="Exporter"><i class="fas fa-file-arrow-down"></i></button>
+        <button type="button" class="ias-icon-btn" (click)="courante && archiver(courante)" [disabled]="!courante"
+                [title]="courante?.archivee ? 'Désarchiver' : 'Archiver'" aria-label="Archiver"><i class="fas fa-box-archive"></i></button>
+        <button type="button" class="ias-icon-btn" (click)="nouvelle()" [disabled]="enCours"
+                title="Nouvelle discussion" aria-label="Nouvelle discussion"><i class="fas fa-pen-to-square"></i></button>
+        <button type="button" class="ias-icon-btn" (click)="basculerAgrandi()" [title]="agrandi ? 'Réduire' : 'Agrandir'"
+                aria-label="Agrandir"><i class="fas" [ngClass]="agrandi ? 'fa-down-left-and-up-right-to-center' : 'fa-up-right-and-down-left-from-center'"></i></button>
+        <button type="button" class="ias-icon-btn" (click)="basculer()" title="Fermer" aria-label="Fermer"><i class="fas fa-minus"></i></button>
+      </header>
+
+      <div class="ias-cherche" *ngIf="chercheOuvert">
+        <i class="fas fa-magnifying-glass"></i>
+        <input [ngModel]="cherche" (ngModelChange)="onCherche($event)" placeholder="Rechercher dans cette discussion"
+               (keydown.enter)="suivante($any($event).shiftKey ? -1 : 1)" aria-label="Rechercher dans cette discussion">
+        <span class="compte">{{ nbOccurrences ? (occurrence + 1) + ' / ' + nbOccurrences : (cherche ? '0' : '') }}</span>
+        <button type="button" (click)="suivante(-1)" [disabled]="!nbOccurrences" aria-label="Précédente"><i class="fas fa-chevron-up"></i></button>
+        <button type="button" (click)="suivante(1)" [disabled]="!nbOccurrences" aria-label="Suivante"><i class="fas fa-chevron-down"></i></button>
+        <button type="button" (click)="fermerRecherche()" aria-label="Fermer la recherche"><i class="fas fa-xmark"></i></button>
+      </div>
+
+      <div class="ias-fil" #fil>
+        <div class="ias-accueil" *ngIf="!messages.length && !enCours">
+          <span class="ias-accueil-art"><i class="fas fa-wand-magic-sparkles"></i></span>
+          <h4>Bonjour, que puis-je faire pour vous ?</h4>
+          <p>Je retrouve vos dossiers, j'en résume l'état et je vous oriente dans l'application.
+             Vos discussions sont enregistrées et retrouvables.</p>
+          <div class="ias-suggestions">
+            <button type="button" *ngFor="let s of suggestions" (click)="envoyer(s)">{{ s }}</button>
+          </div>
+        </div>
+
+        <div *ngFor="let m of messages; let dernier = last" class="ias-msg" [ngClass]="m.role">
+          <div class="ias-bulle">
+            <ng-container *ngFor="let l of lignes(m.contenu)">
+              <p [class.puce]="l.puce"><ng-container *ngFor="let s of segments(l.texte)"><mark *ngIf="s.marque" class="occ" [class.gras]="s.gras">{{ s.texte }}</mark><ng-container *ngIf="!s.marque"><strong *ngIf="s.gras">{{ s.texte }}</strong><ng-container *ngIf="!s.gras">{{ s.texte }}</ng-container></ng-container></ng-container></p>
+            </ng-container>
+          </div>
+          <div class="ias-actions" *ngIf="m.actions?.length">
+            <button type="button" *ngFor="let a of m.actions" (click)="agir(a)"><i class="fas fa-arrow-right"></i> {{ a.libelle }}</button>
+          </div>
+          <div class="ias-outils-msg">
+            <button type="button" (click)="copier(m)" [title]="copie === m.id ? 'Copié' : 'Copier'" aria-label="Copier">
+              <i class="fas" [ngClass]="copie === m.id ? 'fa-check' : 'fa-copy'"></i></button>
+            <button type="button" *ngIf="m.role === 'assistant' && dernier" (click)="regenerer()" [disabled]="enCours"
+                    title="Régénérer la réponse" aria-label="Régénérer"><i class="fas fa-rotate"></i></button>
+            <span class="modele" *ngIf="m.role === 'assistant' && m.modele">{{ m.modele }}</span>
+          </div>
+        </div>
+
+        <div class="ias-msg assistant" *ngIf="enCours">
+          <div class="ias-bulle ias-frappe" aria-label="L'assistant réfléchit"><span></span><span></span><span></span></div>
+        </div>
+
+        <div class="ias-erreur" *ngIf="erreur">
+          <i class="fas fa-triangle-exclamation"></i> <span>{{ erreur }}</span>
+          <button type="button" *ngIf="derniereSansReponse" (click)="regenerer()">Réessayer</button>
         </div>
       </div>
 
-      <div class="ias-msg assistant" *ngIf="enCours">
-        <div class="ias-bulle ias-frappe" aria-label="L'assistant réfléchit"><span></span><span></span><span></span></div>
-      </div>
-
-      <div class="ias-erreur" *ngIf="erreur">
-        <i class="fas fa-triangle-exclamation"></i> <span>{{ erreur }}</span>
-        <button type="button" *ngIf="derniereSansReponse" (click)="reessayer()">Réessayer</button>
-      </div>
+      <footer class="ias-saisie">
+        <textarea #saisie rows="1" [(ngModel)]="brouillon" (keydown)="onToucheSaisie($event)" maxlength="4000"
+                  placeholder="Posez votre question…" aria-label="Votre question" [disabled]="enCours"></textarea>
+        <button type="button" class="ias-envoyer" (click)="envoyer()" [disabled]="!brouillon.trim() || enCours"
+                aria-label="Envoyer"><i class="fas fa-paper-plane"></i></button>
+      </footer>
     </div>
-
-    <footer class="ias-saisie">
-      <textarea #saisie rows="1" [(ngModel)]="brouillon" (keydown)="onToucheSaisie($event)" maxlength="4000"
-                placeholder="Posez votre question…" aria-label="Votre question" [disabled]="enCours"></textarea>
-      <button type="button" class="ias-envoyer" (click)="envoyer()" [disabled]="!brouillon.trim() || enCours"
-              aria-label="Envoyer"><i class="fas fa-paper-plane"></i></button>
-    </footer>
   </section>
 </ng-container>

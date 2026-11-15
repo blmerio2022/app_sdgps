@@ -379,6 +379,38 @@ foi d'une réponse du modèle :
   erreur), traduit les erreurs du fournisseur en `IaErreur` (message en français), active le
   repli serveur en cas de refus (`fallbacks="default"`, bêta `server-side-fallback-2026-07-01`)
   et ne désactive JAMAIS `thinking` (refusé par Opus 5.5 — régler `effort`) ;
+- **configuration DANS l'application** (`ia/models.py::ConfigurationIa`, ligne unique ;
+  écran *Paramètres › Intelligence artificielle* `/parametres/intelligence-artificielle`) :
+  activation, fournisseur, adresse, protocole, modèle, modèles de secours, délai, clé.
+  Lecture pour tous (`GET ia/config/`), modification / test / réinitialisation réservés à
+  `IsApplicationAdmin` (`PUT config/`, `POST config/tester/`, `config/reinitialiser/`).
+  **Deux sources jamais mélangées** (`client._en_base`) : dès qu'un fournisseur ou une
+  adresse est saisi à l'écran, tout le bloc vient de l'écran ; sinon l'environnement.
+  `actif` / `delai` vides retombent toujours sur l'environnement. Clé **chiffrée**
+  (`ia/secret.py`, Fernet dérivé de `SECRET_KEY` — changer `SECRET_KEY` la rend
+  illisible : l'écran le signale), jamais renvoyée (4 derniers caractères seulement),
+  jamais journalisée ; sans clé saisie, celle de l'environnement sert si c'est le MÊME
+  fournisseur. Modification journalisée (`ACTION_IA_CONFIG`). Cache de configuration
+  15 s (`client.invalider_configuration()` après écriture). `GET ia/modeles/?filtre=`
+  (liste du fournisseur, cache 10 min) ; `GET|PUT ia/preferences/` : modèle PERSONNEL de
+  l'assistant (`PreferenceIa`, assistant seulement, secours conservés) ;
+- **discussions de l'assistant** (`Conversation` / `MessageConversation`,
+  `views_conversations.py`) : strictement personnelles (404 sinon, admins compris) ;
+  `GET conversations/?q=&etat=actives|archivees|toutes` (q : titres ET messages, extrait
+  sans Markdown), création, `PATCH` titre / épinglée / archivée, `DELETE` logique,
+  `POST <id>/messages/` (titre auto = 1re question ; la question reste enregistrée si l'IA
+  échoue), `POST <id>/regenerer/`, `GET <id>/export/` (Markdown). Seuls l'envoi et la
+  régénération sont plafonnés (`ia`). Front : panneau compact ou agrandi (liste à
+  gauche), recherche dans la discussion surlignée (précédente / suivante), copie,
+  régénération, tableaux Markdown rendus en lignes « · » ;
+- **gestion des observations** (`views_observations.py`, `ObservationArchive`) :
+  `POST observations/appliquer/` (archive l'ancienne version), `supprimer/` (pièces ou
+  `toutes`, archivées), `GET historique/?ssdgps=&piece=`, `POST restaurer/` ; dossier figé
+  → 409, hors droits → 404. `POST observations/` accepte `pieces` (sous-ensemble) et
+  `consigne` / `consignes` `{pièce: texte}` (≤ 500 car.) qui guident la forme, jamais les
+  faits. Front : `IaRedactionComponent` = gestionnaire (liste sans appel IA, rédiger tout
+  / la sélection, consigne par pièce, régénérer, éditer, supprimer une / toutes,
+  historique + restaurer, confirmation avant de fermer sur des modifications) ;
 - **N°4 — correspondance des colonnes** (`ia/mapping.py`, `POST ia/mapping-colonnes/`) : l'IA
   COMPLÈTE les associations manquantes (en-têtes + 5 lignes tronquées) ; les associations
   faites sont fixes ; réponse contrainte par schéma (énumérations) puis re-validée
@@ -399,7 +431,7 @@ foi d'une réponse du modèle :
 - tests : `backend/ia/tests.py` (faux client, aucun appel réseau ; une 5xx se teste sous
   `assertLogs('django.request')` — sous Python 3.14 son journal plante sinon) + specs
   `ia.service`, `piece-column-mapper`, `ia-redaction`, `ia-assistant`,
-  `piece-management-page`.
+  `piece-management-page`, `ia-settings` ; `backend/ia/tests_gestion.py` (configuration, discussions, observations).
 
 **Contrôle de cohérence avant génération.** `GET /api/v1/pieces/report-check/` (même
 portée, mêmes droits, même `_resoudre_portee_rapport`, appelée avec

@@ -690,6 +690,7 @@ class AuditEvent(models.Model):
     ACTION_SSDGPS_STATUT = 'SSDGPS_STATUS_CHANGED'
     ACTION_SUPPRESSION_DEFINITIVE = 'PERMANENT_DELETE'
     ACTION_IA_APPEL = 'AI_CALL'
+    ACTION_IA_CONFIG = 'AI_CONFIG_CHANGED'
 
     ACTIONS = [
         (ACTION_CONNEXION, 'Connexion réussie'),
@@ -704,6 +705,7 @@ class AuditEvent(models.Model):
         (ACTION_SSDGPS_STATUT, 'Statut de SDGPS modifié'),
         (ACTION_SUPPRESSION_DEFINITIVE, 'Suppression définitive'),
         (ACTION_IA_APPEL, "Appel à l'intelligence artificielle"),
+        (ACTION_IA_CONFIG, "Configuration de l'IA modifiée"),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

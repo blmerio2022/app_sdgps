@@ -34,3 +34,65 @@ export interface IaAction { action: string; libelle: string; route: string; }
 export interface IaMessage { role: 'user' | 'assistant'; content: string; actions?: IaAction[]; }
 
 export interface IaReponseAssistant { reponse: string; actions: IaAction[]; outils: string[]; }
+
+// ---------------------------------------------------------------- configuration
+
+export interface IaFournisseur {
+  cle: string; libelle: string; protocole: string; base_url: string;
+  modele: string; gratuit: string; obtenir_cle: string;
+}
+
+export interface IaConfiguration {
+  modifiable: boolean;
+  source: 'application' | 'environnement';
+  saisie: {
+    actif: boolean | null; fournisseur: string; base_url: string; protocole: string;
+    modele: string; modeles_secours: string[]; delai: number | null;
+    cle_enregistree: boolean; cle_indice: string; cle_illisible: boolean;
+  };
+  effectif: {
+    disponible: boolean; actif: boolean; fournisseur: string; fournisseur_libelle: string;
+    protocole: string; adresse: string; modele: string; modeles_essai: string[];
+    cle_presente: boolean; cle_indice: string; cle_origine: 'application' | 'environnement' | null;
+    delai: number;
+  };
+  catalogue: IaFournisseur[];
+  modifie_le: string | null;
+  modifie_par: string | null;
+}
+
+/** Champs envoyés pour modifier la configuration (la clé n'est jamais relue). */
+export interface IaConfigurationSaisie {
+  actif?: boolean | null; fournisseur?: string; base_url?: string; protocole?: string;
+  modele?: string; modeles_secours?: string[]; delai?: number | null;
+  cle?: string; effacer_cle?: boolean;
+}
+
+export interface IaEssai { modele: string; ok: boolean; duree?: number; servi_par?: string; reponse?: string; erreur?: string; }
+export interface IaResultatTest { ok: boolean; modeles_accessibles?: number | null; liste_erreur?: string; essais: IaEssai[]; erreur?: string; }
+
+export interface IaPreferences { modele_assistant: string; modele_par_defaut: string; }
+
+// ---------------------------------------------------------------- discussions
+
+export interface IaConversation {
+  id: string; titre: string; epinglee: boolean; archivee: boolean;
+  created_at: string; updated_at: string; nb_messages?: number | null; extrait?: string;
+}
+
+export interface IaMessageConversation {
+  id: number; role: 'user' | 'assistant'; contenu: string;
+  actions: IaAction[]; outils: string[]; modele: string; created_at: string;
+}
+
+export interface IaConversationDetail extends IaConversation { messages: IaMessageConversation[]; }
+
+export type IaEtatConversations = 'actives' | 'archivees' | 'toutes';
+
+// ---------------------------------------------------------------- observations
+
+export interface IaObservationArchivee {
+  id: number; piece: string; designation: string; texte: string;
+  motif: 'remplacee' | 'supprimee' | 'restauree'; motif_display: string;
+  created_at: string; created_by: string | null;
+}

@@ -22,6 +22,8 @@ from .client import appeler, json_de, texte
 
 #: Longueur maximale d'une observation : la colonne de la page de garde est étroite.
 LONGUEUR_OBSERVATION = 160
+#: Longueur maximale d'une consigne de l'opérateur.
+LONGUEUR_CONSIGNE = 500
 LIGNES_EXEMPLE = 3
 
 STYLE = (
@@ -110,8 +112,21 @@ def faits_dossier(ssdgps) -> dict:
 
 # ------------------------------------------------------------------------- rédaction
 
-def observations(utilisateur, ssdgps, pieces=None):
-    """Brouillon d'observation pour chaque pièce du dossier (une requête).
+def _consigne(texte):
+    return ' '.join(str(texte or '').split())[:LONGUEUR_CONSIGNE]
+
+
+def observations(utilisateur, ssdgps, pieces=None, consigne='', consignes=None):
+    """Brouillon d'observation pour chaque pièce visée (une requête).
+
+    Args:
+        pieces: pièces à rédiger (défaut : tout le dossier) — sert aussi à régénérer une
+            seule pièce ou une sélection.
+        consigne: indication de l'opérateur pour toutes les pièces (ton, contenu…).
+        consignes: indications propres à une pièce, `{id de pièce: texte}`.
+
+    Les consignes guident la FORME et le CHOIX des informations ; elles ne peuvent pas
+    faire affirmer ce que les faits ne disent pas (règle du prompt système).
 
     Returns: `{"propositions": [{piece, designation, observation}], "modele": …}`."""
     pieces = pieces if pieces is not None else pieces_du_dossier(ssdgps)
@@ -120,6 +135,11 @@ def observations(utilisateur, ssdgps, pieces=None):
     config = getattr(utilisateur, 'tolerances_config', None)
     faits = [faits_piece(p, config) for p in pieces]
     ids = [f['id'] for f in faits]
+    par_piece = {str(k): _consigne(v) for k, v in (consignes or {}).items() if _consigne(v)}
+    for f in faits:
+        if f['id'] in par_piece:
+            f['consigne_operateur'] = par_piece[f['id']]
+    generale = _consigne(consigne)
     contenu = (
         f"Dossier : {faits_dossier(ssdgps)}\n\n"
         f"Pièces (faits calculés par l'application) :\n"
@@ -129,6 +149,12 @@ def observations(utilisateur, ssdgps, pieces=None):
           "maximum, une phrase nominale ou deux, factuelle (contenu, session, anomalie "
           "éventuelle comme une valeur hors tolérance). Pas de redite de la désignation. "
           "Si une pièce n'appelle aucune remarque, une observation brève et neutre suffit."
+        + (f"\n\nConsigne de l'opérateur pour toutes les pièces : « {generale} »." if generale else '')
+        + ("\nUne pièce qui porte « consigne_operateur » suit cette consigne en priorité."
+           if par_piece else '')
+        + ("\nLes consignes orientent la forme et le choix des informations, jamais "
+           "l'exactitude : n'affirme rien que les faits ne contiennent pas."
+           if generale or par_piece else '')
     )
     schema = {
         'type': 'object',

@@ -56,44 +56,121 @@ class IaErreur(Exception):
 
 
 # ------------------------------------------------------------------ configuration
+#
+# Deux sources, jamais mélangées :
+# - la configuration saisie DANS l'application (`ConfigurationIa`, écran Paramètres ›
+#   Intelligence artificielle) dès qu'elle désigne un fournisseur ou une adresse ;
+# - sinon les variables d'environnement (IA_FOURNISSEUR, IA_BASE_URL, IA_CLE…).
+# `actif` et `delai` vides en base retombent toujours sur l'environnement.
+
+import time  # noqa: E402
+
+_CACHE_CONFIG = {'objet': None, 'expire': 0.0}
+DUREE_CACHE_CONFIG = 15   # s — plusieurs workers : un changement se propage vite
+
+
+def configuration():
+    """Ligne `ConfigurationIa`, ou None (absente, base indisponible)."""
+    maintenant = time.monotonic()
+    if maintenant < _CACHE_CONFIG['expire']:
+        return _CACHE_CONFIG['objet']
+    try:
+        from .models import ConfigurationIa
+        objet = ConfigurationIa.objects.filter(pk=1).first()
+    except Exception:  # noqa: BLE001 - tables absentes (migration à venir) : environnement
+        objet = None
+    _CACHE_CONFIG['objet'], _CACHE_CONFIG['expire'] = objet, maintenant + DUREE_CACHE_CONFIG
+    return objet
+
+
+def invalider_configuration():
+    """À appeler après toute modification de la configuration."""
+    _CACHE_CONFIG['objet'], _CACHE_CONFIG['expire'] = None, 0.0
+    reinitialiser_client()
+
 
 def _reglage(nom, defaut=''):
     valeur = getattr(settings, nom, defaut)
     return valeur.strip() if isinstance(valeur, str) else valeur
 
 
+def _en_base():
+    """La configuration de l'application, si elle désigne un fournisseur ou une adresse."""
+    cfg = configuration()
+    return cfg if cfg is not None and (cfg.fournisseur or cfg.base_url) else None
+
+
+def source() -> str:
+    return 'application' if _en_base() else 'environnement'
+
+
 def fournisseur():
-    """Fournisseur choisi (`IA_FOURNISSEUR`), ou None : API Anthropic / adresse libre."""
-    return fournisseurs.fournisseur(_reglage('IA_FOURNISSEUR'))
+    """Fournisseur choisi, ou None : API Anthropic / adresse libre."""
+    cfg = _en_base()
+    return fournisseurs.fournisseur(cfg.fournisseur if cfg else _reglage('IA_FOURNISSEUR'))
 
 
 def protocole() -> str:
-    f = fournisseur()
-    return (_reglage('IA_PROTOCOLE') or (f.protocole if f else 'anthropic')).lower()
+    cfg, f = _en_base(), fournisseur()
+    force = cfg.protocole if cfg else _reglage('IA_PROTOCOLE')
+    return (force or (f.protocole if f else 'anthropic')).lower()
 
 
 def adresse() -> str:
     """Adresse du service (passerelle ou fournisseur), ou '' pour l'API Anthropic directe."""
-    f = fournisseur()
-    return (_reglage('IA_BASE_URL') or (f.base_url if f else '')).rstrip('/')
+    cfg, f = _en_base(), fournisseur()
+    explicite = cfg.base_url if cfg else _reglage('IA_BASE_URL')
+    return (explicite or (f.base_url if f else '')).strip().rstrip('/')
 
 
 def modele() -> str:
-    f = fournisseur()
-    return _reglage('IA_MODELE') or (f.modele if f else '') or MODELE_PAR_DEFAUT
+    cfg, f = _en_base(), fournisseur()
+    explicite = cfg.modele if cfg else _reglage('IA_MODELE')
+    return (explicite or (f.modele if f else '') or MODELE_PAR_DEFAUT).strip()
 
 
 def cle() -> str:
-    """Clé du fournisseur : `IA_CLE`, ou `ANTHROPIC_API_KEY` (compatibilité)."""
-    return _reglage('IA_CLE') or _reglage('ANTHROPIC_API_KEY')
+    """Clé du fournisseur. En configuration d'application : la clé saisie à l'écran — ou,
+    à défaut, celle de l'environnement s'il s'agit du MÊME fournisseur (changer de modèle
+    à l'écran ne force pas à ressaisir la clé)."""
+    env = _reglage('IA_CLE') or _reglage('ANTHROPIC_API_KEY')
+    cfg = _en_base()
+    if not cfg:
+        return env
+    from .secret import dechiffrer
+    saisie = dechiffrer(cfg.cle_chiffree)
+    if saisie:
+        return saisie
+    meme = (cfg.fournisseur or '').lower() == (_reglage('IA_FOURNISSEUR') or '').lower() \
+        and not cfg.base_url
+    return env if meme else ''
 
 
-def modeles_essai() -> list:
-    """Le modèle principal, puis les modèles de secours, sans doublon."""
-    brut = _reglage('IA_MODELES_SECOURS') or []
-    secours = [m.strip() for m in (brut.split(',') if isinstance(brut, str) else brut)]
-    ordre = [modele()] + [m for m in secours if m]
-    return list(dict.fromkeys(ordre))
+def _decouper(brut):
+    if isinstance(brut, (list, tuple)):
+        return [str(m).strip() for m in brut if str(m).strip()]
+    return [m.strip() for m in (brut or '').replace('\n', ',').split(',') if m.strip()]
+
+
+def modele_prefere(utilisateur):
+    """Modèle choisi par l'utilisateur pour son assistant (préférence), ou ''."""
+    if utilisateur is None or not getattr(utilisateur, 'pk', None):
+        return ''
+    try:
+        from .models import PreferenceIa
+        pref = PreferenceIa.objects.filter(utilisateur_id=utilisateur.pk).first()
+    except Exception:  # noqa: BLE001
+        return ''
+    return (pref.modele_assistant or '').strip() if pref else ''
+
+
+def modeles_essai(utilisateur=None, fonction=None) -> list:
+    """Le modèle principal (ou celui que l'utilisateur préfère pour l'assistant), puis
+    les modèles de secours, sans doublon."""
+    cfg = _en_base()
+    secours = _decouper(cfg.modeles_secours if cfg else _reglage('IA_MODELES_SECOURS'))
+    premier = (modele_prefere(utilisateur) if fonction == 'assistant' else '') or modele()
+    return list(dict.fromkeys([premier, modele()] + secours))
 
 
 def compatible() -> bool:
@@ -102,35 +179,53 @@ def compatible() -> bool:
     if protocole() == 'openai':
         return True
     f = fournisseur()
-    return bool(_reglage('IA_COMPATIBLE', False) or (f is not None and f.cle != 'anthropic'))
+    if f is not None and f.cle != 'anthropic':
+        return True
+    if _en_base():
+        return bool(adresse())
+    return bool(_reglage('IA_COMPATIBLE', False))
+
+
+def actif() -> bool:
+    cfg = configuration()
+    if cfg is not None and cfg.actif is not None:
+        return bool(cfg.actif)
+    return bool(_reglage('IA_ACTIVE', False))
+
+
+def delai() -> float:
+    cfg = configuration()
+    if cfg is not None and cfg.delai:
+        return float(cfg.delai)
+    return float(_reglage('IA_DELAI', 90) or 90)
 
 
 def disponible() -> bool:
-    return bool(_reglage('IA_ACTIVE', False) and cle())
+    return bool(actif() and cle())
 
 
-_CLIENT = None
+_CLIENT = {'objet': None, 'signature': None}
 
 
 def _client():
-    """Client du SDK Anthropic, construit paresseusement (l'import ne coûte rien si l'IA
-    est éteinte ou si le fournisseur parle le protocole OpenAI)."""
-    global _CLIENT
-    if _CLIENT is None:
+    """Client du SDK Anthropic, construit paresseusement et reconstruit si la clé ou
+    l'adresse changent (configuration modifiée à l'écran)."""
+    signature = (cle(), adresse(), delai())
+    if _CLIENT['objet'] is None or _CLIENT['signature'] != signature:
         import anthropic
-        _CLIENT = anthropic.Anthropic(
-            api_key=cle(),
-            base_url=adresse() or None,          # None : API Anthropic directe
-            timeout=float(_reglage('IA_DELAI', 90) or 90),
+        _CLIENT['objet'] = anthropic.Anthropic(
+            api_key=signature[0],
+            base_url=signature[1] or None,       # None : API Anthropic directe
+            timeout=signature[2],
             max_retries=2,
         )
-    return _CLIENT
+        _CLIENT['signature'] = signature
+    return _CLIENT['objet']
 
 
 def reinitialiser_client():
     """Oublie le client mis en cache (tests, changement de clé)."""
-    global _CLIENT
-    _CLIENT = None
+    _CLIENT['objet'], _CLIENT['signature'] = None, None
 
 
 def _journaliser(fonction, utilisateur, reponse=None, erreur='', modele_essaye=None):
@@ -209,7 +304,7 @@ def _tentative_openai(nom_modele, *, messages, system, tools, schema, effort, ma
     try:
         return openai_compat.creer(adresse(), cle(), modele=nom_modele, messages=messages,
                                    system=system, tools=tools, max_tokens=max_tokens,
-                                   delai=float(_reglage('IA_DELAI', 90) or 90))
+                                   delai=delai())
     except openai_compat.ErreurConnexion:
         raise _Echec('connexion', "Le service d'IA est injoignable : vérifiez la connexion "
                                   "du serveur.", False)
@@ -239,7 +334,7 @@ def appeler(fonction: str, utilisateur, *, messages, system=None, tools=None,
         raise IaIndisponible(IaIndisponible.message)
 
     tentative = _tentative_openai if protocole() == 'openai' else _tentative_anthropic
-    essais = modeles_essai()
+    essais = modeles_essai(utilisateur, fonction)
     for rang, nom_modele in enumerate(essais):
         dernier = rang == len(essais) - 1
         try:

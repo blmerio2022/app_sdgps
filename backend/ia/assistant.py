@@ -49,7 +49,8 @@ validation → validé → clos (un dossier soumis est figé ; seul l'Admin Orga
 - Réseau GPS : conception d'un réseau de triangulation (normes N1 à N12).
 
 Règles :
-- Réponds en français, brièvement, sans Markdown lourd (listes courtes acceptées).
+- Réponds en français, brièvement. Mise en forme : listes à puces courtes et gras
+  seulement — JAMAIS de tableau, de titre (#) ni de bloc de code.
 - Pour toute donnée (dossiers, pièces, statuts), utilise les outils : n'invente jamais.
   Si un outil ne renvoie rien, dis-le simplement.
 - Tu ne modifies rien. Quand l'utilisateur veut ouvrir un dossier, générer un rapport,
@@ -301,7 +302,8 @@ def repondre(utilisateur, historique):
         appels = [b for b in reponse.content if getattr(b, 'type', '') == 'tool_use']
         if reponse.stop_reason != 'tool_use' or not appels:
             return {'reponse': texte(reponse) or "Je n'ai pas de réponse à proposer.",
-                    'actions': actions, 'outils': utilises}
+                    'actions': actions, 'outils': utilises,
+                    'modele': getattr(reponse, 'model', None) or ''}
         messages.append({'role': 'assistant', 'content': reponse.content})
         resultats = []
         for appel in appels:

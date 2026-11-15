@@ -70,6 +70,14 @@ export const USER_MENU: MenuItem[] = [
         route: '/parametres/cachets-signatures',
         type: 'link',
         description: 'Cachet + signature apposés sur les pages du rapport PDF'
+      },
+      {
+        id: 'intelligence-artificielle',
+        title: 'Intelligence artificielle',
+        icon: 'fas fa-wand-magic-sparkles',
+        route: '/parametres/intelligence-artificielle',
+        type: 'link',
+        description: "Fournisseur, modèles et clé de l'IA ; modèle de votre assistant"
       }
     ]
   }
@@ -206,6 +214,14 @@ export const ADMIN_MENU: MenuItem[] = [
         route: '/admin/parametres/cachets-signatures',
         type: 'link',
         description: 'Cachet + signature apposés sur les pages du rapport PDF'
+      },
+      {
+        id: 'intelligence-artificielle',
+        title: 'Intelligence artificielle',
+        icon: 'fas fa-wand-magic-sparkles',
+        route: '/admin/parametres/intelligence-artificielle',
+        type: 'link',
+        description: "Fournisseur, modèles et clé de l'IA ; modèle de votre assistant"
       },
       {
         id: 'descriptions-champs',
