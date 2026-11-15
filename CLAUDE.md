@@ -349,7 +349,9 @@ foi d'une réponse du modèle :
   deux, rien ne part, `GET /api/v1/ia/statut/` répond `disponible: false` et le front masque
   tous les boutons IA. Les dossiers fonciers sont nominatifs : activer l'IA suppose l'accord
   de l'ANCFCC et le respect de la loi 09-08 (CNDP). Modèle : `IA_MODELE` (défaut
-  `claude-opus-5-5`), délai `IA_DELAI`, plafond par utilisateur `IA_DEBIT` (throttle `ia`) ;
+  `claude-opus-5-5`), délai `IA_DELAI`, plafond par utilisateur `IA_DEBIT` (throttle `ia`).
+  Railway `sdgps-test` (service `app`) : `IA_ACTIVE`, `IA_MODELE`, `IA_DELAI`, `IA_DEBIT`
+  posées ; `ANTHROPIC_API_KEY` est posée par l'opérateur lui-même (secret) ;
 - **point de passage unique** : `ia/client.py::appeler(...)` — jamais le SDK `anthropic` en
   direct. Il journalise chaque appel (`AuditEvent.ACTION_IA_APPEL` : fonction, modèle, jetons,
   erreur), traduit les erreurs du fournisseur en `IaErreur` (message en français), active le
@@ -582,8 +584,11 @@ dans `VUES_PUBLIQUES_AUTORISEES` ; n'expose que version, commit, dates, environn
   `python backend/backend/version.py --ecrire build-info/version.json` **avant
   `railway up`** ; la CI le fait dans ses jobs d'image (`fetch-depth: 0`). Le Dockerfile
   le copie côté backend et l'injecte dans le bundle (`frontend/scripts/inject-version.js`
-  → `core/version/build-version.ts`, valeur versionnée `dev`). Sans fichier, le backend
-  lit git (développement), sinon « inconnue » — jamais bloquant ;
+  → `core/version/build-version.ts`, valeur versionnée `dev`). Dépôt git présent
+  (développement) : git **en priorité** sur le fichier, recalculé toutes les 30 s
+  (`DUREE_CACHE_GIT`) — un `build-info/version.json` resté d'un déploiement manuel figeait
+  sinon le poste sur une ancienne version ; sans dépôt (serveur) : le fichier ; sinon
+  « inconnue » — jamais bloquant ;
 - **bandeau « Une nouvelle version est disponible — Recharger »** : `VersionService` sonde
   l'API toutes les 5 min et au retour sur l'onglet ; il compare la version en ligne à celle
   compilée dans le bundle (jamais en `dev`). « Plus tard » ne masque que CETTE version ;

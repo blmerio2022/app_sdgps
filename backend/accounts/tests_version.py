@@ -110,27 +110,65 @@ class VersionInfoTests(SimpleTestCase):
         self.dir = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
 
-    def test_fichier_de_build_prioritaire(self):
+    def test_serveur_sans_depot_lit_le_fichier_de_build(self):
         f = self.dir / 'version.json'
         f.write_text(json.dumps({'version': 'v1.0.7', 'commit': 'abc1234'}), encoding='utf-8')
-        with mock.patch.object(v, 'FICHIERS_VERSION', (self.dir / 'absent.json', f)):
+        with mock.patch.object(v, 'FICHIERS_VERSION', (self.dir / 'absent.json', f)), \
+                mock.patch.object(v, 'depot_git_present', return_value=False), \
+                mock.patch.object(v, 'calculer_depuis_git') as git:
             info = v.version_info()
         self.assertEqual(info['version'], 'v1.0.7')
         self.assertEqual(info['date_build'], '')            # champs manquants complétés
+        git.assert_not_called()
 
-    def test_repli_git_puis_inconnue(self):
-        with mock.patch.object(v, 'FICHIERS_VERSION', (self.dir / 'absent.json',)), \
+    def test_en_developpement_git_prime_sur_un_fichier_perime(self):
+        # Régression : un build-info/version.json resté d'un déploiement manuel figeait
+        # le poste en v1.0.34 alors que le dépôt était en v1.0.42.
+        f = self.dir / 'version.json'
+        f.write_text(json.dumps({'version': 'v1.0.34'}), encoding='utf-8')
+        with mock.patch.object(v, 'FICHIERS_VERSION', (f,)), \
+                mock.patch.object(v, 'depot_git_present', return_value=True), \
+                mock.patch.object(v, 'calculer_depuis_git', return_value={'version': 'v1.0.42'}):
+            self.assertEqual(v.version_info()['version'], 'v1.0.42')
+
+    def test_git_en_echec_repli_sur_le_fichier_puis_inconnue(self):
+        f = self.dir / 'version.json'
+        f.write_text(json.dumps({'version': 'v1.0.9'}), encoding='utf-8')
+        with mock.patch.object(v, 'depot_git_present', return_value=True), \
                 mock.patch.object(v, 'calculer_depuis_git', side_effect=RuntimeError('pas de git')):
-            self.assertEqual(v.version_info()['version'], v.INCONNUE)
+            with mock.patch.object(v, 'FICHIERS_VERSION', (f,)):
+                self.assertEqual(v.version_info()['version'], 'v1.0.9')
+            v.version_info.cache_clear()
+            with mock.patch.object(v, 'FICHIERS_VERSION', (self.dir / 'absent.json',)):
+                self.assertEqual(v.version_info()['version'], v.INCONNUE)
 
     def test_fichier_illisible_ignore(self):
         f = self.dir / 'version.json'
         f.write_text('{pas du json', encoding='utf-8')
         with mock.patch.object(v, 'FICHIERS_VERSION', (f,)), \
-                mock.patch.object(v, 'calculer_depuis_git', return_value={'version': 'v1.0.1'}):
-            self.assertEqual(v.version_info()['version'], 'v1.0.1')
+                mock.patch.object(v, 'depot_git_present', return_value=False):
+            self.assertEqual(v.version_info()['version'], v.INCONNUE)
+
+    def test_un_nouveau_commit_se_voit_sans_redemarrer(self):
+        horloge = [1000.0]
+        versions = iter([{'version': 'v1.0.42'}, {'version': 'v1.0.43'}])
+        with mock.patch.object(v, 'depot_git_present', return_value=True), \
+                mock.patch.object(v, 'calculer_depuis_git', side_effect=lambda: next(versions)), \
+                mock.patch.object(v.time, 'monotonic', side_effect=lambda: horloge[0]):
+            self.assertEqual(v.version_info()['version'], 'v1.0.42')
+            horloge[0] += v.DUREE_CACHE_GIT - 1
+            self.assertEqual(v.version_info()['version'], 'v1.0.42')   # encore en cache
+            horloge[0] += 2
+            self.assertEqual(v.version_info()['version'], 'v1.0.43')   # recalculée
+
+    def test_depot_git_present(self):
+        self.assertFalse(v.depot_git_present(self.dir))
+        (self.dir / '.git').write_text('gitdir: ailleurs', encoding='utf-8')   # worktree
+        self.assertTrue(v.depot_git_present(self.dir))
 
 
+# Environnement FIXÉ : lancé seul, le test lisait celui du poste (« development ») et
+# ne passait dans la suite complète que grâce à un réglage laissé par un autre test.
 @override_settings(ENVIRONMENT='staging')
 class VersionEndpointTests(TestCase):
     url = '/api/version/'

@@ -15,7 +15,11 @@ Le repère ne commence PAS par `v` : la CI déploie sur les tags `v*`.
 La version est calculée là où git est disponible :
 - au BUILD (script ci-dessous, appelé avant `railway up` et dans la CI) → fichier
   `build-info/version.json`, intégré à l'image (le serveur n'a pas le dossier `.git`) ;
-- en DÉVELOPPEMENT, directement depuis git si le fichier est absent.
+- en DÉVELOPPEMENT (dossier `.git` présent), directement depuis git — EN PRIORITÉ sur le
+  fichier : un `build-info/version.json` laissé à la racine par un déploiement manuel
+  masquait sinon la version courante (le poste affichait v1.0.34 quand le serveur était
+  en v1.0.42). Recalculée toutes les `DUREE_CACHE_GIT` secondes : un nouveau commit se
+  voit sans redémarrer le serveur.
 
 Ce module n'importe pas Django au chargement : il sert aussi de script autonome.
 
@@ -26,7 +30,7 @@ import re
 import subprocess
 import sys
 from datetime import datetime, timezone
-from functools import lru_cache
+import time
 from pathlib import Path
 
 PREFIXE_REPERE = 'base/v'
@@ -38,6 +42,9 @@ FICHIERS_VERSION = (
     # Dépôt : fichier généré à la racine (avant `railway up`).
     RACINE_DEPOT / 'build-info' / 'version.json',
 )
+#: Durée de vie (s) d'une version calculée depuis git. Le fichier de build, lui, ne
+#: change pas pendant la vie du serveur : il est lu une fois pour toutes.
+DUREE_CACHE_GIT = 30
 
 
 def _git(*args, cwd=RACINE_DEPOT):
@@ -81,19 +88,56 @@ def _defaut():
     return {'version': INCONNUE, 'commit': '', 'date_commit': '', 'date_build': ''}
 
 
-@lru_cache(maxsize=1)
-def version_info():
-    """Version de l'instance qui tourne : fichier de build, sinon git, sinon « inconnue »."""
+def depot_git_present(racine=None):
+    """Vrai dans un dépôt git (poste de développement, worktree) — faux dans l'image Docker.
+    `.git` est un dossier dans un clone, un FICHIER dans un worktree : `exists()` couvre
+    les deux."""
+    return ((racine or RACINE_DEPOT) / '.git').exists()
+
+
+def _lire_fichier_de_build():
     for chemin in FICHIERS_VERSION:
         if chemin.is_file():
             try:
                 return {**_defaut(), **json.loads(chemin.read_text(encoding='utf-8'))}
             except (OSError, ValueError):
                 continue
-    try:
-        return calculer_depuis_git()
-    except Exception:  # git absent, dépôt sans repère… : la version ne bloque jamais l'app
-        return _defaut()
+    return None
+
+
+_CACHE = {'info': None, 'expire': 0.0}
+
+
+def version_info():
+    """Version de l'instance qui tourne.
+
+    - dépôt git présent (développement) : git d'abord, rafraîchi toutes les
+      `DUREE_CACHE_GIT` secondes ; le fichier de build ne sert qu'en repli ;
+    - sans dépôt (serveur) : le fichier de build, figé au déploiement ;
+    - à défaut : « inconnue » — la version ne bloque jamais l'application.
+    """
+    maintenant = time.monotonic()
+    if _CACHE['info'] is not None and maintenant < _CACHE['expire']:
+        return _CACHE['info']
+
+    info, duree = None, float('inf')
+    if depot_git_present():
+        try:
+            info, duree = calculer_depuis_git(), DUREE_CACHE_GIT
+        except Exception:  # git absent du PATH, dépôt sans repère… : repli sur le fichier
+            info = None
+    if info is None:
+        info = _lire_fichier_de_build() or _defaut()
+    _CACHE['info'], _CACHE['expire'] = info, maintenant + duree
+    return info
+
+
+def _vider_cache():
+    _CACHE['info'], _CACHE['expire'] = None, 0.0
+
+
+# Compatibilité avec l'ancienne API `functools.lru_cache` (tests, appelants).
+version_info.cache_clear = _vider_cache
 
 
 def _main(argv):
