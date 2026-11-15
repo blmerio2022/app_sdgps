@@ -18,6 +18,12 @@
 # - le script s'achève en vérifiant que `/api/version/` annonce bien le commit.
 set -u
 
+# Lancé depuis un hook, git exporte GIT_INDEX_FILE / GIT_DIR… : ils détourneraient le
+# `git worktree add` ci-dessous vers l'index du dépôt principal (« index.lock: No such
+# file »). Le script retrouve le dépôt par lui-même.
+unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX GIT_OBJECT_DIRECTORY \
+      GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR 2>/dev/null
+
 PROJET="${SDGPS_TEST_PROJET:-d9f8bb0b-2da6-4536-9214-8fc67c7003fb}"
 ENVIRONNEMENT="${SDGPS_TEST_ENVIRONNEMENT:-production}"
 SERVICE="${SDGPS_TEST_SERVICE:-app}"
