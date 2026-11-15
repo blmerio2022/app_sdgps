@@ -431,6 +431,76 @@ class SsdgpsViewSet(BaseOrgScopedViewSet):
             **cumul_pieces_annotations(),
         ).annotate(nbr_total_pieces=CUMUL_PIECES_TOTAL)
 
+    # --- File de validation (encadrement) ------------------------------------------
+
+    @action(detail=False, methods=['get'], url_path='a-valider')
+    def a_valider(self, request):
+        """
+        GET /api/v1/ssdgps/a-valider/?statut=soumis|valide — dossiers qui attendent une
+        décision de l'appelant (Admin Organisation de leur organisation, ou administration
+        de l'application), du plus ancien au plus récent. Un Agent reçoit une file vide.
+        Cf. `projects/file_validation.py`.
+        """
+        from .file_validation import FILES, dossiers_de_la_file, element, organisations_encadrees
+
+        statut = request.query_params.get('statut') or Ssdgps.Statut.SOUMIS
+        if statut not in FILES:
+            return Response({'detail': f"Statut de file inconnu : « {statut} »."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        orgs = organisations_encadrees(request.user)
+        if orgs is not None and not orgs:
+            return Response({'encadrement': False, 'statut': statut, 'compteurs': {}, 'results': []})
+        maintenant = timezone.now()
+        compteurs = {s: dossiers_de_la_file(request.user, s).count() for s in FILES}
+        return Response({
+            'encadrement': True, 'statut': statut, 'compteurs': compteurs,
+            'results': [element(d, maintenant) for d in dossiers_de_la_file(request.user, statut)],
+        })
+
+    @action(detail=False, methods=['post'], url_path='transition-groupee')
+    def transition_groupee(self, request):
+        """
+        POST /api/v1/ssdgps/transition-groupee/ — {"ids": [...], "action": "...", "motif": "..."}.
+        Applique la MÊME décision à plusieurs dossiers, chacun avec les règles et la
+        journalisation de la transition unitaire. Retourne le détail par dossier : un refus
+        sur l'un n'empêche pas les autres.
+        """
+        from notifications.services import notifier_transition
+
+        ids = request.data.get('ids') or []
+        nom = (request.data.get('action') or '').strip()
+        motif = request.data.get('motif') or ''
+        if not isinstance(ids, list) or not ids:
+            return Response({'detail': 'Aucun dossier sélectionné.'}, status=status.HTTP_400_BAD_REQUEST)
+        if len(ids) > 200:
+            return Response({'detail': 'Au plus 200 dossiers à la fois.'}, status=status.HTTP_400_BAD_REQUEST)
+        visibles = {str(s.pk): s for s in self.get_queryset().filter(pk__in=ids, is_deleted=False)}
+        resultats = []
+        for ident in ids:
+            ssdgps = visibles.get(str(ident))
+            if ssdgps is None:
+                resultats.append({'id': str(ident), 'ok': False, 'detail': 'Dossier introuvable.'})
+                continue
+            projet = ssdgps.affaire.propriete.projet
+            soumis_par = ssdgps.statut_change_by
+            try:
+                ancien, nouveau = appliquer_transition(
+                    ssdgps, nom, request.user, projet.organization_id, motif=motif)
+            except (DjangoValidationError, DjangoPermissionDenied) as exc:
+                message = ' '.join(exc.messages) if hasattr(exc, 'messages') else str(exc)
+                resultats.append({'id': str(ident), 'ok': False, 'detail': message})
+                continue
+            journaliser(
+                AuditEvent.ACTION_SSDGPS_STATUT, request=request, cible=ssdgps,
+                cible_libelle=str(ssdgps), transition=nom, statut_avant=ancien,
+                statut_apres=nouveau, motif=motif.strip() or None, groupee=True,
+            )
+            notifier_transition(ssdgps, nom, request.user, projet.organization_id,
+                                motif=motif, soumis_par=soumis_par)
+            resultats.append({'id': str(ident), 'ok': True, 'statut': nouveau})
+        reussis = sum(1 for r in resultats if r['ok'])
+        return Response({'reussis': reussis, 'echecs': len(resultats) - reussis, 'resultats': resultats})
+
     @action(detail=True, methods=['post'], url_path='transition')
     def transition(self, request, pk=None):
         """
@@ -448,6 +518,7 @@ class SsdgpsViewSet(BaseOrgScopedViewSet):
 
         nom = (request.data.get('action') or '').strip()
         motif = request.data.get('motif') or ''
+        soumis_par = ssdgps.statut_change_by   # auteur de la soumission, à prévenir de la décision
         try:
             ancien, nouveau = appliquer_transition(
                 ssdgps, nom, request.user, projet.organization_id, motif=motif)
@@ -465,6 +536,9 @@ class SsdgpsViewSet(BaseOrgScopedViewSet):
             cible_libelle=str(ssdgps), transition=nom,
             statut_avant=ancien, statut_apres=nouveau, motif=motif.strip() or None,
         )
+        from notifications.services import notifier_transition
+        notifier_transition(ssdgps, nom, request.user, projet.organization_id,
+                            motif=motif, soumis_par=soumis_par)
         return Response(self.get_serializer(ssdgps).data)
 
 

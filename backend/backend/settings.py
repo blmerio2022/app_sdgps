@@ -91,6 +91,7 @@ INSTALLED_APPS = [
     'pieces',  # ← AJOUT: Pièces SSDGPS/Session (Phase 6.5)
     'analytics',  # ← AJOUT: Analytique de stockage (dashboard admin)
     'reseaux',  # Conception de réseaux de triangulation GPS (module indépendant, sans modèle)
+    'notifications',  # Notifications personnelles (dossiers, rapports, sécurité) + e-mails
     'ia',  # Intelligence artificielle : mapping d'import, rédaction, assistant (inerte par défaut)
 ]
 
@@ -309,6 +310,9 @@ AUTH_USER_MODEL = 'accounts.CustomUser'
 # On n'ouvre tout qu'en DEBUG (dev : front sur :4200, API sur un autre port). Si le front est
 # hébergé ailleurs, lister ses origines dans CORS_ALLOWED_ORIGINS.
 CORS_ALLOW_ALL_ORIGINS = DEBUG
+# Adresse publique du front, pour les liens des e-mails de notification (vide = pas de lien).
+FRONTEND_URL = config('FRONTEND_URL', default='')
+
 CORS_ALLOWED_ORIGINS = [
     o.strip() for o in config('CORS_ALLOWED_ORIGINS', default='').split(',') if o.strip()
 ]

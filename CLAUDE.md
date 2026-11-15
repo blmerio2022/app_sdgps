@@ -148,6 +148,7 @@ change-password/logout.
   - `/api/v1/organizations/` → organisations
   - `/api/v1/platform-admin/` → profil super-admin
   - `/api/v1/reseau-gps/` → réseau de triangulation GPS (tous rôles)
+  - `/api/v1/notifications/` → notifications personnelles
 
 **Contrôle d'accès :** le défaut DRF est **`IsAuthenticated`** — toute vue est fermée tant
 qu'elle ne déclare pas le contraire. Les seules vues publiques sont les quatre flux
@@ -636,6 +637,42 @@ trace des actions qui ne modifient rien. Le journal, lui, enregistre QUI / QUOI 
   chronologique — un tri client ne porterait que sur une page ;
 - tests : `backend/accounts/tests_audit_journal.py`, `tests_audit_ecran.py` ; specs
   `audit.service`, `audit-journal`.
+
+**Notifications (app `notifications/`) : cloche + e-mails.** Un dossier soumis restait
+invisible à l'encadrement tant qu'il n'ouvrait pas la liste ; un rédacteur ne voyait le rejet
+(et son motif) qu'en rouvrant son dossier.
+- modèle `Notification` (destinataire, `type`, titre, message, `lien` = route RELATIVE — le
+  front ajoute `/admin/` selon la zone —, cible, auteur, `lue`) + `PreferenceNotification`
+  (e-mails globalement et par type ; seuls les écarts à `EMAIL_PAR_DEFAUT` sont gardés) ;
+- créer : **toujours** `notifications/services.py::notifier(...)` — ne lève jamais, jamais
+  pour l'acteur lui-même, sans doublon ni compte inactif ; e-mail SendGrid envoyé
+  `on_commit`, lien absolu si `FRONTEND_URL` est posé ;
+- déclencheurs : transition d'un SDGPS (`notifier_transition` — soumission → Admins Org de
+  l'organisation, à défaut Admins Système ; décision → créateur du dossier + auteur de la
+  soumission, avec le motif), rapport de fond terminé / en échec (`notifier_rapport`,
+  `pieces/tasks.py`), alertes de sécurité ;
+- API `/api/v1/notifications/` (strictement personnelle, 404 sinon, admins compris) :
+  liste paginée (`?non_lues=1`, renvoie `non_lues`), `compte/`, `<id>/lue/`, `DELETE <id>/`,
+  `tout-lu/`, `vider/` (lues), `GET|PUT preferences/` ;
+- front : `<app-notification-bell>` dans la barre du haut (compteur sondé toutes les 60 s et
+  au retour sur l'onglet, panneau Toutes / Non lues), page *Paramètres › Notifications*
+  (`/parametres/notifications`) ;
+- tests : `backend/notifications/tests.py` + specs `notifications.service`,
+  `notification-bell`, `notifications-settings`.
+
+**File de validation (encadrement).** `GET /api/v1/ssdgps/a-valider/?statut=soumis|valide`
+(`projects/file_validation.py`) : dossiers à valider / validés à clore des organisations dont
+l'appelant est Admin Organisation (tout pour l'administration de l'application ; un Agent
+reçoit `encadrement: false`), du plus ancien au plus récent, avec attente en jours, auteur
+de la soumission, rédacteur, nombre de pièces et résumé du contrôle de cohérence.
+`POST /api/v1/ssdgps/transition-groupee/` `{ids, action, motif}` applique la MÊME décision à
+plusieurs dossiers — mêmes règles (`appliquer_transition`), journalisation (`groupee: true`)
+et notifications que la transition unitaire ; un refus sur l'un n'arrête pas les autres
+(détail par dossier). Front : `/admin/file-validation` (menu admin, tous rôles admin),
+onglets, retards > 7 jours signalés, sélection multiple, modale de décision (motif
+obligatoire au rejet). ⚠ Exception assumée aux règles de tableaux : file de travail
+ordonnée par ancienneté, pas une liste d'entités. Tests : `projects/tests_file_validation.py`,
+`file-validation.component.spec.ts`.
 
 **Version de l'application : `v<majeure>.<mineure>.<n>`, calculée depuis git.** Visible par
 TOUS, connecté ou non : pied de la page de connexion, bas du menu latéral (clic → « À

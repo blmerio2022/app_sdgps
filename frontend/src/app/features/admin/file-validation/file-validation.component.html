@@ -1,0 +1,119 @@
+<div class="fv-page">
+  <header class="page-header">
+    <div>
+      <h1><i class="fas fa-inbox"></i> File de validation</h1>
+      <p class="subtitle">Les dossiers qui attendent votre décision, du plus ancien au plus récent. Le contrôle de
+        cohérence de chaque dossier est rappelé pour décider sans l'ouvrir.</p>
+    </div>
+    <button type="button" class="btn secondaire" (click)="charger()" [disabled]="chargement" title="Actualiser">
+      <i class="fas fa-rotate" [class.fa-spin]="chargement"></i> Actualiser</button>
+  </header>
+
+  <div class="fv-onglets" role="tablist">
+    <button type="button" role="tab" [class.on]="statut === 'soumis'" (click)="choisir('soumis')">
+      <i class="fas fa-hourglass-half"></i> À valider <span class="n">{{ compteurs.soumis ?? 0 }}</span></button>
+    <button type="button" role="tab" [class.on]="statut === 'valide'" (click)="choisir('valide')">
+      <i class="fas fa-lock"></i> Validés, à clore <span class="n">{{ compteurs.valide ?? 0 }}</span></button>
+    <span class="fv-retard" *ngIf="statut === 'soumis' && enRetard">
+      <i class="fas fa-clock"></i> {{ enRetard }} en attente depuis plus de {{ alerteJours }} jours</span>
+    <span class="spacer"></span>
+    <label class="fv-recherche">
+      <i class="fas fa-magnifying-glass"></i>
+      <input [(ngModel)]="recherche" placeholder="Filtrer : projet, propriété, organisation, rédacteur…" aria-label="Filtrer la file">
+    </label>
+  </div>
+
+  <p class="msg erreur" *ngIf="erreur"><i class="fas fa-triangle-exclamation"></i> {{ erreur }}</p>
+
+  <div class="fv-vide" *ngIf="!encadrement">
+    <i class="fas fa-user-shield"></i>
+    <p>La file de validation est réservée à l'encadrement (Admin Organisation, administration de l'application).</p>
+  </div>
+
+  <ng-container *ngIf="encadrement">
+    <div class="fv-barre" *ngIf="selection.size">
+      <span><strong>{{ selection.size }}</strong> dossier(s) sélectionné(s)</span>
+      <span class="spacer"></span>
+      <ng-container *ngIf="statut === 'soumis'">
+        <button type="button" class="btn ok" (click)="demander('valider', [...selection])"><i class="fas fa-check"></i> Valider</button>
+        <button type="button" class="btn danger" (click)="demander('rejeter', [...selection])"><i class="fas fa-xmark"></i> Rejeter</button>
+      </ng-container>
+      <button type="button" class="btn principal" *ngIf="statut === 'valide'" (click)="demander('clore', [...selection])">
+        <i class="fas fa-lock"></i> Clore</button>
+      <button type="button" class="btn secondaire" (click)="selection.clear()">Désélectionner</button>
+    </div>
+
+    <section class="fv-tableau">
+      <table>
+        <thead>
+          <tr>
+            <th class="chk"><input type="checkbox" [checked]="toutCoche" (change)="toutBasculer()" aria-label="Tout sélectionner"></th>
+            <th>Dossier</th>
+            <th>Organisation</th>
+            <th>{{ statut === 'soumis' ? 'Soumis par' : 'Validé par' }}</th>
+            <th>Attente</th>
+            <th>Cohérence</th>
+            <th class="act">Décision</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngIf="chargement && !dossiers.length"><td colspan="7" class="vide"><i class="fas fa-spinner fa-spin"></i> Chargement…</td></tr>
+          <tr *ngIf="!chargement && !visibles.length">
+            <td colspan="7" class="vide">
+              <i class="fas fa-mug-hot"></i>
+              {{ dossiers.length ? 'Aucun dossier ne correspond au filtre.' : (statut === 'soumis' ? 'Aucun dossier en attente de validation.' : 'Aucun dossier validé à clore.') }}
+            </td>
+          </tr>
+          <tr *ngFor="let d of visibles" [class.sel]="selection.has(d.id)">
+            <td class="chk"><input type="checkbox" [checked]="selection.has(d.id)" (change)="basculer(d.id)" [attr.aria-label]="'Sélectionner SDGPS n°' + d.numero_ssdgps"></td>
+            <td>
+              <a class="dossier" (click)="ouvrir(d)" title="Ouvrir le dossier">
+                <span class="nat">{{ d.nature_ssdgps }}</span> SDGPS n°{{ d.numero_ssdgps }}
+              </a>
+              <span class="ctx">{{ d.projet_code }} · {{ d.propriete_nom }} · SD {{ d.affaire_numero }}</span>
+            </td>
+            <td>{{ d.organisation || '—' }}</td>
+            <td>{{ d.par || '—' }}<span class="ctx" *ngIf="d.redacteur && d.redacteur !== d.par">rédigé par {{ d.redacteur }}</span></td>
+            <td><span class="attente" [class.retard]="statut === 'soumis' && (d.attente_jours ?? 0) > alerteJours"
+                      [title]="d.depuis ? (d.depuis | date:'dd/MM/yyyy HH:mm') : ''">{{ attenteLibelle(d) }}</span></td>
+            <td>
+              <span class="coh" [ngClass]="coherenceClasse(d)" [title]="d.coherence?.anomalies?.join('\n') || ''">
+                <i class="fas" [ngClass]="coherenceClasse(d) === 'ok' ? 'fa-circle-check' : (coherenceClasse(d) === 'erreur' ? 'fa-circle-exclamation' : 'fa-triangle-exclamation')"></i>
+                {{ coherenceLibelle(d) }}</span>
+              <span class="ctx" *ngIf="d.coherence">{{ d.coherence.pieces }} pièce(s)</span>
+            </td>
+            <td class="act">
+              <button type="button" class="ico" (click)="ouvrir(d)" title="Ouvrir le dossier"><i class="fas fa-arrow-up-right-from-square"></i></button>
+              <ng-container *ngIf="statut === 'soumis'">
+                <button type="button" class="ico ok" (click)="demander('valider', [d.id])" title="Valider"><i class="fas fa-check"></i></button>
+                <button type="button" class="ico danger" (click)="demander('rejeter', [d.id])" title="Rejeter (motif obligatoire)"><i class="fas fa-xmark"></i></button>
+              </ng-container>
+              <button type="button" class="ico" *ngIf="statut === 'valide'" (click)="demander('clore', [d.id])" title="Clore"><i class="fas fa-lock"></i></button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </ng-container>
+</div>
+
+<!-- Confirmation de la décision -->
+<div class="fv-modale-fond" *ngIf="decision" (click)="annuler()">
+  <div class="fv-modale" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+    <h3><i class="fas" [ngClass]="decision.action === 'rejeter' ? 'fa-xmark' : (decision.action === 'valider' ? 'fa-check' : 'fa-lock')"></i>
+      {{ libelleDecision(decision.action) }} {{ decision.ids.length }} dossier(s)</h3>
+    <p *ngIf="decision.action === 'valider'">Les dossiers restent figés ; leurs rédacteurs sont prévenus.</p>
+    <p *ngIf="decision.action === 'clore'">Un dossier clos est définitivement arrêté (réouverture tracée, avec motif).</p>
+    <p *ngIf="decision.action === 'rejeter'">Le dossier repasse « en cours » : indiquez au rédacteur ce qu'il doit corriger.</p>
+    <label class="fv-motif">
+      Motif <span *ngIf="motifObligatoire" class="req">(obligatoire)</span><span *ngIf="!motifObligatoire">(facultatif)</span>
+      <textarea [(ngModel)]="motif" rows="3" maxlength="1000" placeholder="Ex. : la LPA n'est pas signée"></textarea>
+    </label>
+    <div class="fv-modale-pied">
+      <button type="button" class="btn secondaire" (click)="annuler()" [disabled]="envoi">Annuler</button>
+      <button type="button" class="btn" [ngClass]="decision.action === 'rejeter' ? 'danger' : 'principal'"
+              (click)="confirmer()" [disabled]="envoi || (motifObligatoire && !motif.trim())">
+        <i class="fas fa-spinner fa-spin" *ngIf="envoi"></i> {{ libelleDecision(decision.action) }}</button>
+    </div>
+  </div>
+</div>

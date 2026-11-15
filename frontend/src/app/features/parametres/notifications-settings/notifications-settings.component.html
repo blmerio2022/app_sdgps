@@ -1,0 +1,37 @@
+<div class="ns-page">
+  <header class="page-header">
+    <h1><i class="fas fa-bell"></i> Notifications</h1>
+    <p class="subtitle">Vous êtes toujours prévenu dans l'application (cloche en haut à droite). Choisissez ici les
+      événements qui vous valent <strong>aussi un e-mail</strong>.</p>
+  </header>
+
+  <div class="ns-erreur" *ngIf="erreur"><i class="fas fa-triangle-exclamation"></i> {{ erreur }}</div>
+  <div class="ns-chargement" *ngIf="chargement"><i class="fas fa-spinner fa-spin"></i> Chargement…</div>
+
+  <ng-container *ngIf="prefs">
+    <section class="ns-carte ns-global">
+      <span class="ns-icone"><i class="fas fa-envelope"></i></span>
+      <div class="ns-texte">
+        <h2>Recevoir des e-mails</h2>
+        <p>Désactivé : aucun e-mail, quel que soit le réglage de chaque événement ci-dessous.</p>
+      </div>
+      <span class="ns-etat" *ngIf="enregistrement"><i class="fas fa-spinner fa-spin"></i></span>
+      <span class="ns-etat ok" *ngIf="!enregistrement && enregistre"><i class="fas fa-check-circle"></i> Enregistré</span>
+      <label class="ns-switch">
+        <input type="checkbox" [ngModel]="prefs.emails_actifs" (ngModelChange)="basculerGlobal($event)" aria-label="Recevoir des e-mails"><span></span>
+      </label>
+    </section>
+
+    <section class="ns-carte ns-liste" [class.off]="!prefs.emails_actifs">
+      <div class="ns-ligne" *ngFor="let t of prefs.types">
+        <span class="ns-type" [ngClass]="apparence(t.type).famille"><i class="fas" [ngClass]="apparence(t.type).icone"></i></span>
+        <span class="ns-lib">{{ t.libelle }}</span>
+        <span class="ns-defaut">{{ t.defaut ? 'e-mail par défaut' : 'sans e-mail par défaut' }}</span>
+        <label class="ns-switch">
+          <input type="checkbox" [ngModel]="t.email" (ngModelChange)="basculerType(t.type, $event)"
+                 [disabled]="!prefs.emails_actifs" [attr.aria-label]="'E-mail : ' + t.libelle"><span></span>
+        </label>
+      </div>
+    </section>
+  </ng-container>
+</div>

@@ -13,7 +13,8 @@ import {OrganismesModule} from './features/admin/organismes/organismes.module'; 
 import {PieceFieldDescriptionsModule} from './features/admin/piece-field-descriptions/piece-field-descriptions.module'; // ← Descriptions des champs de pièces (App Admin)
 import {StorageDashboardModule} from './features/admin/storage/storage-dashboard.module'; // ← Dashboard stockage (App Admin)
 import {StorageQuotasModule} from './features/admin/storage-quotas/storage-quotas.module'; // ← Quotas de stockage (Super Admin)
-import { AuditJournalModule } from './features/admin/audit-journal/audit-journal.module'; // ← Journal d'audit (admin application)
+import { AuditJournalModule } from './features/admin/audit-journal/audit-journal.module';
+import { FileValidationModule } from './features/admin/file-validation/file-validation.module'; // File de validation (encadrement) // ← Journal d'audit (admin application)
 import {ToastrModule} from 'ngx-toastr';
 import {AuthInterceptor} from './core/interceptors/auth.interceptor';
 
@@ -35,7 +36,8 @@ import {AuthInterceptor} from './core/interceptors/auth.interceptor';
         PieceFieldDescriptionsModule, // ← AJOUT: Descriptions des champs de pièces (App Admin)
         StorageDashboardModule, // ← AJOUT: Dashboard stockage (App Admin)
         StorageQuotasModule, // ← AJOUT: Quotas de stockage par organisation (Super Admin)
-        AuditJournalModule, // Journal d'audit (Super Admin, Admin Système)
+        AuditJournalModule,
+        FileValidationModule, // File de validation (Admin Org, admin application) // Journal d'audit (Super Admin, Admin Système)
         ToastrModule.forRoot({
           timeOut: 3000,
           positionClass: 'toast-bottom-right', // ← Position en bas à droite

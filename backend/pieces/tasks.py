@@ -90,6 +90,8 @@ def _echouer(generation, message):
     generation.erreur = message
     generation.finished_at = timezone.now()
     generation.save(update_fields=['statut', 'erreur', 'finished_at'])
+    from notifications.services import notifier_rapport
+    notifier_rapport(generation, False, message)
 
 
 @shared_task(bind=True, name='pieces.generer_rapport')
@@ -170,6 +172,8 @@ def generer_rapport(self, generation_id):
             from .models import CachetSignature
             CachetSignature.objects.filter(pk=cachet.cachet_id).update(
                 derniere_utilisation=timezone.now())
+        from notifications.services import notifier_rapport
+        notifier_rapport(generation, True)
         return str(generation.pk)
 
     except CachetIndisponible as exc:

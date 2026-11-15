@@ -8,6 +8,7 @@ import { FormsModule } from '@angular/forms';
 import { DashboardLayoutComponent } from './components/dashboard-layout/dashboard-layout.component';
 import { SidebarComponent } from './components/sidebar/sidebar.component';
 import { TopBarComponent } from './components/topbar/topbar.component';
+import { NotificationBellComponent } from './components/notification-bell/notification-bell.component';
 
 // Directives
 import { ClickOutsideDirective } from './directives/click-outside.directive';
@@ -22,6 +23,7 @@ import { SharedModule } from '../../shared/shared.module';
     DashboardLayoutComponent,
     SidebarComponent,
     TopBarComponent,
+    NotificationBellComponent,
     ClickOutsideDirective
   ],
   imports: [

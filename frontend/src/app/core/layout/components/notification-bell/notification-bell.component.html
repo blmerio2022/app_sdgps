@@ -1,0 +1,46 @@
+<div class="nb" (clickOutside)="fermer()">
+  <button type="button" class="nb-btn" (click)="basculer()" [class.actif]="ouvert"
+          [title]="nonLues ? nonLues + ' notification(s) non lue(s)' : 'Notifications'"
+          aria-label="Notifications" [attr.aria-expanded]="ouvert">
+    <i class="fas fa-bell" [class.sonne]="nonLues > 0"></i>
+    <span class="nb-compte" *ngIf="nonLues > 0">{{ badge }}</span>
+  </button>
+
+  <div class="nb-panneau" *ngIf="ouvert" role="dialog" aria-label="Notifications">
+    <header class="nb-tete">
+      <h3>Notifications</h3>
+      <div class="nb-filtre" role="radiogroup">
+        <button type="button" [class.on]="!nonLuesSeules" (click)="filtrer(false)">Toutes</button>
+        <button type="button" [class.on]="nonLuesSeules" (click)="filtrer(true)">Non lues<span *ngIf="nonLues"> · {{ nonLues }}</span></button>
+      </div>
+    </header>
+
+    <div class="nb-liste">
+      <div class="nb-vide" *ngIf="!chargement && !notifications.length">
+        <i class="fas fa-bell-slash"></i>
+        <p>{{ nonLuesSeules ? 'Aucune notification non lue.' : 'Aucune notification pour le moment.' }}</p>
+      </div>
+      <div class="nb-item" *ngFor="let n of notifications" [class.non-lue]="!n.lue" (click)="ouvrir(n)"
+           [class.cliquable]="!!n.lien" role="button" tabindex="0" (keydown.enter)="ouvrir(n)">
+        <span class="nb-icone" [ngClass]="apparence(n.type).famille"><i class="fas" [ngClass]="apparence(n.type).icone"></i></span>
+        <div class="nb-corps">
+          <div class="nb-titre">{{ n.titre }}</div>
+          <div class="nb-message" *ngIf="n.message">{{ n.message }}</div>
+          <div class="nb-meta">{{ quand(n.created_at) }}<span *ngIf="n.acteur_nom"> · {{ n.acteur_nom }}</span></div>
+        </div>
+        <div class="nb-actions">
+          <button type="button" (click)="basculerLue(n, $event)" [title]="n.lue ? 'Marquer non lue' : 'Marquer lue'">
+            <i class="fas" [ngClass]="n.lue ? 'fa-envelope' : 'fa-envelope-open'"></i></button>
+          <button type="button" (click)="supprimer(n, $event)" title="Supprimer"><i class="fas fa-xmark"></i></button>
+        </div>
+      </div>
+      <div class="nb-chargement" *ngIf="chargement"><i class="fas fa-spinner fa-spin"></i></div>
+      <button type="button" class="nb-plus" *ngIf="plus && !chargement" (click)="charger(page + 1)">Afficher plus</button>
+    </div>
+
+    <footer class="nb-pied">
+      <button type="button" (click)="toutLu()" [disabled]="!nonLues"><i class="fas fa-check-double"></i> Tout marquer lu</button>
+      <button type="button" (click)="viderLues()" title="Supprimer les notifications déjà lues"><i class="fas fa-broom"></i> Effacer les lues</button>
+    </footer>
+  </div>
+</div>

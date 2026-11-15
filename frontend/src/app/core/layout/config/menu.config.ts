@@ -78,6 +78,14 @@ export const USER_MENU: MenuItem[] = [
         route: '/parametres/intelligence-artificielle',
         type: 'link',
         description: "Fournisseur, modèles et clé de l'IA ; modèle de votre assistant"
+      },
+      {
+        id: 'notifications',
+        title: 'Notifications',
+        icon: 'fas fa-bell',
+        route: '/parametres/notifications',
+        type: 'link',
+        description: 'E-mails reçus : dossiers soumis, validés, rejetés, rapports, sécurité'
       }
     ]
   }
@@ -155,6 +163,16 @@ export const ADMIN_MENU: MenuItem[] = [
     ]
   },
   {
+    // Dossiers soumis qui attendent une décision de l'encadrement.
+    id: 'file-validation',
+    title: 'File de validation',
+    icon: 'fas fa-inbox',
+    route: '/admin/file-validation',
+    type: 'link',
+    description: 'Dossiers soumis à valider, dossiers validés à clore',
+    roles: ALL_ADMIN_ROLES,
+  },
+  {
     id: 'projets',
     title: 'Projets',
     icon: 'fas fa-project-diagram',
@@ -222,6 +240,14 @@ export const ADMIN_MENU: MenuItem[] = [
         route: '/admin/parametres/intelligence-artificielle',
         type: 'link',
         description: "Fournisseur, modèles et clé de l'IA ; modèle de votre assistant"
+      },
+      {
+        id: 'notifications',
+        title: 'Notifications',
+        icon: 'fas fa-bell',
+        route: '/admin/parametres/notifications',
+        type: 'link',
+        description: 'E-mails reçus : dossiers soumis, validés, rejetés, rapports, sécurité'
       },
       {
         id: 'descriptions-champs',

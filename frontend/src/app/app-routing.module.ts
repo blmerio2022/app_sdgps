@@ -12,6 +12,7 @@ import { PieceFieldDescriptionsComponent } from './features/admin/piece-field-de
 import { StorageDashboardComponent } from './features/admin/storage/storage-dashboard.component';
 import { StorageQuotasComponent } from './features/admin/storage-quotas/storage-quotas.component';
 import { AuditJournalComponent } from './features/admin/audit-journal/audit-journal.component';
+import { FileValidationComponent } from './features/admin/file-validation/file-validation.component';
 
 // Aucune route « en cours de développement » : une entrée de menu qui mène à une page
 // vide est pire qu'une entrée absente. Les modules à venir seront routés le jour où ils
@@ -122,6 +123,12 @@ export const routes: Routes = [
         path: 'quotas/limites',
         component: StorageQuotasComponent,
         data: { title: 'Quotas de stockage' }
+      },
+      {
+        // Encadrement : Admin Organisation (ses organisations) et administration de l'application.
+        path: 'file-validation',
+        component: FileValidationComponent,
+        data: { title: 'File de validation' }
       },
       {
         // Réservé à l'administration de l'application (le backend renvoie 403 sinon).
