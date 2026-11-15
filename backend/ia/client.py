@@ -14,7 +14,10 @@ Ce module garantit :
   refus de sécurité) deviennent une `IaErreur` au message en français ;
 - **repli en cas de refus** : le paramètre serveur `fallbacks="default"` relance la
   requête sur un autre modèle si le premier décline (bêta
-  `server-side-fallback-2026-07-01`).
+  `server-side-fallback-2026-07-01`) ;
+- **passerelle** (`IA_BASE_URL`, ex. OmniRoute) : en mode compatible (`IA_COMPATIBLE`),
+  seul le cœur standard de l'API Messages part — la sortie structurée devient une
+  consigne de format dans le prompt système, et le JSON est extrait avec tolérance.
 
 L'IA PROPOSE, l'opérateur DÉCIDE : aucune fonction n'écrit en base sur la seule foi
 d'une réponse du modèle.
@@ -50,6 +53,15 @@ def modele() -> str:
     return getattr(settings, 'IA_MODELE', '') or 'claude-opus-5-5'
 
 
+def adresse() -> str:
+    """Adresse de la passerelle, ou '' pour l'API Anthropic directe."""
+    return (getattr(settings, 'IA_BASE_URL', '') or '').strip().rstrip('/')
+
+
+def compatible() -> bool:
+    return bool(getattr(settings, 'IA_COMPATIBLE', False))
+
+
 _CLIENT = None
 
 
@@ -60,6 +72,7 @@ def _client():
         import anthropic
         _CLIENT = anthropic.Anthropic(
             api_key=settings.ANTHROPIC_API_KEY,
+            base_url=adresse() or None,          # None : API Anthropic directe
             timeout=float(getattr(settings, 'IA_DELAI', 90)),
             max_retries=2,
         )
@@ -105,24 +118,24 @@ def appeler(fonction: str, utilisateur, *, messages, system=None, tools=None,
 
     import anthropic
 
-    output_config = {'effort': effort}
-    if schema is not None:
-        output_config['format'] = {'type': 'json_schema', 'schema': schema}
-    params = {
-        'model': modele(),
-        'max_tokens': max_tokens,
-        'messages': messages,
-        'output_config': output_config,
-        'betas': [BETA_REPLI],
-        'fallbacks': 'default',
-    }
+    params = {'model': modele(), 'max_tokens': max_tokens, 'messages': messages}
+    if compatible():
+        # Passerelle : cœur standard seulement. Le format attendu passe par le prompt.
+        if schema is not None:
+            system = ((system + '\n\n') if system else '') + consigne_json(schema)
+    else:
+        output_config = {'effort': effort}
+        if schema is not None:
+            output_config['format'] = {'type': 'json_schema', 'schema': schema}
+        params.update(output_config=output_config, betas=[BETA_REPLI], fallbacks='default')
     if system:
         params['system'] = system
     if tools:
         params['tools'] = tools
 
     try:
-        reponse = _client().beta.messages.create(**params)
+        api = _client().messages if compatible() else _client().beta.messages
+        reponse = api.create(**params)
     except anthropic.AuthenticationError:
         _journaliser(fonction, utilisateur, erreur='authentification')
         raise IaErreur("La clé d'accès au service d'IA est refusée : contactez l'administration.")
@@ -132,6 +145,10 @@ def appeler(fonction: str, utilisateur, *, messages, system=None, tools=None,
     except anthropic.APIConnectionError:
         _journaliser(fonction, utilisateur, erreur='connexion')
         raise IaErreur("Le service d'IA est injoignable : vérifiez la connexion du serveur.")
+    except anthropic.NotFoundError:
+        _journaliser(fonction, utilisateur, erreur='modele')
+        raise IaErreur(f"Le modèle « {modele()} » est inconnu du service d'IA : vérifiez "
+                       "IA_MODELE (python manage.py ia_verifier liste les modèles).")
     except anthropic.APIStatusError as exc:
         _journaliser(fonction, utilisateur, erreur=f'http {exc.status_code}')
         logger.warning('Appel IA %s en échec : %s', fonction, exc)
@@ -148,12 +165,38 @@ def texte(reponse) -> str:
     return ''.join(b.text for b in reponse.content if getattr(b, 'type', '') == 'text').strip()
 
 
+def consigne_json(schema) -> str:
+    """Consigne de format pour un modèle sans sortie structurée (mode passerelle)."""
+    return ("FORMAT DE RÉPONSE OBLIGATOIRE : réponds UNIQUEMENT par un objet JSON valide, "
+            "sans texte avant ni après, sans bloc de code, conforme à ce schéma JSON :\n"
+            + json.dumps(schema, ensure_ascii=False))
+
+
+def extraire_json(contenu: str):
+    """Objet JSON d'un texte : brut, entouré d'un bloc ```json, ou précédé d'une phrase.
+    Lève `ValueError` si aucun objet n'est lisible."""
+    t = (contenu or '').strip()
+    if t.startswith('```'):
+        t = t.split('\n', 1)[1] if '\n' in t else ''
+        t = t.rsplit('```', 1)[0]
+    try:
+        return json.loads(t)
+    except ValueError:
+        debut, fin = t.find('{'), t.rfind('}')
+        if debut < 0 or fin <= debut:
+            raise
+        return json.loads(t[debut:fin + 1])
+
+
 def json_de(reponse) -> dict:
-    """Réponse à sortie structurée → dict. Lève `IaErreur` si le JSON est inexploitable
-    (réponse tronquée par `max_tokens`, typiquement)."""
+    """Réponse JSON → dict. Lève `IaErreur` si le JSON est inexploitable (réponse
+    tronquée par `max_tokens`, typiquement)."""
     if reponse.stop_reason == 'max_tokens':
         raise IaErreur("La réponse du service d'IA a été tronquée : réessayez.")
     try:
-        return json.loads(texte(reponse))
+        donnees = extraire_json(texte(reponse))
     except ValueError:
         raise IaErreur("La réponse du service d'IA est illisible : réessayez.")
+    if not isinstance(donnees, dict):
+        raise IaErreur("La réponse du service d'IA est illisible : réessayez.")
+    return donnees

@@ -62,7 +62,8 @@ class StatutView(_IaView):
 
     def get(self, request):
         actif = client.disponible()
-        return Response({'disponible': actif, 'modele': client.modele() if actif else None})
+        return Response({'disponible': actif, 'modele': client.modele() if actif else None,
+                         'passerelle': bool(client.adresse()) if actif else None})
 
 
 class MappingColonnesView(_IaView):

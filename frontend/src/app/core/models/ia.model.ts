@@ -1,7 +1,12 @@
 /** Intelligence artificielle — types des réponses de `/api/v1/ia/`. L'IA PROPOSE :
  * rien de ce qui suit n'est enregistré tant que l'opérateur ne l'a pas validé. */
 
-export interface IaStatut { disponible: boolean; modele: string | null; }
+export interface IaStatut {
+  disponible: boolean;
+  modele: string | null;
+  /** Vrai si l'IA passe par une passerelle (OmniRoute…) plutôt que l'API Anthropic. */
+  passerelle?: boolean | null;
+}
 
 export type IaConfiance = 'haute' | 'moyenne' | 'faible';
 

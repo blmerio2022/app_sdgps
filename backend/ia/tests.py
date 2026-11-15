@@ -17,7 +17,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from rest_framework.test import APIClient
 
 from accounts.models import AuditEvent, Membership, Organization
@@ -27,7 +27,10 @@ from projects.models import Affaire, Projet, Propriete, Session, Ssdgps
 
 User = get_user_model()
 ACTIVE = dict(IA_ACTIVE=True, ANTHROPIC_API_KEY='sk-test-factice', IA_MODELE='claude-opus-5-5',
+              IA_BASE_URL='', IA_COMPATIBLE=False,
               PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
+PASSERELLE = {**ACTIVE, 'IA_BASE_URL': 'http://localhost:20128', 'IA_COMPATIBLE': True,
+              'IA_MODELE': 'cc/claude-opus-5-5'}
 
 
 # --------------------------------------------------------------------------- faux client
@@ -56,6 +59,12 @@ class FauxClient:
         self.reponses = list(reponses)
         self.appels = []
         self.beta = SimpleNamespace(messages=SimpleNamespace(create=self._create))
+        self.messages = SimpleNamespace(create=self._create_standard)
+        self.points = []
+
+    def _create_standard(self, **params):
+        self.points.append('standard')
+        return self._create(**params)
 
     def _create(self, **params):
         # Copie de la liste : l'appelant la complète ensuite (instantané de CET appel).
@@ -139,12 +148,16 @@ class InertieTests(IaBaseTest):
     def test_statut_annonce_l_inactivite(self):
         resp = self.api.get('/api/v1/ia/statut/')
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.data, {'disponible': False, 'modele': None})
+        self.assertEqual(resp.data, {'disponible': False, 'modele': None, 'passerelle': None})
 
     @override_settings(**ACTIVE)
     def test_statut_actif(self):
         self.assertEqual(self.api.get('/api/v1/ia/statut/').data,
-                         {'disponible': True, 'modele': 'claude-opus-5-5'})
+                         {'disponible': True, 'modele': 'claude-opus-5-5', 'passerelle': False})
+
+    @override_settings(**PASSERELLE)
+    def test_statut_passerelle(self):
+        self.assertTrue(self.api.get('/api/v1/ia/statut/').data['passerelle'])
 
     def test_non_authentifie(self):
         self.api.force_authenticate(None)
@@ -418,3 +431,109 @@ class DialogueAssistantTests(IaBaseTest):
     def test_historique_invalide(self):
         resp = self.api.post('/api/v1/ia/assistant/', {'messages': []}, format='json')
         self.assertEqual(resp.status_code, 400)
+
+
+# =========================================================================== passerelle
+
+class ExtractionJsonTests(SimpleTestCase):
+    def test_variantes_acceptees(self):
+        for brut in ('{"a": 1}', '```json\n{"a": 1}\n```', 'Voici le résultat : {"a": 1} Bonne journée.'):
+            self.assertEqual(client.extraire_json(brut), {'a': 1}, brut)
+
+    def test_illisible(self):
+        with self.assertRaises(ValueError):
+            client.extraire_json('pas de JSON ici')
+        with self.assertRaisesMessage(client.IaErreur, 'illisible'):
+            client.json_de(reponse(bloc_texte('[1, 2]')))      # un objet est attendu
+
+
+@override_settings(**PASSERELLE)
+class PasserelleTests(IaBaseTest):
+    """OmniRoute et consorts : seul le cœur standard de l'API Messages part."""
+
+    def test_le_client_vise_la_passerelle(self):
+        client.reinitialiser_client()
+        self.addCleanup(client.reinitialiser_client)
+        with patch('anthropic.Anthropic') as fabrique:
+            client._client()
+        self.assertEqual(fabrique.call_args.kwargs['base_url'], 'http://localhost:20128')
+        self.assertEqual(fabrique.call_args.kwargs['api_key'], 'sk-test-factice')
+
+    @override_settings(IA_BASE_URL='')
+    def test_sans_passerelle_api_directe(self):
+        client.reinitialiser_client()
+        self.addCleanup(client.reinitialiser_client)
+        with patch('anthropic.Anthropic') as fabrique:
+            client._client()
+        self.assertIsNone(fabrique.call_args.kwargs['base_url'])
+
+    def test_coeur_standard_et_consigne_de_format(self):
+        faux, branche = brancher(reponse(bloc_texte('```json\n{"ok": true}\n```')))
+        with branche:
+            r = client.appeler('essai', self.agent, system='Tu aides.',
+                               messages=[{'role': 'user', 'content': 'x'}],
+                               schema={'type': 'object', 'properties': {'ok': {'type': 'boolean'}}})
+        p = faux.appels[0]
+        self.assertEqual(faux.points, ['standard'])                 # pas l'API bêta
+        for absent in ('betas', 'fallbacks', 'output_config'):
+            self.assertNotIn(absent, p)
+        self.assertEqual(p['model'], 'cc/claude-opus-5-5')
+        self.assertTrue(p['system'].startswith('Tu aides.'))
+        self.assertIn('FORMAT DE RÉPONSE OBLIGATOIRE', p['system'])
+        self.assertIn('"ok"', p['system'])                          # le schéma est transmis
+        self.assertEqual(client.json_de(r), {'ok': True})
+
+    def test_modele_inconnu_message_explicite(self):
+        import anthropic
+        import httpx2
+        requete = httpx2.Request('POST', 'http://localhost:20128/v1/messages')
+        err = anthropic.NotFoundError('inconnu', response=httpx2.Response(404, request=requete),
+                                      body=None)
+        faux, branche = brancher(err)
+        with branche, self.assertRaisesMessage(client.IaErreur, 'cc/claude-opus-5-5'):
+            client.appeler('essai', self.agent, messages=[{'role': 'user', 'content': 'x'}])
+
+    def test_mapping_de_bout_en_bout_via_la_passerelle(self):
+        faux, branche = brancher(reponse(bloc_texte(
+            'Voici : {"correspondances": [{"champ": "hauteur", "colonne": "HI", '
+            '"confiance": "haute", "raison": "Hauteur instrument."}]}')))
+        with branche, patch('pieces.catalog.champs_with_meta', return_value=[
+                {'name': 'hauteur', 'label': 'Hauteur', 'type': 'number'}]):
+            resp = self.api.post('/api/v1/ia/mapping-colonnes/', {
+                'type_piece': 'ROB', 'colonnes': ['HI'], 'lignes': [['1.36']]}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['propositions'][0]['colonne'], 'HI')
+
+
+class CommandeVerifierTests(SimpleTestCase):
+    def _executer(self, sdk, **options):
+        from io import StringIO
+        from django.core.management import call_command
+        sortie = StringIO()
+        with patch('ia.client._client', return_value=sdk), \
+                patch('ia.client.reinitialiser_client'):
+            call_command('ia_verifier', stdout=sortie, **options)
+        return sortie.getvalue()
+
+    @override_settings(**PASSERELLE)
+    def test_liste_les_modeles_et_essaie(self):
+        sdk = SimpleNamespace(
+            models=SimpleNamespace(list=lambda limit: [SimpleNamespace(id='glm/glm-5.2'),
+                                                       SimpleNamespace(id='cc/claude-opus-5-5')]),
+            messages=SimpleNamespace(create=lambda **p: reponse(bloc_texte('OK'))),
+        )
+        texte = self._executer(sdk)
+        self.assertIn('http://localhost:20128', texte)
+        self.assertIn('cc/claude-opus-5-5  ← IA_MODELE', texte)
+        self.assertIn("Appel d'essai réussi", texte)
+        self.assertNotIn('sk-test-factice', texte)                  # la clé n'apparaît jamais
+
+    @override_settings(**{**PASSERELLE, 'IA_MODELE': 'inexistant'})
+    def test_signale_un_modele_absent_sans_appel(self):
+        sdk = SimpleNamespace(models=SimpleNamespace(list=lambda limit: [SimpleNamespace(id='glm/glm-5.2')]))
+        texte = self._executer(sdk, sans_appel=True)
+        self.assertIn("« inexistant » n'est pas dans la liste", texte)
+
+    @override_settings(**{**PASSERELLE, 'ANTHROPIC_API_KEY': ''})
+    def test_sans_cle(self):
+        self.assertIn('Aucune clé', self._executer(SimpleNamespace()))

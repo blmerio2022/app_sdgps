@@ -352,6 +352,17 @@ foi d'une réponse du modèle :
   `claude-opus-5-5`), délai `IA_DELAI`, plafond par utilisateur `IA_DEBIT` (throttle `ia`).
   Railway `sdgps-test` (service `app`) : `IA_ACTIVE`, `IA_MODELE`, `IA_DELAI`, `IA_DEBIT`
   posées ; `ANTHROPIC_API_KEY` est posée par l'opérateur lui-même (secret) ;
+- **passerelle compatible Anthropic (OmniRoute)** : `IA_BASE_URL` = adresse RACINE, sans
+  `/v1` (ex. `http://localhost:20128` en local) ; la clé de la passerelle va dans
+  `ANTHROPIC_API_KEY` (x-api-key) ; `IA_MODELE` = un identifiant OmniRoute
+  (`fournisseur/modèle` ou combo). `IA_COMPATIBLE` (vrai d'office avec une passerelle) :
+  seul le cœur standard de l'API part — ni bêta, ni repli serveur, ni `output_config` ; la
+  sortie structurée devient une consigne dans le prompt système et le JSON est extrait
+  avec tolérance (`client.extraire_json`). ⚠ La passerelle doit être joignable DEPUIS le
+  serveur : un OmniRoute sur `localhost` ne sert que l'application locale ; pour Railway,
+  il faut une adresse publique (tunnel). Diagnostic : `python manage.py ia_verifier`
+  (mode, modèles accessibles, appel d'essai — `--sans-appel`, `--filtre`), clé jamais
+  affichée ;
 - **point de passage unique** : `ia/client.py::appeler(...)` — jamais le SDK `anthropic` en
   direct. Il journalise chaque appel (`AuditEvent.ACTION_IA_APPEL` : fonction, modèle, jetons,
   erreur), traduit les erreurs du fournisseur en `IaErreur` (message en français), active le

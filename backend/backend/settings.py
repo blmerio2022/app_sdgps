@@ -374,6 +374,14 @@ REST_FRAMEWORK = {
 IA_ACTIVE = config('IA_ACTIVE', default=False, cast=bool)
 ANTHROPIC_API_KEY = config('ANTHROPIC_API_KEY', default='')
 IA_MODELE = config('IA_MODELE', default='claude-opus-5-5')
+# Passerelle compatible Anthropic (OmniRoute, LiteLLM…) : adresse RACINE, sans « /v1 »
+# (le SDK ajoute /v1/messages). Vide = API Anthropic directe. La clé reste lue dans
+# ANTHROPIC_API_KEY (envoyée en x-api-key) — pour une passerelle, c'est SA clé.
+IA_BASE_URL = config('IA_BASE_URL', default='').strip().rstrip('/')
+# Mode compatible : n'envoyer que le cœur standard de l'API Messages — ni en-têtes bêta,
+# ni repli serveur, ni `output_config` (effort, sortie structurée), que les fournisseurs
+# routés par une passerelle ne connaissent pas. Activé d'office avec une passerelle.
+IA_COMPATIBLE = config('IA_COMPATIBLE', default=bool(IA_BASE_URL), cast=bool)
 # Délai maximal d'un appel (secondes) : une requête HTTP de l'application ne doit pas
 # rester suspendue indéfiniment derrière le fournisseur.
 IA_DELAI = config('IA_DELAI', default=90, cast=int)
