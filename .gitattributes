@@ -1,0 +1,7 @@
+# Fins de ligne : les fichiers exécutés dans les conteneurs LINUX doivent garder LF, quel
+# que soit le poste. Sous Windows (core.autocrlf=true), un script shell extrait en CRLF
+# fait planter le conteneur au démarrage (« set: Illegal option - »).
+*.sh            text eol=lf
+.githooks/*     text eol=lf
+Dockerfile*     text eol=lf
+docker-compose* text eol=lf

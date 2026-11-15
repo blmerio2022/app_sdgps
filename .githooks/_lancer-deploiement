@@ -1,0 +1,28 @@
+#!/bin/sh
+# Lance, EN ARRIÈRE-PLAN, le déploiement de HEAD sur l'environnement de test Railway.
+# Partagé par les hooks post-commit et post-merge. Ne bloque jamais git, n'échoue jamais.
+#
+# Conditions : branche de version `feature/*`, hors rebase / cherry-pick / bisect, et
+# SDGPS_AUTO_DEPLOY ≠ 0 (désactivation ponctuelle : `SDGPS_AUTO_DEPLOY=0 git commit …`,
+# ou durable : `git config sdgps.autodeploy false`).
+
+racine="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+gitdir="$(git rev-parse --git-dir 2>/dev/null)" || exit 0
+
+[ "${SDGPS_AUTO_DEPLOY:-1}" = "0" ] && exit 0
+[ "$(git config --bool sdgps.autodeploy 2>/dev/null)" = "false" ] && exit 0
+
+branche="$(git symbolic-ref --quiet --short HEAD 2>/dev/null)" || exit 0
+case "$branche" in feature/*) ;; *) exit 0 ;; esac
+
+# Pas pendant une réécriture d'historique : chaque commit rejoué déclencherait un envoi.
+for etat in rebase-merge rebase-apply CHERRY_PICK_HEAD BISECT_LOG; do
+  [ -e "$gitdir/$etat" ] && exit 0
+done
+
+command -v railway >/dev/null 2>&1 || exit 0
+
+mkdir -p "$racine/logs"
+( sh "$racine/.githooks/deploy-test.sh" HEAD ) </dev/null >"$racine/logs/deploy-test.log" 2>&1 &
+echo "↗ Déploiement de test de $(git rev-parse --short HEAD) lancé en arrière-plan — suivi : logs/deploy-test.log"
+exit 0

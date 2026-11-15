@@ -1,0 +1,3 @@
+#!/bin/sh
+# Une fusion (git merge / git pull) sur une branche feature/* est aussi déployée.
+exec sh "$(git rev-parse --show-toplevel)/.githooks/_lancer-deploiement"

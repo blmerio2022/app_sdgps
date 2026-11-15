@@ -87,3 +87,6 @@ tableau.md
 
 # Version générée au build (backend/backend/version.py --ecrire)
 build-info/version.json
+
+# Journaux locaux (dont le suivi du déploiement de test : logs/deploy-test.*)
+logs/

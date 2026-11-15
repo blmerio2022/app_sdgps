@@ -1,0 +1,3 @@
+#!/bin/sh
+# Chaque commit sur une branche feature/* est déployé sur l'environnement de test Railway.
+exec sh "$(git rev-parse --show-toplevel)/.githooks/_lancer-deploiement"

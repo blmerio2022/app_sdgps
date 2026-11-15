@@ -41,18 +41,25 @@ textes d'interface). Respecter cette convention lors de l'ajout de code.
 - Tests unitaires (Karma/Jasmine) : `npm test` / `ng test`
 
 ### Déploiement de TEST sur Railway (projet `sdgps-test`)
-- **Automatique à chaque push sur `feature/**`** (job `deploy-test` de
-  `.github/workflows/ci-cd.yml`, dans l'upstream) : tests backend + frontend → version
-  figée (`build-info/version.json`) → `railway up --service app --ci` → contrôle que
-  `/api/version/` en ligne porte bien le commit poussé. Un commit rouge n'est jamais mis
-  en ligne ; des pushes rapprochés n'en déploient que le dernier (`concurrency`).
-  Prérequis : secret GitHub **`RAILWAY_TOKEN_TEST`** = jeton de **projet** Railway
-  (sdgps-test › Settings › Tokens, environnement `production`), posé par
-  `gh secret set RAILWAY_TOKEN_TEST --repo blmerio2022/app_sdgps`. Variables facultatives
-  `RAILWAY_TEST_SERVICE` (défaut `app`) et `RAILWAY_TEST_URL` (défaut
-  `https://app-production-4e77e566.up.railway.app`). Comme le dépôt pousse chaque commit
-  aussitôt, « commit » ⇒ « en ligne » en quelques minutes ; un commit **non poussé** n'est
-  pas déployé (le déploiement se fait toujours depuis l'état de GitHub, tests à l'appui).
+- **Automatique à chaque commit sur `feature/*`** — hooks git LOCAUX (`core.hooksPath =
+  .githooks`) : `post-commit` et `post-merge` lancent en arrière-plan
+  `.githooks/deploy-test.sh`, qui extrait le **commit** dans un worktree temporaire (jamais
+  l'arbre de travail : ni modifications non commitées, ni `node_modules`), fige la version
+  (`build-info/version.json`, sans `+local`), envoie par `railway up <dossier> --project …
+  --environment production --service app --detach` (projet **toujours explicite** : un
+  `railway up` non lié créerait un nouveau projet), puis attend que `/api/version/` annonce
+  le commit. Suivi : `logs/deploy-test.log`. Des commits rapprochés : seul le dernier part.
+  Ignoré hors `feature/*`, pendant un rebase / cherry-pick, sans CLI Railway connectée.
+  Désactiver : `SDGPS_AUTO_DEPLOY=0 git commit …` (ponctuel) ou
+  `git config sdgps.autodeploy false` (durable). Relancer à la main :
+  `sh .githooks/deploy-test.sh [<commit>]`. Prérequis : `railway login` sur le poste.
+  ⚠ Pas de garde par les tests (la CI les joue en parallèle sur le push) : environnement
+  de TEST uniquement.
+- **Pourquoi pas la CI** : Railway exige un compte **vérifié** pour créer le jeton de projet
+  dont GitHub Actions aurait besoin. Le job `deploy-test` de `ci-cd.yml` (tests → `railway
+  up --ci` → contrôle de version) est prêt mais **en veille** : l'activer avec la variable
+  de dépôt `DEPLOY_TEST_VIA_CI=true` + le secret `RAILWAY_TOKEN_TEST` (jeton de projet, ou
+  de compte / d'équipe — détecté), puis `git config sdgps.autodeploy false` sur les postes.
 - Déploiement manuel (dépannage), depuis la racine du dépôt, CLI Railway connectée et liée au service `app` :
   `python backend/backend/version.py --ecrire build-info/version.json` puis
   `railway up --service app --detach` (envoie l'arbre de travail, construit le

@@ -1,9 +1,9 @@
 name: CI/CD
 
 # Stratégie « tag-based, rebuild par palier » :
-#   push feature/**               → TESTS → `railway up` sur le projet de TEST (sdgps-test) :
-#                                   chaque commit poussé de la version en cours est en ligne
-#                                   quelques minutes plus tard (job `deploy-test`, upstream).
+#   push feature/**               → TESTS (+ `deploy-test` vers Railway sdgps-test, EN VEILLE
+#                                   tant que DEPLOY_TEST_VIA_CI ≠ true : le déploiement de test
+#                                   est fait par les hooks git locaux, cf. .githooks/).
 #   push develop                  → BUILD → GHCR :sha-<court> + :staging → redeploy Railway STAGING.
 #   tag git v*.*.*-rc.* (PREPROD) → BUILD depuis le tag → :<tag> + :preprod → redeploy PREPROD.
 #   tag git v*.*.* (PRODUCTION)   → BUILD depuis le tag → :<tag> + :production → redeploy PRODUCTION.
@@ -87,7 +87,12 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   deploy-test:
     needs: [test-backend, test-frontend]
-    if: github.repository == 'blmerio2022/app_sdgps' && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/feature/')
+    # EN VEILLE par défaut : Railway exige un compte vérifié pour créer le jeton de projet.
+    # Le déploiement de test est assuré en attendant par les hooks git locaux
+    # (`.githooks/post-commit` → `.githooks/deploy-test.sh`, CLI Railway du poste).
+    # Activer : variable de dépôt DEPLOY_TEST_VIA_CI = true + secret RAILWAY_TOKEN_TEST valide
+    # (puis `git config sdgps.autodeploy false` sur les postes, pour ne pas déployer deux fois).
+    if: github.repository == 'blmerio2022/app_sdgps' && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/feature/') && vars.DEPLOY_TEST_VIA_CI == 'true'
     runs-on: ubuntu-latest
     # Des pushes rapprochés : seul le DERNIER commit compte — un déploiement en cours d'un
     # commit déjà dépassé est annulé plutôt que de mettre en ligne une version périmée.
