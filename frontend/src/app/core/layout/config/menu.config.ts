@@ -336,6 +336,15 @@ export const ADMIN_MENU: MenuItem[] = [
     roles: SUPER_ONLY,
   },
   {
+    id: 'sauvegardes',
+    title: 'Sauvegardes',
+    icon: 'fas fa-database',
+    route: '/admin/sauvegardes',
+    type: 'link',
+    description: 'Sauvegardes de la base : état, création, téléchargement, restauration',
+    roles: SUPER_OR_SYSTEME,
+  },
+  {
     // Lecture du journal d'audit : administration de l'application seulement.
     id: 'journal-audit',
     title: "Journal d'audit",

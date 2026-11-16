@@ -3,6 +3,7 @@ URLs pour la gestion du profil Super Admin
 """
 from django.urls import path
 from .views import SuperAdminProfileView, ChangePasswordView
+from .views_sauvegardes import SauvegardeDetailView, SauvegardeRestaurerView, SauvegardesView
 
 app_name = 'platform_admin'
 
@@ -20,4 +21,9 @@ urlpatterns = [
         ChangePasswordView.as_view(),
         name='change-password'
     ),
+
+    # Sauvegardes (administration de l'application ; suppression / restauration : Super Admin)
+    path('sauvegardes/', SauvegardesView.as_view(), name='sauvegardes'),
+    path('sauvegardes/<str:nom>/', SauvegardeDetailView.as_view(), name='sauvegarde-detail'),
+    path('sauvegardes/<str:nom>/restaurer/', SauvegardeRestaurerView.as_view(), name='sauvegarde-restaurer'),
 ]

@@ -317,6 +317,11 @@ FRONTEND_URL = config('FRONTEND_URL', default='')
 # `manage.py desactiver_comptes_inactifs` (0 = jamais). Super Admins jamais désactivés.
 COMPTES_INACTIFS_JOURS = config('COMPTES_INACTIFS_JOURS', default=0, cast=int)
 
+# Sauvegardes (`manage.py sauvegarder`, écran Administration › Sauvegardes) : nombre conservé,
+# et âge (heures) au-delà duquel l'écran signale une sauvegarde manquante.
+SAUVEGARDE_RETENTION = config('SAUVEGARDE_RETENTION', default=14, cast=int)
+SAUVEGARDE_ALERTE_HEURES = config('SAUVEGARDE_ALERTE_HEURES', default=36, cast=int)
+
 CORS_ALLOWED_ORIGINS = [
     o.strip() for o in config('CORS_ALLOWED_ORIGINS', default='').split(',') if o.strip()
 ]

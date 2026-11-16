@@ -1,0 +1,64 @@
+<div class="sv-page">
+  <header class="page-header">
+    <div>
+      <h1><i class="fas fa-database"></i> Sauvegardes</h1>
+      <p class="subtitle">Copies de la base (et, en option, des fichiers déposés). Une archive contient des données
+        nominatives : elle se télécharge et se conserve comme un document confidentiel.</p>
+    </div>
+  </header>
+
+  <p class="msg erreur" *ngIf="erreur"><i class="fas fa-triangle-exclamation"></i> {{ erreur }}</p>
+
+  <ng-container *ngIf="etat as e">
+    <section class="sv-etat" [class.retard]="e.en_retard">
+      <i class="fas" [ngClass]="e.en_retard ? 'fa-triangle-exclamation' : 'fa-circle-check'"></i>
+      <div>
+        <strong *ngIf="e.derniere">Dernière sauvegarde : {{ e.derniere.date | date:'dd/MM/yyyy à HH:mm' }}</strong>
+        <strong *ngIf="!e.derniere">Aucune sauvegarde</strong>
+        <span *ngIf="e.en_retard">Plus de {{ e.alerte_heures }} h sans sauvegarde : planifiez <code>manage.py sauvegarder</code> une fois par jour.</span>
+        <span *ngIf="!e.en_retard">{{ e.retention }} sauvegardes conservées · environnement « {{ e.environnement }} »</span>
+      </div>
+      <span class="spacer"></span>
+      <label class="sv-medias"><input type="checkbox" [(ngModel)]="avecMedias"> Inclure les fichiers</label>
+      <button type="button" class="btn" (click)="creer()" [disabled]="creation">
+        <i class="fas" [ngClass]="creation ? 'fa-spinner fa-spin' : 'fa-plus'"></i> Sauvegarder maintenant</button>
+    </section>
+
+    <section class="sv-liste">
+      <table>
+        <thead><tr><th>Archive</th><th>Date</th><th>Taille</th><th>Contenu</th><th class="act"></th></tr></thead>
+        <tbody>
+          <tr *ngIf="!e.sauvegardes.length"><td colspan="5" class="vide">Aucune sauvegarde pour l'instant.</td></tr>
+          <tr *ngFor="let s of e.sauvegardes">
+            <td class="mono">{{ s.nom }}</td>
+            <td>{{ s.date ? (s.date | date:'dd/MM/yyyy HH:mm') : '—' }}</td>
+            <td>{{ taille(s.taille) }}</td>
+            <td><span class="pastille" [class.securite]="s.securite">{{ s.securite ? 'Avant restauration' : (s.avec_medias ? 'Base + fichiers' : 'Base') }}</span></td>
+            <td class="act">
+              <button type="button" class="ico" (click)="telecharger(s)" title="Télécharger"><i class="fas fa-download"></i></button>
+              <ng-container *ngIf="e.super_admin">
+                <button type="button" class="ico" (click)="demanderRestauration(s)" title="Restaurer (remplace toute la base)"><i class="fas fa-clock-rotate-left"></i></button>
+                <button type="button" class="ico danger" (click)="supprimer(s)" title="Supprimer"><i class="fas fa-trash"></i></button>
+              </ng-container>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </ng-container>
+</div>
+
+<div class="sv-fond" *ngIf="aRestaurer && etat" (click)="!restauration && (aRestaurer = null)">
+  <div class="sv-modale" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+    <h3><i class="fas fa-triangle-exclamation"></i> Restaurer {{ aRestaurer.nom }}</h3>
+    <p><strong>Toute la base sera remplacée</strong> par le contenu de cette archive : dossiers, comptes, journal d'audit,
+      sessions. Tout le monde sera déconnecté. L'état actuel est d'abord sauvegardé automatiquement.</p>
+    <label>Pour confirmer, saisissez le nom de l'environnement : <code>{{ etat.environnement }}</code>
+      <input [(ngModel)]="confirmation" autocomplete="off" spellcheck="false"></label>
+    <div class="pied">
+      <button type="button" class="btn secondaire" (click)="aRestaurer = null" [disabled]="restauration">Annuler</button>
+      <button type="button" class="btn danger" (click)="restaurer()" [disabled]="!confirmationValide || restauration">
+        <i class="fas fa-spinner fa-spin" *ngIf="restauration"></i> Restaurer</button>
+    </div>
+  </div>
+</div>

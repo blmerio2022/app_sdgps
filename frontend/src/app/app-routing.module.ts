@@ -12,6 +12,7 @@ import { PieceFieldDescriptionsComponent } from './features/admin/piece-field-de
 import { StorageDashboardComponent } from './features/admin/storage/storage-dashboard.component';
 import { StorageQuotasComponent } from './features/admin/storage-quotas/storage-quotas.component';
 import { AuditJournalComponent } from './features/admin/audit-journal/audit-journal.component';
+import { SauvegardesComponent } from './features/admin/sauvegardes/sauvegardes.component';
 import { ActiviteComponent } from './features/admin/activite/activite.component';
 import { FileValidationComponent } from './features/admin/file-validation/file-validation.component';
 
@@ -136,6 +137,12 @@ export const routes: Routes = [
         path: 'file-validation',
         component: FileValidationComponent,
         data: { title: 'File de validation' }
+      },
+      {
+        // Administration de l'application (suppression / restauration : Super Admin).
+        path: 'sauvegardes',
+        component: SauvegardesComponent,
+        data: { title: 'Sauvegardes' }
       },
       {
         // Réservé à l'administration de l'application (le backend renvoie 403 sinon).

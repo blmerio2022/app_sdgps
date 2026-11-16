@@ -772,6 +772,30 @@ Tout part de `accounts/securite.py`.
 - tests : `accounts/tests_securite.py` (vecteur RFC 6238 compris), specs `auth.service`,
   `login`, `securite-settings`.
 
+**Sauvegardes et restauration.** `platform_admin/sauvegardes.py` : archive ZIP dans
+`default_storage` sous `sauvegardes/` (S3 si configuré, sinon `media/`) — `manifeste.json`,
+`donnees.json` (`dumpdata` hors tables techniques : contenttypes, permissions, sessions,
+journal de l'admin ; clés étrangères naturelles) et, en option, `medias/` (fichiers déposés,
+hors sauvegardes). ⚠ Disque éphémère (Railway sans volume) : seules les sauvegardes en
+stockage objet survivent à un redéploiement.
+- commandes (`accounts/management/commands/`, `platform_admin` n'étant pas une app
+  installée) : `manage.py sauvegarder [--avec-medias] [--retention N]` (défaut
+  `SAUVEGARDE_RETENTION` = 14 ; à planifier chaque jour) ;
+  `manage.py restaurer_sauvegarde <nom> --confirm-environment <env exact>` ;
+- API `/api/v1/platform-admin/sauvegardes/` : liste + état (`en_retard` au-delà de
+  `SAUVEGARDE_ALERTE_HEURES` = 36 h), création, téléchargement (`IsApplicationAdmin`) ;
+  `DELETE <nom>/` et `POST <nom>/restaurer/` `{confirmation: <environnement exact>}` :
+  **Super Admin** seulement. Noms validés par expression régulière (pas de traversée de
+  chemin). Tout est journalisé (`ACTION_SAUVEGARDE`, `_TELECHARGEE`, `_RESTAUREE`) ;
+- **restaurer remplace TOUTE la base** (`flush` + `loaddata`), journal d'audit et sessions
+  compris (tout le monde est déconnecté) ; une sauvegarde de sécurité (`…-securite.zip`,
+  jamais purgée par la rétention) est créée d'abord ; la restauration est ensuite
+  journalisée par l'email seul de son auteur (le compte peut ne plus exister) ;
+- front : `/admin/sauvegardes` (menu admin, Super Admin + Admin Système). ⚠ Exception
+  assumée aux règles de tableaux : liste d'archives. Tests :
+  `platform_admin/tests_sauvegardes.py` (restauration réelle en `TransactionTestCase`),
+  `sauvegardes.component.spec.ts`.
+
 **Version de l'application : `v<majeure>.<mineure>.<n>`, calculée depuis git.** Visible par
 TOUS, connecté ou non : pied de la page de connexion, bas du menu latéral (clic → « À
 propos » : commit, dates, environnement), API **publique** `GET /api/version/` (inscrite
