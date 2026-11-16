@@ -718,6 +718,16 @@ multi-session pour une pièce de niveau session, import séquentiel, bilan). Pho
 et PDF restent à l'assistant d'ajout. Tests : `pieces/tests_import_masse.py`,
 `import-masse.component.spec.ts`.
 
+**Recherche globale (Ctrl+K).** `GET /api/v1/recherche/?q=` (`projects/recherche.py`, ≥ 2
+caractères, 6 résultats par groupe) : SDGPS (n°, nature), projets (code, nom), propriétés
+(nom, n° de titre, réquisition), affaires (n° SD), points (noms dans les LPA / PPA / PPN —
+recherche dans le JSON par `Cast(payload, TextField)`). Tout passe par `scope_queryset` ;
+corbeille et parents en corbeille exclus ; chaque résultat porte un `lien` relatif (l'explorateur
+s'ouvre au bon niveau par `?proprieteId=&affaireId=`). Front : `<app-recherche-globale>` dans
+la barre du haut (bouton + palette Ctrl+K / ⌘K, anti-rebond 250 ms, flèches / Entrée /
+Échap, derniers résultats ouverts mémorisés dans le navigateur). Tests :
+`projects/tests_recherche.py`, `recherche-globale.component.spec.ts`.
+
 **Version de l'application : `v<majeure>.<mineure>.<n>`, calculée depuis git.** Visible par
 TOUS, connecté ou non : pied de la page de connexion, bas du menu latéral (clic → « À
 propos » : commit, dates, environnement), API **publique** `GET /api/version/` (inscrite

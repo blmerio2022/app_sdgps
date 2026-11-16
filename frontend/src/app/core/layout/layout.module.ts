@@ -9,6 +9,7 @@ import { DashboardLayoutComponent } from './components/dashboard-layout/dashboar
 import { SidebarComponent } from './components/sidebar/sidebar.component';
 import { TopBarComponent } from './components/topbar/topbar.component';
 import { NotificationBellComponent } from './components/notification-bell/notification-bell.component';
+import { RechercheGlobaleComponent } from './components/recherche-globale/recherche-globale.component';
 
 // Directives
 import { ClickOutsideDirective } from './directives/click-outside.directive';
@@ -24,6 +25,7 @@ import { SharedModule } from '../../shared/shared.module';
     SidebarComponent,
     TopBarComponent,
     NotificationBellComponent,
+    RechercheGlobaleComponent,
     ClickOutsideDirective
   ],
   imports: [

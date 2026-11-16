@@ -1,0 +1,46 @@
+<button type="button" class="rg-bouton" (click)="ouvrir()" title="Rechercher (projet, propriété, SD, SDGPS, point)">
+  <i class="fas fa-magnifying-glass"></i>
+  <span class="lib">Rechercher…</span>
+  <kbd>{{ mac ? '⌘' : 'Ctrl' }} K</kbd>
+</button>
+
+<div class="rg-fond" *ngIf="ouvert" (click)="fermer()">
+  <div class="rg-palette" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-label="Recherche globale">
+    <div class="rg-saisie">
+      <i class="fas" [ngClass]="chargement ? 'fa-spinner fa-spin' : 'fa-magnifying-glass'"></i>
+      <input #champ [(ngModel)]="q" (ngModelChange)="onFrappe()" (keydown)="naviguer($event)"
+             placeholder="Projet, propriété, n° de titre, SD, n° de SDGPS, nom de point…" aria-label="Rechercher"
+             autocomplete="off" spellcheck="false">
+      <kbd>Échap</kbd>
+    </div>
+
+    <div class="rg-resultats">
+      <ng-container *ngIf="q.trim().length < 2">
+        <div class="rg-groupe" *ngIf="recents.length">
+          <span>Récemment ouverts</span>
+          <button type="button" class="rg-oublier" (click)="oublierRecents()">Effacer</button>
+        </div>
+        <button type="button" *ngFor="let r of recents" class="rg-ligne" [class.actif]="indexDe(r) === actif"
+                (click)="choisir(r)" (mouseenter)="actif = indexDe(r)">
+          <i class="fas" [ngClass]="icone(r.type)"></i>
+          <span class="txt"><span class="titre">{{ r.titre }}</span><span class="sous">{{ r.sous_titre }}</span></span>
+        </button>
+        <p class="rg-aide" *ngIf="!recents.length">Tapez au moins deux caractères. Astuce : « 12 » trouve le SD 12 et le SDGPS n°12.</p>
+      </ng-container>
+
+      <ng-container *ngFor="let g of groupes">
+        <div class="rg-groupe"><span>{{ g.libelle }}</span></div>
+        <button type="button" *ngFor="let r of g.resultats" class="rg-ligne" [class.actif]="indexDe(r) === actif"
+                (click)="choisir(r)" (mouseenter)="actif = indexDe(r)">
+          <i class="fas" [ngClass]="icone(r.type)"></i>
+          <span class="txt"><span class="titre">{{ r.titre }}</span><span class="sous">{{ r.sous_titre }}</span></span>
+          <i class="fas fa-arrow-turn-down entree" *ngIf="indexDe(r) === actif"></i>
+        </button>
+      </ng-container>
+
+      <p class="rg-aide" *ngIf="vide">Aucun résultat pour « {{ q }} ».</p>
+    </div>
+
+    <footer class="rg-pied"><kbd>↑</kbd><kbd>↓</kbd> se déplacer <kbd>Entrée</kbd> ouvrir <kbd>Échap</kbd> fermer</footer>
+  </div>
+</div>
