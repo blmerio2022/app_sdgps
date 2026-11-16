@@ -58,5 +58,5 @@
   <i class="fas fa-spinner fa-spin"></i> Chargement…
 </div>
 
-<app-piece-versions *ngIf="historiqueOuvert && piece" [pieceId]="piece.id" [verrouille]="!!ssdgps?.verrouille"
+<app-piece-versions *ngIf="historiqueOuvert && piece" [pieceId]="piece.id" [verrouille]="!!ssdgps.verrouille"
                     (fermee)="historiqueOuvert = false" (restauree)="onRestauree($event)"></app-piece-versions>
