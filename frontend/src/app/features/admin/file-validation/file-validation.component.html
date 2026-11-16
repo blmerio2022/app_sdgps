@@ -35,10 +35,10 @@
       <span><strong>{{ selection.size }}</strong> dossier(s) sélectionné(s)</span>
       <span class="spacer"></span>
       <ng-container *ngIf="statut === 'soumis'">
-        <button type="button" class="btn ok" (click)="demander('valider', [...selection])"><i class="fas fa-check"></i> Valider</button>
-        <button type="button" class="btn danger" (click)="demander('rejeter', [...selection])"><i class="fas fa-xmark"></i> Rejeter</button>
+        <button type="button" class="btn ok" (click)="demander('valider', idsSelection)"><i class="fas fa-check"></i> Valider</button>
+        <button type="button" class="btn danger" (click)="demander('rejeter', idsSelection)"><i class="fas fa-xmark"></i> Rejeter</button>
       </ng-container>
-      <button type="button" class="btn principal" *ngIf="statut === 'valide'" (click)="demander('clore', [...selection])">
+      <button type="button" class="btn principal" *ngIf="statut === 'valide'" (click)="demander('clore', idsSelection)">
         <i class="fas fa-lock"></i> Clore</button>
       <button type="button" class="btn secondaire" (click)="selection.clear()">Désélectionner</button>
     </div>

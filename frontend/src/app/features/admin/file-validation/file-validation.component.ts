@@ -67,6 +67,9 @@ export class FileValidationComponent implements OnInit {
 
   get enRetard(): number { return this.dossiers.filter(d => (d.attente_jours ?? 0) > this.alerteJours).length; }
 
+  /** Identifiants sélectionnés (la syntaxe `[...set]` n'est pas admise dans un gabarit AOT). */
+  get idsSelection(): string[] { return Array.from(this.selection); }
+
   basculer(id: string): void { this.selection.has(id) ? this.selection.delete(id) : this.selection.add(id); }
   get toutCoche(): boolean { return this.visibles.length > 0 && this.visibles.every(d => this.selection.has(d.id)); }
   toutBasculer(): void {

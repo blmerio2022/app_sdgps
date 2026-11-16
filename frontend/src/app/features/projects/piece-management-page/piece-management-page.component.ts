@@ -876,6 +876,11 @@ export class PieceManagementPageComponent implements OnInit {
   /** Modale « Import en masse ». */
   importMasseOuvert = false;
 
+  get titreImportMasse(): string {
+    return this.isLocked ? 'Dossier figé : import impossible'
+      : "Importer plusieurs fichiers d'un coup : le type de chaque pièce est reconnu";
+  }
+
   onImportMasse(reussis: number): void {
     if (reussis) this.loadPieces();
   }

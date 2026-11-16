@@ -70,7 +70,7 @@
       </button>
       <!-- Tous les fichiers d'un levé d'un coup : type reconnu, plan à confirmer -->
       <button class="btn btn-assistant" *ngIf="!showDeleted && ssdgps" (click)="importMasseOuvert = true" [disabled]="isLocked"
-              [title]="isLocked ? 'Dossier figé : import impossible' : 'Importer plusieurs fichiers d'un coup : le type de chaque pièce est reconnu'">
+              [title]="titreImportMasse">
         <i class="fas fa-layer-group"></i> Import en masse
       </button>
       <!-- Archive complète du dossier (fiche, CSV, sources, photos, dernier rapport) -->
