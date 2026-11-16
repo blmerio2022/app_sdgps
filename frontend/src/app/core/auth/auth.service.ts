@@ -52,20 +52,32 @@ export class AuthService {
      *              Vérifie si l'utilisateur doit changer son mot de passe.
      */
     login(credentials: any): Observable<AuthResponse> {
+        // Double authentification active : la réponse porte `mfa_requis` et aucun jeton —
+        // `apresConnexion` n'enregistre alors rien et la page passe à l'étape du code.
         return this.http.post<AuthResponse>(`${API_URL}/login/`, credentials).pipe(
-            tap(response => {
-                if (response && response.token) {
-                    this.storeAuthToken(response.token);
-                    if (response.refresh_token) {
-                        localStorage.setItem('refreshToken', response.refresh_token);
-                    }
-                    this.extractOrganizationInfo(response.token);
-                    this.isAuthenticatedSubject.next(true);
-                    this.checkPasswordChangeRequired(response.token);
-                }
-            }),
+            tap(response => this.apresConnexion(response)),
             catchError(this.handleError)
         );
+    }
+
+    /** 2e étape de la connexion : jeton signé de la 1re étape + code (ou code de secours). */
+    loginMfa(jetonMfa: string, code: string): Observable<AuthResponse> {
+        return this.http.post<AuthResponse>(`${API_URL}/login/mfa/`, { jeton_mfa: jetonMfa, code }).pipe(
+            tap(response => this.apresConnexion(response)),
+            catchError(this.handleError)
+        );
+    }
+
+    private apresConnexion(response: AuthResponse): void {
+        if (response && response.token) {
+            this.storeAuthToken(response.token);
+            if (response.refresh_token) {
+                localStorage.setItem('refreshToken', response.refresh_token);
+            }
+            this.extractOrganizationInfo(response.token);
+            this.isAuthenticatedSubject.next(true);
+            this.checkPasswordChangeRequired(response.token);
+        }
     }
 
     refreshToken(): Observable<string> {

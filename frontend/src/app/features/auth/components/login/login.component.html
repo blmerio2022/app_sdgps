@@ -14,7 +14,26 @@
       <p class="auth-subtitle">Accédez à votre espace SDGPS</p>
     </div>
 
-    <form class="auth-form" (ngSubmit)="onSubmit()" [formGroup]="loginForm">
+    <!-- 2e étape : double authentification -->
+    <form class="auth-form" *ngIf="jetonMfa" (ngSubmit)="validerCode()">
+      <p class="auth-mfa-aide"><i class="fas fa-shield-halved"></i>
+        Saisissez le code à 6 chiffres affiché par votre application d'authentification, ou l'un de vos codes de secours.</p>
+      <div class="auth-field">
+        <label for="code-mfa"><i class="fas fa-key"></i> Code de vérification</label>
+        <input class="auth-input" id="code-mfa" name="codeMfa" [(ngModel)]="codeMfa" inputmode="numeric"
+               autocomplete="one-time-code" placeholder="123 456" maxlength="12" autofocus>
+      </div>
+      <div *ngIf="errorMessage" class="auth-alert error">
+        <i class="fas fa-circle-exclamation"></i> {{ errorMessage }}
+      </div>
+      <button class="auth-btn" [disabled]="!codeMfa.trim() || isLoading" type="submit">
+        <i class="fas" [ngClass]="isLoading ? 'fa-spinner fa-spin' : 'fa-check'"></i>
+        {{ isLoading ? 'Vérification…' : 'Valider' }}
+      </button>
+      <button type="button" class="auth-mfa-retour" (click)="annulerMfa()"><i class="fas fa-arrow-left"></i> Revenir à l'identification</button>
+    </form>
+
+    <form class="auth-form" *ngIf="!jetonMfa" (ngSubmit)="onSubmit()" [formGroup]="loginForm">
 
       <!-- Email -->
       <div class="auth-field">

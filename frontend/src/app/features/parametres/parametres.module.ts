@@ -9,6 +9,7 @@ import { TolerancesSettingsComponent } from '../profile/components/tolerances-se
 import { CachetsSettingsComponent } from './cachets-settings/cachets-settings.component';
 import { IaSettingsComponent } from './ia-settings/ia-settings.component';
 import { NotificationsSettingsComponent } from './notifications-settings/notifications-settings.component';
+import { SecuriteSettingsComponent } from './securite-settings/securite-settings.component';
 import { SharedModule } from '../../shared/shared.module';
 
 /**
@@ -27,11 +28,13 @@ const routes: Routes = [
   { path: 'cachets-signatures', component: CachetsSettingsComponent },
   { path: 'intelligence-artificielle', component: IaSettingsComponent },
   { path: 'notifications', component: NotificationsSettingsComponent },
+  { path: 'securite', component: SecuriteSettingsComponent },
 ];
 
 @NgModule({
   declarations: [PieceSortSettingsComponent, PieceFieldsSettingsComponent, TolerancesSettingsComponent,
-                 CachetsSettingsComponent, IaSettingsComponent, NotificationsSettingsComponent],
+                 CachetsSettingsComponent, IaSettingsComponent, NotificationsSettingsComponent,
+                 SecuriteSettingsComponent],
   imports: [
     CommonModule,
     FormsModule,

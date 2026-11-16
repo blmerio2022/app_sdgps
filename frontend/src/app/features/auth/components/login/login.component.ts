@@ -20,6 +20,10 @@ export class LoginComponent implements OnInit {
     // Contrôle de visibilité du mot de passe
     showPassword: boolean = false;
 
+    /** 2e étape (double authentification) : jeton signé reçu après le mot de passe. */
+    jetonMfa: string | null = null;
+    codeMfa = '';
+
     constructor(
         private fb: FormBuilder, // Injecte FormBuilder pour créer des contrôles de formulaire
         private authService: AuthService, // Injecte AuthService pour la logique d'authentification
@@ -43,6 +47,32 @@ export class LoginComponent implements OnInit {
         this.showPassword = !this.showPassword;
     }
 
+    /** Valide le code de l'application d'authentification (ou un code de secours). */
+    validerCode(): void {
+        if (!this.jetonMfa || !this.codeMfa.trim() || this.isLoading) return;
+        this.isLoading = true;
+        this.errorMessage = '';
+        this.authService.loginMfa(this.jetonMfa, this.codeMfa.trim()).subscribe({
+            next: () => { this.isLoading = false; },
+            error: (err) => {
+                this.isLoading = false;
+                const code = err?.error?.code;
+                if (code === 'MFA_EXPIRED') {
+                    this.annulerMfa();
+                    this.errorMessage = 'Étape expirée : reconnectez-vous.';
+                } else if (code === 'ACCOUNT_LOCKED') {
+                    this.annulerMfa();
+                    this.errorMessage = 'Trop de codes refusés : compte temporairement verrouillé.';
+                } else {
+                    const reste = err?.error?.remaining_attempts;
+                    this.errorMessage = 'Code incorrect.' + (reste !== undefined ? ` Tentatives restantes : ${reste}.` : '');
+                }
+            },
+        });
+    }
+
+    annulerMfa(): void { this.jetonMfa = null; this.codeMfa = ''; }
+
     /**
      * @description Méthode appelée lors de la soumission du formulaire de connexion.
      * Gère la validation du formulaire et l'appel au service d'authentification.
@@ -57,10 +87,13 @@ export class LoginComponent implements OnInit {
             // Appel au service d'authentification pour la connexion
             this.authService.login(this.loginForm.value).subscribe({
                 next: (response) => {
-                    // Gère la réussite de la connexion
-                    console.log('Connexion réussie', response);
                     // Désactive l'indicateur de chargement
                     this.isLoading = false;
+                    if (response?.mfa_requis && response.jeton_mfa) {
+                        this.jetonMfa = response.jeton_mfa;   // → étape « code »
+                        this.codeMfa = '';
+                        return;
+                    }
 
                     // NOTE: La redirection est gérée par AuthService.checkPasswordChangeRequired()
                     // Si must_change_password = true → /auth/change-password

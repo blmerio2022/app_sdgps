@@ -313,6 +313,10 @@ CORS_ALLOW_ALL_ORIGINS = DEBUG
 # Adresse publique du front, pour les liens des e-mails de notification (vide = pas de lien).
 FRONTEND_URL = config('FRONTEND_URL', default='')
 
+# Comptes inactifs : désactivés après N jours sans connexion par
+# `manage.py desactiver_comptes_inactifs` (0 = jamais). Super Admins jamais désactivés.
+COMPTES_INACTIFS_JOURS = config('COMPTES_INACTIFS_JOURS', default=0, cast=int)
+
 CORS_ALLOWED_ORIGINS = [
     o.strip() for o in config('CORS_ALLOWED_ORIGINS', default='').split(',') if o.strip()
 ]
@@ -340,7 +344,8 @@ SIMPLE_JWT = {
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        # JWT + refus des jetons dont la session a été révoquée (accounts/authentication.py).
+        'accounts.authentication.JWTSessionAuthentication',
     ],
     # Défaut FERMÉ : toute vue est authentifiée tant qu'elle ne déclare pas le contraire.
     # Avec l'ancien défaut `AllowAny`, une vue qui oubliait `permission_classes` était

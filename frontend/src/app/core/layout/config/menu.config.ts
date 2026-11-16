@@ -86,6 +86,14 @@ export const USER_MENU: MenuItem[] = [
         route: '/parametres/notifications',
         type: 'link',
         description: 'E-mails reçus : dossiers soumis, validés, rejetés, rapports, sécurité'
+      },
+      {
+        id: 'securite',
+        title: 'Sécurité',
+        icon: 'fas fa-shield-halved',
+        route: '/parametres/securite',
+        type: 'link',
+        description: 'Double authentification et sessions ouvertes'
       }
     ]
   }
@@ -257,6 +265,14 @@ export const ADMIN_MENU: MenuItem[] = [
         route: '/admin/parametres/notifications',
         type: 'link',
         description: 'E-mails reçus : dossiers soumis, validés, rejetés, rapports, sécurité'
+      },
+      {
+        id: 'securite',
+        title: 'Sécurité',
+        icon: 'fas fa-shield-halved',
+        route: '/admin/parametres/securite',
+        type: 'link',
+        description: 'Double authentification et sessions ouvertes'
       },
       {
         id: 'descriptions-champs',

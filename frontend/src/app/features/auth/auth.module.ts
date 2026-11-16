@@ -1,7 +1,7 @@
 import { VersionModule } from '../../core/version/version.module';
 import {NgModule} from '@angular/core';
 import {CommonModule} from '@angular/common';
-import {ReactiveFormsModule} from '@angular/forms';
+import {FormsModule, ReactiveFormsModule} from '@angular/forms';
 
 import {AuthRoutingModule} from './auth-routing.module';
 import {LoginComponent} from './components/login/login.component';
@@ -22,6 +22,7 @@ import {ChangePasswordComponent} from './components/change-password/change-passw
     imports: [
         CommonModule, // Fournit les directives Angular communes comme *ngIf, *ngFor
         AuthRoutingModule, // Importe les routes définies pour l'authentification
+        FormsModule, // Saisie du code de double authentification (ngModel)
         ReactiveFormsModule, // Permet l'utilisation des formulaires réactifs
         VersionModule // Version déployée en pied de la page de connexion
     ]

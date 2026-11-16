@@ -26,6 +26,7 @@ VUES_PUBLIQUES_AUTORISEES = {
     'ResetPasswordView': "réinitialisation avec le jeton issu du code",
     'TokenRefreshView': "rafraîchissement JWT, validé par le jeton lui-même",
     'VersionView': "version déployée : pied de la page de connexion, rien de sensible",
+    'LoginMfaView': "2e étape de connexion : jeton signé de la 1re étape + code, limitée comme la connexion",
 }
 
 

@@ -34,4 +34,8 @@ export interface AuthResponse {
     token: string;
     refresh_token?: string;
     user: User;
+    /** Double authentification active : pas de jeton, la 2e étape attend un code. */
+    mfa_requis?: boolean;
+    jeton_mfa?: string;
+    message?: string;
 }

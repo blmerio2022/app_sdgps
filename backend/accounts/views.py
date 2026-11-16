@@ -70,22 +70,19 @@ class LoginView(APIView):
 
                 if authenticated_user is not None:
                     lockout.effacer_echecs(email)
+                    # Double authentification active : pas de jeton tant que le code n'est
+                    # pas présenté (`LoginMfaView`). Le mot de passe, lui, est déjà vérifié.
+                    from .securite import emettre_jetons, jeton_mfa, mfa_active
+                    if mfa_active(authenticated_user):
+                        return Response({
+                            'mfa_requis': True,
+                            'jeton_mfa': jeton_mfa(authenticated_user),
+                            'message': "Saisissez le code de votre application d'authentification.",
+                        }, status=status.HTTP_200_OK)
                     journaliser(AuditEvent.ACTION_CONNEXION, request=request,
                                 acteur=authenticated_user)
-                    # Mot de passe correct - Générer un token JWT
-                    refresh = RefreshToken.for_user(authenticated_user)
-                    # Claims personnalisés. `user_id` est posé par simplejwt lui-même ;
-                    # `org_id` manquait, ce qui laissait `AuthService.getOrganizationId()`
-                    # renvoyer `null` en permanence côté front. Les claims sont recopiés
-                    # dans l'access token à chaque rafraîchissement.
-                    # ⚠️ Instantané de la connexion : un changement d'organisation ne
-                    # sera visible qu'à la reconnexion. Le backend ne s'y fie JAMAIS —
-                    # il relit l'adhésion en base (cf. `organization_of_user`).
-                    organisation = authenticated_user.get_primary_organization()
-                    refresh['platform_role'] = authenticated_user.platform_role or ''
-                    refresh['role'] = authenticated_user.get_primary_role()
-                    refresh['is_superuser'] = authenticated_user.is_superuser
-                    refresh['org_id'] = str(organisation.id) if organisation else ''
+                    # Session révocable + claims de rôle (cf. `accounts/securite.py`).
+                    refresh, _session = emettre_jetons(authenticated_user, request)
                     access_token = str(refresh.access_token)
                     
                     # Mettre à jour la date de dernière connexion
@@ -115,6 +112,8 @@ class LoginView(APIView):
                         journaliser(AuditEvent.ACTION_COMPTE_VERROUILLE, request=request,
                                     acteur=user, acteur_email=email,
                                     motif="seuil d'échecs atteint")
+                        from .securite import alerter_verrouillage
+                        alerter_verrouillage(user, request)
                         return Response(
                             {
                                 'detail': 'Compte temporairement verrouillé.',

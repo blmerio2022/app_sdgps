@@ -1,0 +1,106 @@
+<div class="se-page">
+  <header class="page-header">
+    <h1><i class="fas fa-shield-halved"></i> Sécurité</h1>
+    <p class="subtitle">Protégez votre compte : les dossiers fonciers sont des données nominatives.</p>
+  </header>
+
+  <p class="se-erreur" *ngIf="erreur"><i class="fas fa-triangle-exclamation"></i> {{ erreur }}</p>
+
+  <!-- Double authentification -->
+  <section class="se-carte" *ngIf="mfa">
+    <div class="se-tete">
+      <span class="se-icone"><i class="fas fa-mobile-screen-button"></i></span>
+      <div class="se-titre">
+        <h2>Double authentification</h2>
+        <p>À chaque connexion, un code à 6 chiffres de votre application d'authentification (Google Authenticator,
+          Microsoft Authenticator, FreeOTP…) est demandé en plus du mot de passe.</p>
+      </div>
+      <span class="se-badge" [class.on]="mfa.active">{{ mfa.active ? 'Activée' : 'Désactivée' }}</span>
+    </div>
+
+    <ng-container [ngSwitch]="mode">
+      <div *ngSwitchCase="'repos'" class="se-actions">
+        <ng-container *ngIf="!mfa.active">
+          <button type="button" class="btn" (click)="commencer()" [disabled]="envoi"><i class="fas fa-lock"></i> Activer la double authentification</button>
+        </ng-container>
+        <ng-container *ngIf="mfa.active">
+          <span class="se-info">Activée le {{ mfa.active_le | date:'dd/MM/yyyy' }} · {{ mfa.codes_secours_restants }} code(s) de secours restant(s)</span>
+          <button type="button" class="btn secondaire" (click)="mode = 'regeneration'"><i class="fas fa-rotate"></i> Nouveaux codes de secours</button>
+          <button type="button" class="btn secondaire danger" (click)="mode = 'desactivation'"><i class="fas fa-lock-open"></i> Désactiver</button>
+        </ng-container>
+      </div>
+
+      <div *ngSwitchCase="'activation'" class="se-etapes">
+        <ol>
+          <li>Dans votre application d'authentification, ajoutez un compte <strong>avec une clé</strong> et saisissez :
+            <code class="se-secret">{{ secret }}</code>
+            <span class="se-aide">Sur téléphone, vous pouvez aussi <a [href]="uri">ouvrir directement l'application</a>.</span></li>
+          <li>Saisissez le code à 6 chiffres qu'elle affiche :
+            <input class="se-code" [(ngModel)]="code" inputmode="numeric" maxlength="6" placeholder="123456"
+                   autocomplete="one-time-code" (keydown.enter)="activer()"></li>
+        </ol>
+        <div class="se-actions">
+          <button type="button" class="btn secondaire" (click)="annuler()">Annuler</button>
+          <button type="button" class="btn" (click)="activer()" [disabled]="envoi || code.trim().length < 6">
+            <i class="fas" [ngClass]="envoi ? 'fa-spinner fa-spin' : 'fa-check'"></i> Activer</button>
+        </div>
+      </div>
+
+      <div *ngSwitchCase="'codes'" class="se-codes">
+        <p><i class="fas fa-triangle-exclamation"></i> <strong>Conservez ces codes de secours maintenant</strong> : ils ne seront plus
+          affichés. Chacun permet une connexion si vous n'avez plus votre téléphone.</p>
+        <div class="grille"><code *ngFor="let c of codesSecours">{{ c }}</code></div>
+        <div class="se-actions">
+          <button type="button" class="btn secondaire" (click)="copierCodes()"><i class="fas fa-copy"></i> Copier</button>
+          <button type="button" class="btn secondaire" (click)="telechargerCodes()"><i class="fas fa-download"></i> Télécharger</button>
+          <button type="button" class="btn" (click)="terminerCodes()"><i class="fas fa-check"></i> Je les ai conservés</button>
+        </div>
+      </div>
+
+      <div *ngSwitchCase="'desactivation'" class="se-form">
+        <p>Pour désactiver la double authentification, confirmez votre mot de passe et un code.</p>
+        <input type="password" [(ngModel)]="motDePasse" placeholder="Mot de passe" autocomplete="current-password">
+        <input [(ngModel)]="code" placeholder="Code ou code de secours" autocomplete="one-time-code">
+        <div class="se-actions">
+          <button type="button" class="btn secondaire" (click)="annuler()">Annuler</button>
+          <button type="button" class="btn danger" (click)="desactiver()" [disabled]="envoi || !code.trim() || !motDePasse">Désactiver</button>
+        </div>
+      </div>
+
+      <div *ngSwitchCase="'regeneration'" class="se-form">
+        <p>Les anciens codes de secours cesseront de fonctionner. Saisissez un code de votre application :</p>
+        <input [(ngModel)]="code" placeholder="123456" autocomplete="one-time-code">
+        <div class="se-actions">
+          <button type="button" class="btn secondaire" (click)="annuler()">Annuler</button>
+          <button type="button" class="btn" (click)="regenerer()" [disabled]="envoi || !code.trim()">Générer</button>
+        </div>
+      </div>
+    </ng-container>
+  </section>
+
+  <!-- Sessions -->
+  <section class="se-carte">
+    <div class="se-tete">
+      <span class="se-icone"><i class="fas fa-laptop"></i></span>
+      <div class="se-titre">
+        <h2>Sessions ouvertes</h2>
+        <p>Les appareils actuellement connectés à votre compte. Fermez celles que vous ne reconnaissez pas.</p>
+      </div>
+      <button type="button" class="btn secondaire" (click)="revoquerAutres()" [disabled]="!autres">
+        <i class="fas fa-right-from-bracket"></i> Fermer les autres sessions</button>
+    </div>
+    <div class="se-sessions">
+      <p class="se-vide" *ngIf="!sessions.length">Aucune session suivie (les connexions antérieures à cette fonctionnalité ne sont pas listées).</p>
+      <div class="se-session" *ngFor="let s of sessions" [class.courante]="s.courante">
+        <i class="fas" [ngClass]="appareil(s).includes('Android') || appareil(s).includes('iOS') ? 'fa-mobile-screen' : 'fa-desktop'"></i>
+        <div class="txt">
+          <span class="nom">{{ appareil(s) }} <span class="pastille" *ngIf="s.courante">Cette session</span>
+            <span class="pastille mfa" *ngIf="s.double_auth" title="Ouverte avec la double authentification"><i class="fas fa-shield-halved"></i></span></span>
+          <span class="meta">{{ s.adresse_ip || 'adresse inconnue' }} · connecté le {{ s.created_at | date:'dd/MM/yyyy HH:mm' }}
+            · actif {{ s.derniere_activite | date:'dd/MM HH:mm' }}</span>
+        </div>
+        <button type="button" class="btn secondaire" *ngIf="!s.courante" (click)="revoquer(s)">Fermer</button>
+      </div>
+    </div>
+  </section>
+</div>

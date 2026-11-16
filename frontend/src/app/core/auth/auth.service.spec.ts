@@ -233,3 +233,29 @@ describe('AuthService (identifiant utilisateur du JWT)', () => {
     expect(service.getOrganizationId()).toBeNull();
   });
 });
+
+describe('AuthService (double authentification)', () => {
+  let service: AuthService;
+  let httpMock: HttpTestingController;
+
+  beforeEach(() => {
+    localStorage.clear();
+    TestBed.configureTestingModule({ imports: [HttpClientTestingModule], providers: [AuthService] });
+    service = TestBed.inject(AuthService);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+  afterEach(() => localStorage.clear());
+
+  it('loginMfa() : 2e étape, enregistre les jetons ; login() avec mfa_requis n’enregistre rien', () => {
+    service.login({ email: 'a@b.c', password: 'x' }).subscribe();
+    httpMock.expectOne(r => r.url.endsWith('/auth/login/')).flush({ mfa_requis: true, jeton_mfa: 'J' });
+    expect(localStorage.getItem('authToken')).toBeNull();
+    service.loginMfa('J', '123456').subscribe();
+    const req = httpMock.expectOne(r => r.url.endsWith('/auth/login/mfa/'));
+    expect(req.request.body).toEqual({ jeton_mfa: 'J', code: '123456' });
+    const payload = btoa(JSON.stringify({ user_id: '1', role: 'ROLE_ORGANISATION_AGENT' }));
+    req.flush({ token: `x.${payload}.y`, refresh_token: 'r' });
+    expect(localStorage.getItem('refreshToken')).toBe('r');
+    httpMock.match(() => true).forEach(r => r.flush({}));
+  });
+});

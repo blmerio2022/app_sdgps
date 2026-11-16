@@ -117,6 +117,8 @@ Défini dans `backend/accounts/models.py` :
   (`USERNAME_FIELD`, pas de username). Rôle global via `platform_role`
   (`ROLE_ADMIN_SYSTEME`) ; superuser = `ROLE_SUPER_ADMIN`. `get_primary_role()` encode la
   hiérarchie : **Super Admin > Admin Système > Admin Org > Agent Org**.
+- **`DoubleAuthentification`** / **`SessionConnexion`** — double authentification TOTP et
+  sessions révocables (voir « Sécurité des comptes »).
 - **`PasswordResetToken`** — utilisé pour les flux de première connexion et de
   réinitialisation (email via SendGrid).
 
@@ -739,6 +741,36 @@ ne l'élargit jamais) ; Agent = 403. Front : `/admin/activite` (menu admin) — 
 barres mensuelles d'UN indicateur à la fois (série unique, infobulle au survol, vue
 tableau), tableau par opérateur. ⚠ Exception assumée aux règles de tableaux : agrégats
 calculés. Tests : `analytics/tests_activite.py`, `activite.component.spec.ts`.
+
+**Sécurité des comptes : double authentification, sessions, comptes inactifs, alertes.**
+Tout part de `accounts/securite.py`.
+- **TOTP (RFC 6238)** en bibliothèque standard (pas de dépendance) : 6 chiffres / 30 s,
+  fenêtre ±1, anti-rejeu (`dernier_pas`), 8 codes de secours hachés à usage unique.
+  Modèle `DoubleAuthentification` (secret CHIFFRÉ — Fernet de `ia/secret.py`, dérivé de
+  `SECRET_KEY`). Pas de QR code (aucune bibliothèque disponible) : clé à saisir + lien
+  `otpauth://`. Facultative pour tous ; pas d'obligation imposée aux admins à ce jour ;
+- **connexion en deux temps** : `LoginView` → `{mfa_requis, jeton_mfa}` (signé, 5 min) au
+  lieu des jetons ; `POST /api/auth/login/mfa/` (vue PUBLIQUE, inscrite dans
+  `VUES_PUBLIQUES_AUTORISEES`, limitée comme la connexion, échecs comptés par
+  `lockout`) émet les jetons. Front : étape « code » de la page de connexion ;
+- **sessions** : toute émission de jetons passe par `securite.emettre_jetons` (claims de
+  rôle + `sid` → `SessionConnexion`). `accounts.authentication.JWTSessionAuthentication`
+  (classe d'authentification par défaut de DRF) refuse un jeton dont la session est
+  révoquée (cache 60 s) — y compris un access token encore valide ; les jetons sans `sid`
+  (antérieurs) restent acceptés jusqu'à expiration. API : `me/sessions/`,
+  `me/sessions/<id>/revoquer/`, `me/sessions/revoquer-autres/` ; `me/mfa/` (+ `initier/`,
+  `activer/`, `desactiver/` — mot de passe ET code —, `codes-secours/`) ;
+- **administration** (`IsApplicationAdmin`, `/api/v1/securite/utilisateurs/<id>/` +
+  `revoquer-sessions/`, `reinitialiser-mfa/` ; un Super Admin seul agit sur un Super
+  Admin). Pas encore d'écran pour ces deux actions ;
+- **alertes** : un verrouillage de compte (mot de passe ou codes) notifie le titulaire et
+  l'administration (`TYPE_SECURITE`) et journalise `ACTION_ALERTE_SECURITE` ;
+- **comptes inactifs** : `manage.py desactiver_comptes_inactifs [--jours N] [--simuler]`
+  (défaut `COMPTES_INACTIFS_JOURS`, 0 = jamais ; ≥ 7 jours ; Super Admins jamais
+  désactivés ; sessions révoquées, journalisé, administration notifiée) — à planifier ;
+- front : page *Paramètres › Sécurité* (`/parametres/securite`) ;
+- tests : `accounts/tests_securite.py` (vecteur RFC 6238 compris), specs `auth.service`,
+  `login`, `securite-settings`.
 
 **Version de l'application : `v<majeure>.<mineure>.<n>`, calculée depuis git.** Visible par
 TOUS, connecté ou non : pied de la page de connexion, bas du menu latéral (clic → « À

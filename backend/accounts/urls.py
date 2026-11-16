@@ -4,8 +4,20 @@ from .views import LoginView, ForgotPasswordView, VerifyCodeView, ResetPasswordV
 
 # Aucune route d'inscription publique : un compte ne peut être créé que par un
 # administrateur de l'application via POST /api/v1/users/ (cf. `IsApplicationAdmin`).
+from . import views_securite as sec
+
 urlpatterns = [
     path('login/', LoginView.as_view(), name='login'),
+    # 2e étape de connexion (double authentification) + sécurité du compte connecté.
+    path('login/mfa/', sec.LoginMfaView.as_view(), name='login-mfa'),
+    path('me/mfa/', sec.MfaEtatView.as_view(), name='mfa-etat'),
+    path('me/mfa/initier/', sec.MfaInitierView.as_view(), name='mfa-initier'),
+    path('me/mfa/activer/', sec.MfaActiverView.as_view(), name='mfa-activer'),
+    path('me/mfa/desactiver/', sec.MfaDesactiverView.as_view(), name='mfa-desactiver'),
+    path('me/mfa/codes-secours/', sec.MfaCodesView.as_view(), name='mfa-codes'),
+    path('me/sessions/', sec.MesSessionsView.as_view(), name='mes-sessions'),
+    path('me/sessions/revoquer-autres/', sec.RevoquerAutresSessionsView.as_view(), name='sessions-revoquer-autres'),
+    path('me/sessions/<uuid:pk>/revoquer/', sec.RevoquerSessionView.as_view(), name='session-revoquer'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
     path('forgot-password/', ForgotPasswordView.as_view(), name='forgot-password'),
     path('verify-code/', VerifyCodeView.as_view(), name='verify-code'),

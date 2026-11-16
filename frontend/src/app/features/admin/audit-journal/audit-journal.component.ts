@@ -14,7 +14,11 @@ const FAMILLES: Record<string, FamilleAction> = {
   PASSWORD_CHANGED: 'securite', PASSWORD_RESET: 'securite', USER_CREATED: 'securite',
   ROLE_CHANGED: 'securite', MEMBER_ADDED: 'securite', AI_CONFIG_CHANGED: 'securite',
   AUDIT_EXPORTED: 'securite',
+  MFA_FAILED: 'alerte', SECURITY_ALERT: 'alerte', ACCOUNT_DEACTIVATED: 'alerte',
+  MFA_ENABLED: 'securite', MFA_DISABLED: 'securite', SESSION_REVOKED: 'securite',
+  BACKUP_CREATED: 'securite', BACKUP_DOWNLOADED: 'securite', BACKUP_RESTORED: 'alerte',
   REPORT_GENERATED: 'donnees', SSDGPS_STATUS_CHANGED: 'donnees',
+  DOSSIER_EXPORTED: 'donnees', DOSSIER_IMPORTED: 'donnees',
   AI_CALL: 'ia',
 };
 

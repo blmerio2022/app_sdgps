@@ -1,3 +1,7 @@
 /* La page de connexion utilise le kit d'authentification global défini dans styles.scss
    (.auth-shell / .auth-card / .auth-field / .auth-btn …), conforme au design system et au
    thème clair/sombre. Aucun style spécifique n'est nécessaire ici. */
+
+.auth-mfa-aide { margin: 0 0 4px; font-size: 13px; line-height: 1.5; color: var(--text-muted); i { color: var(--accent-color); margin-right: 6px; } }
+.auth-mfa-retour { margin-top: 4px; border: none; background: transparent; color: var(--text-muted); font-size: 12.5px; cursor: pointer;
+  &:hover { color: var(--accent-color); } i { margin-right: 5px; } }

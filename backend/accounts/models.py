@@ -792,3 +792,48 @@ class AuditEvent(models.Model):
             "Un événement d'audit ne peut pas être supprimé individuellement. "
             "Une purge de rétention est une opération d'administration explicite."
         )
+
+
+class DoubleAuthentification(models.Model):
+    """Double authentification (TOTP, RFC 6238) d'un compte — cf. `accounts/securite.py`.
+
+    Le secret est CHIFFRÉ (Fernet dérivé de SECRET_KEY) ; les codes de secours ne sont
+    gardés que hachés et ne servent qu'une fois. `dernier_pas` interdit de rejouer un code
+    déjà accepté.
+    """
+
+    utilisateur = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                       related_name='double_authentification')
+    secret_chiffre = models.TextField(blank=True, default='')
+    active = models.BooleanField(default=False)
+    active_le = models.DateTimeField(null=True, blank=True)
+    codes_secours = models.JSONField(default=list, blank=True)
+    dernier_pas = models.BigIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Double authentification'
+
+
+class SessionConnexion(models.Model):
+    """Session ouverte par une connexion (couple de jetons JWT portant le claim `sid`).
+
+    Révoquer une session invalide immédiatement ses jetons : l'authentification
+    (`accounts/authentication.py`) refuse tout jeton dont la session est révoquée.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    utilisateur = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                    related_name='sessions_connexion')
+    adresse_ip = models.GenericIPAddressField(null=True, blank=True)
+    agent = models.CharField(max_length=300, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    derniere_activite = models.DateTimeField(null=True, blank=True)
+    expire_le = models.DateTimeField(null=True, blank=True)
+    revoquee_le = models.DateTimeField(null=True, blank=True)
+    double_auth = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Session de connexion'
+        indexes = [models.Index(fields=['utilisateur', 'revoquee_le'])]
