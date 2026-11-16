@@ -14,6 +14,7 @@ import {PieceFieldDescriptionsModule} from './features/admin/piece-field-descrip
 import {StorageDashboardModule} from './features/admin/storage/storage-dashboard.module'; // ← Dashboard stockage (App Admin)
 import {StorageQuotasModule} from './features/admin/storage-quotas/storage-quotas.module'; // ← Quotas de stockage (Super Admin)
 import { AuditJournalModule } from './features/admin/audit-journal/audit-journal.module';
+import { ActiviteModule } from './features/admin/activite/activite.module'; // Tableau de bord d'activité
 import { FileValidationModule } from './features/admin/file-validation/file-validation.module'; // File de validation (encadrement) // ← Journal d'audit (admin application)
 import {ToastrModule} from 'ngx-toastr';
 import {AuthInterceptor} from './core/interceptors/auth.interceptor';
@@ -37,6 +38,7 @@ import {AuthInterceptor} from './core/interceptors/auth.interceptor';
         StorageDashboardModule, // ← AJOUT: Dashboard stockage (App Admin)
         StorageQuotasModule, // ← AJOUT: Quotas de stockage par organisation (Super Admin)
         AuditJournalModule,
+        ActiviteModule,
         FileValidationModule, // File de validation (Admin Org, admin application) // Journal d'audit (Super Admin, Admin Système)
         ToastrModule.forRoot({
           timeOut: 3000,

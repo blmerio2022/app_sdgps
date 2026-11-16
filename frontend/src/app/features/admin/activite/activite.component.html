@@ -1,0 +1,78 @@
+<div class="ac-page">
+  <header class="page-header">
+    <div>
+      <h1><i class="fas fa-chart-column"></i> Activité</h1>
+      <p class="subtitle">Ce que produisent les équipes et à quel rythme : dossiers, décisions, rapports, usage de l'IA.</p>
+    </div>
+    <div class="periodes" role="radiogroup" aria-label="Période">
+      <button type="button" [class.on]="periode === '3m'" (click)="choisirPeriode('3m')">3 mois</button>
+      <button type="button" [class.on]="periode === '6m'" (click)="choisirPeriode('6m')">6 mois</button>
+      <button type="button" [class.on]="periode === '12m'" (click)="choisirPeriode('12m')">12 mois</button>
+    </div>
+  </header>
+
+  <p class="msg erreur" *ngIf="erreur"><i class="fas fa-triangle-exclamation"></i> {{ erreur }}</p>
+  <div class="ac-chargement" *ngIf="chargement && !donnees"><i class="fas fa-spinner fa-spin"></i> Chargement…</div>
+
+  <ng-container *ngIf="donnees as d">
+    <section class="ac-tuiles" [class.dim]="chargement">
+      <div class="tuile"><span class="val">{{ d.totaux.crees }}</span><span class="lib">dossiers créés</span></div>
+      <div class="tuile"><span class="val">{{ d.totaux.valides }}</span><span class="lib">dossiers validés</span></div>
+      <div class="tuile"><span class="val">{{ d.delai_validation_jours === null ? '—' : d.delai_validation_jours + ' j' }}</span>
+        <span class="lib">délai moyen de validation</span></div>
+      <div class="tuile"><span class="val">{{ pourcent(d.taux_rejet) }}</span><span class="lib">taux de rejet</span></div>
+      <div class="tuile"><span class="val">{{ d.en_attente }}</span><span class="lib">en attente de validation</span></div>
+      <div class="tuile"><span class="val">{{ d.totaux.rapports }}</span><span class="lib">rapports générés</span></div>
+    </section>
+
+    <section class="ac-carte">
+      <div class="ac-carte-tete">
+        <h2>{{ libelles[mesure] }} par mois</h2>
+        <div class="mesures" role="radiogroup" aria-label="Indicateur">
+          <button type="button" *ngFor="let m of mesures" [class.on]="mesure === m" (click)="mesure = m">{{ libelles[m] }}</button>
+        </div>
+      </div>
+      <div class="graphe" role="img" [attr.aria-label]="libelles[mesure] + ' par mois'">
+        <div class="axe"><span *ngFor="let g of graduations">{{ g }}</span></div>
+        <div class="zone">
+          <div class="grille"><span></span><span></span><span></span></div>
+          <div class="colonne" *ngFor="let b of barres; let i = index" (mouseenter)="survol = i" (mouseleave)="survol = null">
+            <div class="barre-zone">
+              <div class="infobulle" *ngIf="survol === i"><strong>{{ b.valeur }}</strong> {{ libelles[mesure].toLowerCase() }}<br>{{ b.libelle }}</div>
+              <div class="barre" [style.height.%]="b.hauteur" [class.vide]="!b.valeur"></div>
+            </div>
+            <span class="mois">{{ b.libelle }}</span>
+          </div>
+        </div>
+      </div>
+      <details class="ac-table-vue">
+        <summary>Voir les valeurs en tableau</summary>
+        <table><thead><tr><th>Mois</th><th *ngFor="let m of mesures">{{ libelles[m] }}</th></tr></thead>
+          <tbody><tr *ngFor="let l of d.par_mois"><td>{{ l.mois }}</td><td *ngFor="let m of mesures">{{ $any(l)[m] }}</td></tr></tbody></table>
+      </details>
+    </section>
+
+    <section class="ac-carte">
+      <div class="ac-carte-tete"><h2>Par opérateur</h2>
+        <label class="tri">Trier par
+          <select [(ngModel)]="tri">
+            <option value="crees">Dossiers créés</option><option value="soumissions">Soumissions</option>
+            <option value="rejets_recus">Rejets reçus</option><option value="rapports">Rapports</option>
+            <option value="appels_ia">Appels IA</option>
+          </select></label>
+      </div>
+      <table class="ac-ops">
+        <thead><tr><th>Opérateur</th><th>Dossiers créés</th><th>Soumissions</th><th>Rejets reçus</th><th>Rapports</th><th>Appels IA</th><th>Jetons IA</th></tr></thead>
+        <tbody>
+          <tr *ngIf="!operateurs.length"><td colspan="7" class="vide">Aucune activité sur la période.</td></tr>
+          <tr *ngFor="let o of operateurs">
+            <td><span class="nom">{{ o.nom }}</span><span class="email" *ngIf="o.email !== o.nom">{{ o.email }}</span></td>
+            <td>{{ o.crees }}</td><td>{{ o.soumissions }}</td>
+            <td [class.alerte]="o.rejets_recus > 0">{{ o.rejets_recus }}</td>
+            <td>{{ o.rapports }}</td><td>{{ o.appels_ia }}</td><td>{{ jetons(o.jetons_ia) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </ng-container>
+</div>

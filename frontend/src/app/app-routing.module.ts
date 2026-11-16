@@ -12,6 +12,7 @@ import { PieceFieldDescriptionsComponent } from './features/admin/piece-field-de
 import { StorageDashboardComponent } from './features/admin/storage/storage-dashboard.component';
 import { StorageQuotasComponent } from './features/admin/storage-quotas/storage-quotas.component';
 import { AuditJournalComponent } from './features/admin/audit-journal/audit-journal.component';
+import { ActiviteComponent } from './features/admin/activite/activite.component';
 import { FileValidationComponent } from './features/admin/file-validation/file-validation.component';
 
 // Aucune route « en cours de développement » : une entrée de menu qui mène à une page
@@ -123,6 +124,12 @@ export const routes: Routes = [
         path: 'quotas/limites',
         component: StorageQuotasComponent,
         data: { title: 'Quotas de stockage' }
+      },
+      {
+        // Encadrement : tableau de bord d'activité (le backend renvoie 403 à un Agent).
+        path: 'activite',
+        component: ActiviteComponent,
+        data: { title: 'Activité' }
       },
       {
         // Encadrement : Admin Organisation (ses organisations) et administration de l'application.

@@ -1,0 +1,52 @@
+/* Tableau de bord d'activité — barres de défilement : style global (styles.scss). */
+:host { display: block; flex: 1 1 auto; min-height: 0; }
+.ac-page { height: 100%; box-sizing: border-box; overflow-y: auto; padding: 20px 24px 32px; }
+.page-header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px; > div { flex: 1; }
+  h1 { margin: 0; font-size: 20px; color: var(--text-color); display: flex; align-items: center; gap: 10px; i { color: var(--accent-color); } }
+  .subtitle { margin: 6px 0 0; font-size: 13.5px; color: var(--text-muted); } }
+.periodes, .mesures { display: inline-flex; flex-wrap: wrap; gap: 3px; padding: 3px; border-radius: 9px; background: var(--secondary-color);
+  border: 1px solid var(--border-color);
+  button { padding: 6px 11px; border: none; border-radius: 7px; background: transparent; color: var(--text-muted); font-size: 12px; cursor: pointer;
+    &.on { background: var(--accent-color); color: #fff; } } }
+.msg.erreur { padding: 9px 13px; border-radius: 9px; font-size: 13px; color: #e74c3c; background: rgba(231, 76, 60, .1); }
+.ac-chargement { padding: 40px; text-align: center; color: var(--text-muted); }
+.ac-tuiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; transition: opacity .15s;
+  &.dim { opacity: .55; }
+  @media (max-width: 1200px) { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.tuile { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: 12px; background: var(--secondary-color);
+  border: 1px solid var(--border-color);
+  .val { font-size: 24px; font-weight: 700; color: var(--text-color); font-variant-numeric: tabular-nums; }
+  .lib { font-size: 12px; color: var(--text-muted); } }
+.ac-carte { margin-bottom: 14px; padding: 16px 18px; border-radius: 13px; background: var(--secondary-color); border: 1px solid var(--border-color); }
+.ac-carte-tete { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;
+  h2 { flex: 1; margin: 0; font-size: 14.5px; color: var(--text-color); } }
+
+/* Graphe en barres : une seule série, axe recessif, barres fines arrondies côté valeur. */
+.graphe { display: flex; gap: 8px; height: 240px; }
+.axe { display: flex; flex-direction: column; justify-content: space-between; padding-bottom: 22px; font-size: 11px; color: var(--text-muted);
+  text-align: right; min-width: 28px; font-variant-numeric: tabular-nums; }
+.zone { position: relative; flex: 1; display: flex; gap: 2px; }
+.grille { position: absolute; inset: 0 0 22px; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none;
+  span { border-top: 1px solid var(--border-color); opacity: .6; } }
+.colonne { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; cursor: default; }
+.barre-zone { position: relative; flex: 1; width: 100%; display: flex; align-items: flex-end; justify-content: center; }
+.barre { width: min(28px, 70%); min-height: 2px; border-radius: 4px 4px 0 0; background: var(--accent-color); transition: height .25s, filter .12s;
+  &.vide { background: var(--border-color); } }
+.colonne:hover .barre { filter: brightness(1.15); }
+.mois { height: 22px; line-height: 22px; font-size: 10.5px; color: var(--text-muted); white-space: nowrap; }
+.infobulle { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); z-index: 2; padding: 6px 9px; border-radius: 8px;
+  font-size: 11.5px; line-height: 1.4; color: var(--text-color); background: var(--primary-color); border: 1px solid var(--border-color);
+  box-shadow: 0 6px 16px var(--shadow-color); white-space: nowrap; pointer-events: none; strong { font-size: 13px; } }
+.colonne .infobulle { bottom: auto; top: 0; transform: translate(-50%, -110%); }
+
+.ac-table-vue { margin-top: 10px; font-size: 12px; color: var(--text-muted);
+  summary { cursor: pointer; } table { margin-top: 8px; } }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th { padding: 8px 10px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted);
+  border-bottom: 2px solid var(--border-color); white-space: nowrap; }
+td { padding: 8px 10px; border-bottom: 1px solid var(--border-color); color: var(--text-color); font-variant-numeric: tabular-nums; }
+.ac-ops .nom { display: block; font-weight: 600; } .ac-ops .email { display: block; font-size: 11.5px; color: var(--text-muted); }
+td.alerte { color: #e67e22; font-weight: 700; }
+.vide { padding: 24px; text-align: center; color: var(--text-muted); }
+.tri { font-size: 12px; color: var(--text-muted);
+  select { margin-left: 6px; padding: 5px 8px; border-radius: 7px; border: 1px solid var(--border-color); background: var(--primary-color); color: var(--text-color); } }

@@ -163,6 +163,15 @@ export const ADMIN_MENU: MenuItem[] = [
     ]
   },
   {
+    id: 'activite',
+    title: 'Activité',
+    icon: 'fas fa-chart-column',
+    route: '/admin/activite',
+    type: 'link',
+    description: 'Dossiers, décisions, délais de validation, rapports et IA par mois et par opérateur',
+    roles: ALL_ADMIN_ROLES,
+  },
+  {
     // Dossiers soumis qui attendent une décision de l'encadrement.
     id: 'file-validation',
     title: 'File de validation',

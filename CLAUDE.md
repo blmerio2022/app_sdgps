@@ -728,6 +728,18 @@ la barre du haut (bouton + palette Ctrl+K / ⌘K, anti-rebond 250 ms, flèches /
 Échap, derniers résultats ouverts mémorisés dans le navigateur). Tests :
 `projects/tests_recherche.py`, `recherche-globale.component.spec.ts`.
 
+**Tableau de bord d'activité.** `GET /api/v1/analytics/activite/?depuis=&jusqu_a=&organisation=`
+(`analytics/activite.py`, 12 derniers mois par défaut) — calculé à partir des SDGPS et du
+journal d'audit, sans nouveau modèle : dossiers créés / soumis / validés / rejetés / clos et
+rapports générés par mois, délai moyen de validation (soumission → validation, par
+dossier), taux de rejet (rejets / décisions), dossiers en attente, et par opérateur
+(créés, soumissions, rejets reçus, rapports, appels IA et jetons). Portée : administration
+de l'application = tout ; Admin Organisation = ses organisations (le filtre `organisation`
+ne l'élargit jamais) ; Agent = 403. Front : `/admin/activite` (menu admin) — tuiles,
+barres mensuelles d'UN indicateur à la fois (série unique, infobulle au survol, vue
+tableau), tableau par opérateur. ⚠ Exception assumée aux règles de tableaux : agrégats
+calculés. Tests : `analytics/tests_activite.py`, `activite.component.spec.ts`.
+
 **Version de l'application : `v<majeure>.<mineure>.<n>`, calculée depuis git.** Visible par
 TOUS, connecté ou non : pied de la page de connexion, bas du menu latéral (clic → « À
 propos » : commit, dates, environnement), API **publique** `GET /api/version/` (inscrite

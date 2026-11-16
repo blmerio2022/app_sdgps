@@ -74,3 +74,26 @@ class StorageEvolutionView(APIView):
             'is_backfill': s.is_backfill,
         } for s in snaps]
         return Response({'points': points})
+
+
+class ActiviteView(APIView):
+    """
+    GET /api/v1/analytics/activite/?depuis=&jusqu_a=&organisation= — tableau de bord
+    d'activité (`analytics/activite.py`). Administration de l'application : tout ;
+    Admin Organisation : ses organisations ; Agent : 403.
+    """
+
+    def get(self, request):
+        from django.utils.dateparse import parse_date
+        from rest_framework import status as http
+        from .activite import calculer, organisations_visibles
+
+        orgs = organisations_visibles(request.user)
+        if orgs is not None and not orgs:
+            return Response({'detail': "Le tableau de bord d'activité est réservé à l'encadrement."},
+                            status=http.HTTP_403_FORBIDDEN)
+        depuis = parse_date(request.query_params.get('depuis') or '') if request.query_params.get('depuis') else None
+        jusqu_a = parse_date(request.query_params.get('jusqu_a') or '') if request.query_params.get('jusqu_a') else None
+        if depuis and jusqu_a and depuis > jusqu_a:
+            return Response({'detail': 'Période invalide.'}, status=http.HTTP_400_BAD_REQUEST)
+        return Response(calculer(request.user, depuis, jusqu_a, request.query_params.get('organisation') or None))
