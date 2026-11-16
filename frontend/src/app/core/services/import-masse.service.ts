@@ -26,6 +26,8 @@ export interface LignePlan {
   feuille?: string | null;
   nom_rapport?: string;
   lisible: boolean;
+  /** Page-cadre TBC déposée sans son dossier `_files` (les données y sont). */
+  cadre?: boolean;
   erreur?: string;
   raison?: string;
   colonnes: string[];
@@ -67,7 +69,7 @@ export interface PlanImport {
 /** Fichier déposé et son chemin relatif (dossier déposé : « levé/Rapport 1_files/x.html »). */
 export interface FichierDepose { fichier: File; chemin: string; }
 
-const EXTENSIONS = /\.(csv|xlsx|html?|jpe?g|png|webp|gif|bmp|tiff?|heic)$/i;
+const EXTENSIONS = /\.(csv|xlsx|html?|pdf|jpe?g|png|webp|gif|bmp|tiff?|heic)$/i;
 
 /** Garde les seuls formats utiles à l'import (tableaux, rapports HTML, images). */
 export function utile(chemin: string): boolean {

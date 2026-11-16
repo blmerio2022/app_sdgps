@@ -47,6 +47,7 @@ describe('ImportMasseService', () => {
 describe('ImportMasseComponent', () => {
   let svc: any;
   let pieces: any;
+  let pdf: any;
   let cmp: ImportMasseComponent;
   const csv = new File(['x'], 'LPA.csv');
   const html = new File(['y'], 'x.html');
@@ -72,7 +73,9 @@ describe('ImportMasseComponent', () => {
       previewComputeRc: jasmine.createSpy('apercuRc').and.returnValue(of({ rows: [{}, {}], source: 'rdn' })),
       confirmComputeRc: jasmine.createSpy('rc').and.returnValue(of({ id: 'rc1' })),
     };
-    cmp = new ImportMasseComponent(svc, pieces);
+    pdf = { open: jasmine.createSpy('open').and.returnValue(Promise.resolve({ numPages: 2,
+      renderPage: () => Promise.resolve(document.createElement('canvas')), destroy: () => {} })) };
+    cmp = new ImportMasseComponent(svc, pieces, pdf);
     cmp.ssdgpsId = 's1';
   });
 
@@ -87,7 +90,7 @@ describe('ImportMasseComponent', () => {
     deposer();
     expect(cmp.depots.length).toBe(6);
     expect(cmp.ignoresAuDepot).toBe(1);
-    expect(cmp.resumeDepot).toEqual({ tableaux: 1, html: 1, images: 4 });
+    expect(cmp.resumeDepot).toEqual({ tableaux: 1, html: 1, images: 4, pdf: 0 });
   });
 
   it('analyse : plan, images, RC proposé ; images d’une photo sans point', () => {
@@ -137,5 +140,29 @@ describe('ImportMasseComponent', () => {
     expect(cmp.blocage(cmp.plan[1], 1)).toBe('Session requise');
     cmp.sessionParLigne[1] = 'sess';
     expect(cmp.blocage(cmp.plan[1], 1)).toBe('');
+  });
+
+  it('PDF : chaque page devient une image du même dossier avant l’analyse', async () => {
+    cmp.ajouterDepots([{ fichier: new File(['%PDF'], 'consultation.pdf'), chemin: 'l/01-rapport-consultation/consultation.pdf' }]);
+    expect(cmp.resumeDepot.pdf).toBe(1);
+    await cmp.convertirPdf();
+    expect(cmp.depots.map(d => d.chemin)).toEqual(['l/01-rapport-consultation/consultation-p1.jpg',
+                                                   'l/01-rapport-consultation/consultation-p2.jpg']);
+    expect(cmp.pagesPdf).toBe(2);
+  });
+
+  it('page-cadre sans son dossier _files : signalée, ajout du dossier puis nouvelle analyse', () => {
+    deposer();
+    svc.plan.and.returnValue(of({ plan: [L({ mode: 'html', cadre: true, lisible: false, nom_rapport: 'Rapport 1',
+                                             type_piece: null, action: 'ignorer' })],
+                                  images: [], ecartes: [], points: { PPA: [], PPN: [] }, rc_possible: false,
+                                  rc_existant: false, pieces_existantes: {} }));
+    cmp.analyser();
+    expect(cmp.cadresSansDonnees.length).toBe(1);
+    const dossier = new File(['<html>'], 'x.html');
+    Object.defineProperty(dossier, 'webkitRelativePath', { value: 'Rapport 1_files/x.html' });
+    cmp.ajouterDossiersManquants([dossier] as any);
+    expect(cmp.depots.some(d => d.chemin === 'Rapport 1_files/x.html')).toBeTrue();
+    expect(svc.plan).toHaveBeenCalledTimes(2);
   });
 });

@@ -5,6 +5,7 @@ import {
   CandidatImport, FichierDepose, ImagePlan, ImportMasseService, LignePlan, PlanImport, lireEntree, utile,
 } from '../../../core/services/import-masse.service';
 import { PiecesService } from '../../../core/services/pieces.service';
+import { PdfRenderService, canvasToJpeg } from '../../../core/services/pdf-render.service';
 
 export interface SessionChoix { id: string; numero_session: number; }
 
@@ -45,6 +46,10 @@ export class ImportMasseComponent {
   sessionParLigne: Record<number, string | null> = {};
   genererRc = false;
   analyse = false;
+  /** Message pendant la préparation (conversion des PDF). */
+  preparation = '';
+  pagesPdf = 0;
+  pdfIllisibles: string[] = [];
   erreur = '';
   survol = false;
   progression = 0;
@@ -52,7 +57,8 @@ export class ImportMasseComponent {
   readonly libellesImages = LIBELLES_IMAGES;
   readonly typesImages = Object.keys(LIBELLES_IMAGES);
 
-  constructor(private service: ImportMasseService, private pieces: PiecesService) {}
+  constructor(private service: ImportMasseService, private pieces: PiecesService,
+              private pdf: PdfRenderService) {}
 
   // ---- étape 1 : dépôt (fichiers ou dossier) ----
   ajouterDepots(liste: FichierDepose[]): void {
@@ -86,14 +92,50 @@ export class ImportMasseComponent {
   retirer(i: number): void { this.depots.splice(i, 1); }
   vider(): void { this.depots = []; this.ignoresAuDepot = 0; }
 
-  get resumeDepot(): { tableaux: number; html: number; images: number } {
+  get resumeDepot(): { tableaux: number; html: number; images: number; pdf: number } {
     const c = (re: RegExp) => this.depots.filter(d => re.test(d.chemin)).length;
-    return { tableaux: c(/\.(csv|xlsx)$/i), html: c(/\.html?$/i), images: c(/\.(jpe?g|png|webp|gif|bmp|tiff?|heic)$/i) };
+    return { tableaux: c(/\.(csv|xlsx)$/i), html: c(/\.html?$/i), images: c(/\.(jpe?g|png|webp|gif|bmp|tiff?|heic)$/i),
+             pdf: c(/\.pdf$/i) };
+  }
+
+  /** PDF déposés : chaque page est rendue en image dans le navigateur (le serveur ne rend
+   * pas les PDF), puis classée comme les autres images (canevas, consultation, photos). */
+  async convertirPdf(): Promise<void> {
+    const pdfs = this.depots.filter(d => /\.pdf$/i.test(d.chemin));
+    if (!pdfs.length) return;
+    this.preparation = `Conversion de ${pdfs.length} PDF en images…`;
+    const pages: FichierDepose[] = [];
+    for (const d of pdfs) {
+      try {
+        const doc = await this.pdf.open(d.fichier);
+        const base = d.fichier.name.replace(/\.pdf$/i, '');
+        const dossier = d.chemin.includes('/') ? d.chemin.slice(0, d.chemin.lastIndexOf('/') + 1) : '';
+        for (let n = 1; n <= doc.numPages; n++) {
+          const canvas = await doc.renderPage(n, 1600);
+          const nom = doc.numPages > 1 ? `${base}-p${n}.jpg` : `${base}.jpg`;
+          pages.push({ fichier: await canvasToJpeg(canvas, nom, 2 * 1024 * 1024), chemin: dossier + nom });
+        }
+        doc.destroy();
+        this.pagesPdf += doc.numPages;
+      } catch {
+        this.pdfIllisibles.push(d.chemin);
+      }
+    }
+    this.depots = this.depots.filter(d => !/\.pdf$/i.test(d.chemin)).concat(pages);
+    this.preparation = '';
   }
 
   analyser(): void {
     if (!this.depots.length) return;
     this.analyse = true; this.erreur = '';
+    if (this.depots.some(d => /\.pdf$/i.test(d.chemin))) {
+      this.convertirPdf().then(() => this.lancerAnalyse());
+    } else {
+      this.lancerAnalyse();
+    }
+  }
+
+  private lancerAnalyse(): void {
     this.service.plan(this.ssdgpsId, this.depots).subscribe({
       next: p => {
         this.reponse = p;
@@ -109,6 +151,15 @@ export class ImportMasseComponent {
   }
 
   // ---- étape 2 : plan ----
+  /** Pages-cadres TBC déposées sans leur dossier `_files` : leurs données manquent. */
+  get cadresSansDonnees(): LignePlan[] { return this.plan.filter(l => l.cadre); }
+
+  /** Ajout du (des) dossier(s) `_files` manquant(s), puis nouvelle analyse. */
+  ajouterDossiersManquants(liste: FileList | null): void {
+    this.ajouter(liste);
+    this.analyser();
+  }
+
   candidat(l: LignePlan): CandidatImport | undefined { return l.candidats.find(c => c.type_piece === l.type_piece); }
 
   changerType(l: LignePlan, type: string | null): void {

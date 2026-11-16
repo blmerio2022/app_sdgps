@@ -144,6 +144,34 @@ class PlanApiTests(WorkflowBaseTest):
         self.assertEqual(set(t), {('RFB', None), ('RDL', None), ('RDN', 1), ('RDN', 2), ('RDD', None)})
         self.assertIn('B', t[('RDN', 2)]['raison'])
 
+    def test_rapport_html_prioritaire_sur_csv_et_derniere_version(self):
+        pts = ['A', 'B']
+        d = self.plan(csv_de('RDL', 'data-rapport-determination-libre.csv'), html_ajustement(pts, []),
+                      html_ajustement(pts, []), chemins=['l/09-rapport-determination-libre/data-rapport-determination-libre.csv',
+                                                        'l/09-rapport-determination-libre/Rapport libre V1_files/a.html',
+                                                        'l/09-rapport-determination-libre/Rapport libre V2_files/b.html'])
+        retenus = [i for i in d['plan'] if i['action'] != 'ignorer']
+        self.assertEqual(len(retenus), 1)
+        self.assertEqual((retenus[0]['mode'], retenus[0]['nom_rapport']), ('html', 'Rapport libre V2'))
+
+    def test_csv_des_determinations_numerotees_et_assemblees(self):
+        rdia = SimpleUploadedFile('data-rapport-determinations-intermediaires.csv',
+                                  'ID,Nom Point Fixe,Nom Point Calculé,X(m),σX(m),Y(m),σY(m)\n1,8,8,1,FIXE,2,FIXE\n'.encode())
+        dossier = 'l/10-rapport-determinations-intermediaires/'
+        d = self.plan(csv_de('RDN', 'data-rapport-determination-n3.csv'), rdia, html_ajustement(['A', 'B'], ['A']),
+                      csv_de('RDN', 'data-rapport-determination-n1.csv'),
+                      chemins=[dossier + 'data-rapport-determination-n3.csv', dossier + 'data-rapport-determinations-intermediaires.csv',
+                               dossier + 'Rapport 1_files/x.html', dossier + 'data-rapport-determination-n1.csv'])
+        t = {(i['type_piece'], i.get('numero'), i['mode']): i['action'] for i in d['plan']}
+        self.assertEqual(t[('RDN', 3, 'tableau')], 'creer')
+        self.assertEqual(t[('RDIA', None, 'tableau')], 'creer')
+        self.assertEqual(t[('RDN', 1, 'html')], 'creer')
+        self.assertEqual(t[('RDN', 1, 'tableau')], 'ignorer')   # même n° déjà fourni par le rapport HTML
+
+    def test_dossier_files_seul(self):
+        d = self.plan(html_ajustement(['A', 'B'], ['A']), chemins=['Rapport 7_files/x.html'])
+        self.assertEqual((d['plan'][0]['type_piece'], d['plan'][0]['numero'], d['plan'][0]['action']), ('RDN', 7, 'creer'))
+
     def test_page_cadre_seule_signalee_et_page_cadre_redondante_ecartee(self):
         cadre = SimpleUploadedFile('Rapport 1.html', b'<html><frameset><frame src="x"></frameset></html>')
         d = self.plan(cadre, chemins=['l/Rapport 1.html'])

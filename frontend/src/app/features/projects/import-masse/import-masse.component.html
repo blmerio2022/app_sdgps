@@ -17,11 +17,12 @@
       <div class="im-zone" [class.survol]="survol" (drop)="onDrop($event)" (dragover)="onDragOver($event)" (dragleave)="survol = false">
         <i class="fas fa-cloud-arrow-up"></i>
         <strong>Déposez ici le dossier du levé, ou ses fichiers</strong>
-        <span>CSV, Excel (une pièce par feuille), rapports HTML de TBC, photos des points, canevas, pages du rapport de consultation.</span>
+        <span>CSV, Excel (un fichier ou une feuille par pièce), rapports HTML de TBC, PDF, photos des points, canevas,
+          pages du rapport de consultation. Les sous-dossiers sont parcourus.</span>
         <span class="astuce"><i class="fas fa-lightbulb"></i> Pour les rapports TBC, déposez le <strong>dossier</strong> : leurs données sont dans les dossiers « …_files ».</span>
         <div class="im-choix">
           <label class="btn secondaire"><i class="fas fa-file"></i> Choisir des fichiers
-            <input type="file" multiple accept=".csv,.xlsx,.html,.htm,image/*" (change)="ajouter($any($event.target).files); $any($event.target).value = ''"></label>
+            <input type="file" multiple accept=".csv,.xlsx,.html,.htm,.pdf,image/*" (change)="ajouter($any($event.target).files); $any($event.target).value = ''"></label>
           <label class="btn secondaire"><i class="fas fa-folder-open"></i> Choisir un dossier
             <input type="file" webkitdirectory multiple (change)="ajouter($any($event.target).files); $any($event.target).value = ''"></label>
         </div>
@@ -30,6 +31,7 @@
         <span><i class="fas fa-table"></i> {{ resumeDepot.tableaux }} tableau(x)</span>
         <span><i class="fas fa-file-code"></i> {{ resumeDepot.html }} fichier(s) HTML</span>
         <span><i class="fas fa-image"></i> {{ resumeDepot.images }} image(s)</span>
+        <span *ngIf="resumeDepot.pdf"><i class="fas fa-file-pdf"></i> {{ resumeDepot.pdf }} PDF (pages converties en images)</span>
         <span *ngIf="ignoresAuDepot" class="ign">{{ ignoresAuDepot }} autre(s) fichier(s) ignoré(s)</span>
         <span class="spacer"></span>
         <button type="button" class="lien" (click)="vider()">Tout retirer</button>
@@ -45,6 +47,19 @@
 
     <!-- 2. Plan -->
     <section class="im-corps im-plan" *ngIf="etape === 'plan' && reponse">
+      <div class="im-cadres" *ngIf="cadresSansDonnees.length">
+        <i class="fas fa-folder-plus"></i>
+        <div>
+          <strong>{{ cadresSansDonnees.length }} rapport(s) HTML de TBC sans leurs données</strong>
+          <span>Un fichier « .html » de TBC n'est qu'une page-cadre : ses données sont dans le dossier du même nom
+            terminé par « _files » ({{ cadresSansDonnees[0].nom_rapport }}_files…). Ajoutez ce(s) dossier(s), ou le dossier qui les contient.</span>
+        </div>
+        <label class="btn"><i class="fas fa-folder-open"></i> Ajouter les dossiers « _files »
+          <input type="file" webkitdirectory multiple (change)="ajouterDossiersManquants($any($event.target).files); $any($event.target).value = ''"></label>
+      </div>
+      <p class="im-note" *ngIf="pagesPdf || pdfIllisibles.length">
+        <i class="fas fa-file-pdf"></i> {{ pagesPdf }} page(s) de PDF converties en images<span *ngIf="pdfIllisibles.length"> ·
+        illisible(s) : {{ pdfIllisibles.join(', ') }}</span>.</p>
       <h4><i class="fas fa-file-lines"></i> Pièces ({{ aImporter }} à importer sur {{ plan.length }})</h4>
       <table *ngIf="plan.length">
         <thead><tr><th>Fichier</th><th>Type</th><th>N°</th><th *ngIf="multiSession">Session</th><th>Action</th><th>État</th></tr></thead>
@@ -147,7 +162,8 @@
         <span class="spacer"></span>
         <button type="button" class="btn secondaire" (click)="fermer()">Annuler</button>
         <button type="button" class="btn" (click)="analyser()" [disabled]="!depots.length || analyse">
-          <i class="fas" [ngClass]="analyse ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'"></i> Analyser {{ depots.length }} fichier(s)</button>
+          <i class="fas" [ngClass]="analyse ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'"></i>
+          {{ preparation || ('Analyser ' + depots.length + ' fichier(s)') }}</button>
       </ng-container>
       <ng-container *ngIf="etape === 'plan'">
         <button type="button" class="btn secondaire" (click)="etape = 'depot'"><i class="fas fa-arrow-left"></i> Fichiers</button>

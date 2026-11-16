@@ -725,6 +725,19 @@ figé ; NE PERSISTE RIEN) — `pieces/import_masse.py::analyser_lot`, détermini
   (`nature_image`, Pillow : peu de blanc + couleurs saturées = photo de terrain → PPA / PPN
   à rattacher par l'opérateur ; fond blanc paysage = plan → seul canevas applicable à la
   nature, sinon à préciser ; fond blanc portrait = document → RDC) ;
+- **plusieurs sources pour une même pièce** (dossier rangé par pièce : CSV extrait +
+  rapports HTML V1 / V2) : `priorite_source` — le rapport HTML d'origine l'emporte sur le
+  CSV, la version la plus haute (`V2`) sur les autres ; une détermination déjà fournie
+  (même n°) par une source prioritaire fait des autres des doublons. CSV numérotés
+  (« determination-n3 », « Détermination 3 ») → RDN n°3 ; CSV « determinations
+  intermediaires » (colonnes « Nom Point Fixe / Nom Point Calculé », `ALIAS`) → RDIA ;
+  les pièces CALCULÉES (RC, source `calcul`) ne s'importent pas : un CSV « rapport de
+  contrôle » est écarté avec renvoi à l'option « Générer le rapport de contrôle » ;
+- **PDF** : chaque page est rendue en JPEG dans le navigateur (`PdfRenderService`) avant
+  l'analyse, puis classée comme une image ;
+- un `.html` TBC seul ne contient AUCUNE donnée (page-cadre) et le navigateur ne transmet
+  que les fichiers choisis : l'écran le signale et propose « Ajouter les dossiers
+  « _files » » (puis relance l'analyse). Un dossier `_files` seul suffit ;
 - réponse : `plan`, `images`, `ecartes`, `points` (PPA / PPN), `rc_possible`,
   `rc_existant`, `pieces_existantes` (pièces à images et RC déjà présentes).
 Exécution par le front (`<app-import-masse>`, bouton « Import en masse ») avec les imports
@@ -735,7 +748,7 @@ contrôle** si coché (`compute-rc` ; RC existant → lignes remplacées, versio
 ⚠ Les ré-imports par `piece_id` (`import/` et `import-html/`) ne passent pas par
 `get_object()` : ils appellent `_check_modifiable`. `DATA_UPLOAD_MAX_NUMBER_FILES` = 500.
 Tests : `pieces/tests_import_masse.py`, `tests_import_masse_exemple.py` (bout en bout sur le
-levé d'exemple réel, sauté s'il est absent — non versionné), `import-masse.component.spec.ts`.
+levé d'exemple réel, formats « une pièce par dossier » et « à plat », sauté s'il est absent — non versionné), `import-masse.component.spec.ts`.
 
 **Recherche globale (Ctrl+K).** `GET /api/v1/recherche/?q=` (`projects/recherche.py`, ≥ 2
 caractères, 6 résultats par groupe) : SDGPS (n°, nature), projets (code, nom), propriétés

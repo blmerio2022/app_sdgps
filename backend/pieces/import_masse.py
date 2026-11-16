@@ -43,6 +43,7 @@ SEUIL_CONFIANCE = 0.35   # en dessous : aucun type proposé, l'opérateur choisi
 BONUS_NOM = 0.5
 BONUS_MOT = 0.4
 TYPES_SANS_TABLEAU = {'PGSDGPS', 'RDC', 'CCSPA', 'CDC', 'CLC'}
+SOURCES_NON_IMPORTABLES = {'calcul', 'ui'}
 TYPES_IMAGES = ('PPA', 'PPN', 'CCSPA', 'CDC', 'CLC', 'RDC')
 CANEVAS = ('CCSPA', 'CDC', 'CLC')
 EXT_TABLEAU = {'.csv', '.xlsx'}
@@ -59,7 +60,8 @@ MOTS_CLES = {
     'RTLB': ['traitement', 'lignes de base'],
     'RFB': ['fermeture', 'boucle'],
     'RDL': ['determination libre', 'reseau libre'],
-    'RDN': ['intermediaire'],
+    'RDN': ['intermediaire', 'determination n'],
+    'RDIA': ['determinations intermediaires', 'determination intermediaires assemble'],
     'RDD': ['definitive', 'reseau def'],
     'RC': ['rapport controle', 'rapport de controle'],
     'RDC': ['consultation', 'contenance'],
@@ -87,8 +89,21 @@ def _contexte(chemin):
 
 
 def mots_cles_trouves(texte):
+    """Types évoqués par un nom ; un mot-clé vaut aussi pour ses dérivés (« intermediaires »)."""
     t = _mots(texte)
-    return {code for code, mots in MOTS_CLES.items() if any(f' {m} ' in t for m in mots)}
+    trouves = {code for code, mots in MOTS_CLES.items() if any(f' {m}' in t for m in mots)}
+    # Une détermination numérotée (« determination n3 ») n'est pas le rapport ASSEMBLÉ, même
+    # rangée dans le dossier « determinations intermediaires ».
+    if re.search(r' determination n ?\d', t):
+        trouves.discard('RDIA')
+    return trouves
+
+
+def numero_dans_nom(texte):
+    """« …determination-n3 », « Détermination 3 », « RDN 3 » → 3 ; sinon None."""
+    t = _mots(texte)
+    m = re.search(r' (?:determination|rdn|det) (?:n )?(\d{1,3}) ', t) or re.search(r' n(\d{1,3}) ', t)
+    return int(m.group(1)) if m else None
 
 
 def _code_dans_nom(nom_fichier, code):
@@ -107,6 +122,13 @@ def _nombre_final(nom):
     return int(m.group(1)) if m else None
 
 
+# Libellés alternatifs rencontrés dans les fichiers réels, par champ cible.
+ALIAS = {
+    'determination': ['Nom Point Fixe', 'Point Fixe'],
+    'nom_point': ['Nom Point Calculé', 'Point', 'ID de point', 'Nom'],
+}
+
+
 def correspondance(columns, champs):
     """{champ: colonne} par libellé OU nom technique normalisés ; une petite faute de
     frappe est tolérée (« Sytème Projection » ↔ « Système Projection »)."""
@@ -120,6 +142,12 @@ def correspondance(columns, champs):
             if cle and cle in par_cle and par_cle[cle] not in mapping.values():
                 trouve = par_cle[cle]
                 break
+        if trouve is None:
+            for alias in ALIAS.get(ch['name'], []):
+                k = _norm(alias)
+                if k in par_cle and par_cle[k] not in mapping.values():
+                    trouve = par_cle[k]
+                    break
         if trouve is None:
             cle = _norm(ch.get('label'))
             proches = [k for k in par_cle if par_cle[k] not in mapping.values() and len(cle) >= 6
@@ -140,6 +168,7 @@ def evaluer_type(code, columns, contexte, custom_map=None, mots=None):
     part_colonnes = len(mapping) / max(1, len([c for c in columns if str(c).strip()]))
     score = (2 * part_champs * part_colonnes / (part_champs + part_colonnes)) if mapping else 0.0
     dans_nom, numero = _code_dans_nom(os.path.basename(contexte or ''), code)
+    numero = numero or numero_dans_nom(os.path.basename(contexte or ''))
     if dans_nom:
         score += BONUS_NOM
     mot = code in (mots if mots is not None else mots_cles_trouves(contexte))
@@ -172,7 +201,9 @@ def analyser_tableau(fichier, nature, contexte, custom_map=None, feuille=None):
     mots = mots_cles_trouves(ctx)
     candidats = []
     for code, d in PIECE_CATALOG.items():
-        if code in TYPES_SANS_TABLEAU or not natures_applicable(code, nature):
+        # Les pièces CALCULÉES par l'application (RC) ne s'importent pas d'un fichier.
+        if code in TYPES_SANS_TABLEAU or d.get('source') in SOURCES_NON_IMPORTABLES \
+                or not natures_applicable(code, nature):
             continue
         ev = evaluer_type(code, columns, ctx, custom_map, mots)
         if ev and ev['score'] > 0:
@@ -187,8 +218,16 @@ def analyser_tableau(fichier, nature, contexte, custom_map=None, feuille=None):
     ambigu = bool(meilleur and len(candidats) > 1 and candidats[1]['score'] == meilleur['score'])
     if ambigu:
         meilleur = None
+    raison = ''
+    if 'RC' in mots and (meilleur is None or meilleur['type_piece'] not in mots):
+        # Nommé « rapport de contrôle » : c'est le RC (ses premières colonnes ressemblent à
+        # celles des déterminations assemblées, d'où ce garde-fou).
+        candidats, meilleur, ambigu = [], None, False
+        raison = ("Le rapport de contrôle est calculé par l'application à partir de la LPA et des "
+                  "déterminations : cochez « Générer le rapport de contrôle ».")
     return {
         **base, 'lisible': True, 'colonnes': columns, 'lignes': len(rows), 'apercu': rows[:3],
+        'raison': raison,
         '_rows': rows,
         'candidats': [{k: c[k] for k in ('type_piece', 'libelle', 'score', 'champs_reconnus',
                                          'champs_total', 'nom_reconnu', 'repetable', 'mapping',
@@ -442,7 +481,10 @@ def analyser_lot(fichiers, chemins, ssdgps, custom_map=None):
     # une pièce unique, on garde celui dont le nombre de points est le plus courant.
     tailles = Counter(i['lignes'] for i in plan if i.get('mode') == 'html' and i.get('type_piece') in ('RDL', 'RDN', 'RDD'))
     courant = tailles.most_common(1)[0][0] if tailles else None
-    plan.sort(key=lambda i: (i.get('mode') != 'tableau', i.get('lignes') != courant if i.get('mode') == 'html' else False))
+    # Plusieurs sources pour une même pièce (dossier rangé par pièce : CSV + rapports V1, V2) :
+    # le rapport HTML d'ORIGINE l'emporte sur un CSV extrait, la version la plus récente sur
+    # les précédentes ; les autres restent au plan comme doublons, à reprendre au besoin.
+    plan.sort(key=priorite_source(courant))
 
     points, noms_lpa = points_connus(ssdgps, plan)
     for item in plan:
@@ -483,6 +525,22 @@ def analyser_lot(fichiers, chemins, ssdgps, custom_map=None):
     }
 
 
+def _version(item):
+    m = re.search(r'(?:^|[\s_\-.])v ?(\d{1,3})(?!\d)', item.get('nom_rapport') or os.path.basename(item.get('fichier') or ''),
+                  flags=re.IGNORECASE)
+    return int(m.group(1)) if m else 0
+
+
+def priorite_source(courant):
+    def cle(item):
+        html = item.get('mode') == 'html'
+        return (not html,                                                # HTML d'origine d'abord
+                (item.get('lignes') != courant) if html else False,      # rapport de l'étude principale
+                -_version(item),                                         # V2 avant V1
+                item.get('fichier') or '')
+    return cle
+
+
 def completer_plan(plan, ssdgps):
     """Numéros manquants des pièces répétables + pièce existante à remplacer."""
     from .models import Piece
@@ -494,7 +552,7 @@ def completer_plan(plan, ssdgps):
     for (t, n) in existantes:
         if n:
             pris.setdefault(t, set()).add(n)
-    uniques_vus = set()
+    uniques_vus, dans_le_lot = set(), set()
     for item in plan:
         t = item.get('type_piece')
         item['doublon'] = False
@@ -510,8 +568,13 @@ def completer_plan(plan, ssdgps):
                 item['piece_existante'] = None
                 continue
             uniques_vus.add(t)
+        if repetable and item.get('numero') and (t, item['numero']) in dans_le_lot:
+            # Même détermination déjà fournie par une source prioritaire (rapport HTML) :
+            # doublon, et non une détermination supplémentaire.
+            item.update(doublon=True, action='ignorer', piece_existante=None)
+            continue
         if repetable and item.get('numero') in pris.get(t, set()) and (t, item['numero']) not in existantes:
-            item['numero'] = None     # numéro déjà pris dans le lot : on en attribue un libre
+            item['numero'] = None     # numéro déjà pris en base : on en attribue un libre
         if repetable and not item.get('numero'):
             n = 1
             while n in pris.get(t, set()):
@@ -519,6 +582,7 @@ def completer_plan(plan, ssdgps):
             item['numero'] = n
         if repetable:
             pris.setdefault(t, set()).add(item['numero'])
+            dans_le_lot.add((t, item['numero']))
         cle = (t, item.get('numero') if repetable else None)
         existante = existantes.get(cle)
         item['piece_existante'] = str(existante.id) if existante else None
