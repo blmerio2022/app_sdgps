@@ -192,13 +192,27 @@ class PlanApiTests(WorkflowBaseTest):
         self.assertTrue({'PPA', 'PPN'} <= t)   # PPA / PPN départagées par la LPA
         img = {i['fichier']: i for i in d['images']}
         self.assertEqual((img['GPS1.jpg']['type_piece'], img['GPS1.jpg']['point']), ('PPA', 'GPS1'))
+        # Sans colonne ID, la clé du point est son nom (règle de la page des photos).
+        self.assertEqual(img['GPS1.jpg']['point_ref'], 'GPS1')
         self.assertEqual((img['MEKOUSSA.jpg']['type_piece'], img['MEKOUSSA.jpg']['point']), ('PPN', 'MEKOUSSA'))
         self.assertEqual(img['inconnu.jpg']['point'], '')
         self.assertEqual(set(img['inconnu.jpg']['candidats']), {'PPA', 'PPN'})
         self.assertEqual(img['canevas.png']['type_piece'], 'CCSPA')     # seul canevas d'un PDC
         self.assertEqual(img['page.png']['type_piece'], 'RDC')
         self.assertEqual(img['stabilite.png']['type_piece'], 'CCSPA')   # mot-clé du nom
-        self.assertIn('GPS1', d['points']['PPA'])
+        self.assertIn({'nom': 'GPS1', 'cle': 'GPS1'}, d['points']['PPA'])
+
+    def test_photo_rattachee_a_l_id_de_la_ligne(self):
+        # Avec une colonne ID (cas réel), la photo « 8 » porte l'ID de SA ligne (« 1 ») — et
+        # non « 8 », qui désignerait la 8e ligne, un autre point.
+        csv = SimpleUploadedFile('data-rapport-photos-points-anciens.csv', (
+            'ID,Nom Point,X(m),Y(m),Date Visite,Système Projection,Zone Projection,Fichier Image\n'
+            '1,8,1,2,07/04/2023,Lambert,Zone I,8.jpg\n8,BT10,1,2,07/04/2023,Lambert,Zone I,BT10.jpg\n').encode())
+        d = self.plan(csv, image('8.jpg', 'photo'), image('BT10.jpg', 'photo'))
+        ppa = next(i for i in d['plan'] if i['type_piece'] == 'PPA')
+        self.assertEqual(ppa['mapping'].get('id'), 'ID')
+        img = {i['fichier']: i['point_ref'] for i in d['images']}
+        self.assertEqual(img, {'8.jpg': '1', 'BT10.jpg': '8'})
 
     def test_rc_possible(self):
         d = self.plan(csv_de('LPA', 'LPA.csv'), html_ajustement(['A'], ['A']), chemins=['l/LPA.csv', 'l/R 1_files/x.html'])
@@ -248,3 +262,30 @@ class ImportUnitaireTests(WorkflowBaseTest):
         self.assertEqual(r.status_code, 403)
         rdl.refresh_from_db()
         self.assertEqual(rdl.payload, {'rows': [{'id': 1}]})
+
+
+class AssemblageRdiaTests(WorkflowBaseTest):
+    def test_rdia_assemblee_depuis_des_lignes_fournies(self):
+        sources = [{'label': 'Libre', 'rows': [{'nom_point': 'A', 'x_m': '1'}]},
+                   {'label': 'N°1', 'rows': [{'nom_point': 'A', 'x_m': '1', 'sigma_x_m': 'FIXE'}, {'nom_point': 'B', 'x_m': '2'}]}]
+        r = self.client.post('/api/v1/pieces/assemble-rdi/', {'ssdgps': str(self.ssdgps.id), 'commit': '1',
+                                                              'sources': json.dumps(sources)}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        lignes = r.data['payload']['rows']
+        self.assertEqual([(l['determination'], l['nom_point']) for l in lignes], [('Libre', 'A'), ('N°1', 'A'), ('N°1', 'B')])
+        self.assertFalse(Piece.objects.filter(ssdgps=self.ssdgps, type_piece='RDN').exists())
+        # Réassemblage d'une RDIA existante ; refusé sur un dossier figé.
+        rdia = r.data['id']
+        r = self.client.post('/api/v1/pieces/assemble-rdi/', {'piece_id': rdia, 'commit': '1',
+                                                              'sources': json.dumps(sources[1:])}, format='json')
+        self.assertEqual(len(r.data['payload']['rows']), 2)
+        Ssdgps.objects.filter(pk=self.ssdgps.pk).update(statut=Ssdgps.Statut.SOUMIS)
+        r = self.client.post('/api/v1/pieces/assemble-rdi/', {'piece_id': rdia, 'commit': '1',
+                                                              'sources': json.dumps(sources)}, format='json')
+        self.assertEqual(r.status_code, 403)
+
+    def test_sources_invalides_400(self):
+        r = self.client.post('/api/v1/pieces/assemble-rdi/', {'ssdgps': str(self.ssdgps.id), 'commit': '1',
+                                                              'sources': json.dumps([{'label': 'x'}])}, format='json')
+        self.assertEqual(r.status_code, 400)
+

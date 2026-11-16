@@ -71,11 +71,25 @@ class _Levé(WorkflowBaseTest):
                 rep = self.client.post('/api/v1/pieces/import/', corps, format='multipart')
             self.assertIn(rep.status_code, (200, 201), (item['fichier'], rep.data))
             cree.setdefault(item['type_piece'], rep.data['id'])
+        # Comme l'écran : un envoi par (pièce, point), rattaché à la CLÉ du point (`point_ref`).
+        groupes = {}
         for img in [i for i in data['images'] if i['type_piece'] in ('PPA', 'PPN')]:
-            rep = self.client.post(f"/api/v1/pieces/{cree[img['type_piece']]}/images/", {
-                'fichiers': [self.fichier(depot[img['index']][0])], 'point_ref': img['point']}, format='multipart')
+            groupes.setdefault((img['type_piece'], img['point_ref']), []).append(depot[img['index']][0])
+        for (type_, ref), chemins in groupes.items():
+            rep = self.client.post(f"/api/v1/pieces/{cree[type_]}/images/", {
+                'fichiers': [self.fichier(c) for c in chemins], 'point_ref': ref}, format='multipart')
             self.assertIn(rep.status_code, (200, 201), rep.data)
         return cree
+
+    def verifier_photos(self, cree):
+        """Chaque point des PPA / PPN a sa photo, lue COMME la page des photos (clé = ID de la
+        ligne, sinon nom ; `point_ref` doit y être égal)."""
+        for type_ in ('PPA', 'PPN'):
+            piece = Piece.objects.get(pk=cree[type_])
+            refs = set(piece.images.values_list('point_ref', flat=True))
+            for ligne in piece.payload['rows']:
+                cle = str(ligne.get('id') if ligne.get('id') not in (None, '') else ligne.get('nom_point')).strip()
+                self.assertIn(cle, refs, f"{type_} : le point {ligne.get('nom_point')} (clé {cle}) n'a pas de photo")
 
     @staticmethod
     def crees(data):
@@ -107,6 +121,21 @@ class FormatParPieceTests(_Levé):
         cree = self.importer(depot, data)
         self.assertEqual(Piece.objects.filter(ssdgps=self.ssdgps, type_piece='RDN').count(), 10)
         self.assertEqual(Piece.objects.get(pk=cree['PPA']).images.count(), 15)
+        self.verifier_photos(cree)
+
+    def test_determinations_assemblees_en_une_seule_rdia(self):
+        depot, data = self.planifier()
+        # Mode « assemblées » sans fichier RDIA : la libre + les 10 n°k → une seule pièce.
+        libre = next(i for i in data['plan'] if i['type_piece'] == 'RDL' and i['action'] == 'creer')
+        nk = sorted((i for i in data['plan'] if i['type_piece'] == 'RDN' and i['action'] == 'creer'),
+                    key=lambda i: i['numero'])
+        sources = [{'label': 'Libre', 'rows': libre['donnees']}] + [
+            {'label': f"N°{i['numero']}", 'rows': i['donnees']} for i in nk]
+        rep = self.client.post('/api/v1/pieces/assemble-rdi/', {'ssdgps': str(self.ssdgps.id), 'commit': '1',
+                                                                'sources': json.dumps(sources)}, format='json')
+        self.assertEqual(rep.status_code, 201, rep.data)
+        self.assertEqual(len(rep.data['payload']['rows']), 11 * 15)
+        self.assertFalse(Piece.objects.filter(ssdgps=self.ssdgps, type_piece='RDN').exists())
 
 
 @unittest.skipUnless((RACINE / '02-format-n2').is_dir(), "levé d'exemple absent (non versionné)")
@@ -123,7 +152,7 @@ class FormatAPlatTests(_Levé):
         self.assertTrue(all(i['point'] for i in photos))
         self.assertTrue(data['rc_possible'])
         cree = self.importer(depot, data)
-        self.assertEqual(Piece.objects.get(pk=cree['PPA']).images.filter(point_ref='GPS1').count(), 1)
+        self.verifier_photos(cree)
         rep = self.client.post('/api/v1/pieces/compute-rc/', {'ssdgps': str(self.ssdgps.id), 'commit': '1'},
                                format='multipart')
         self.assertEqual(rep.status_code, 201, rep.data)

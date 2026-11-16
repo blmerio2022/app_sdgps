@@ -735,9 +735,22 @@ figé ; NE PERSISTE RIEN) — `pieces/import_masse.py::analyser_lot`, détermini
   contrôle » est écarté avec renvoi à l'option « Générer le rapport de contrôle » ;
 - **PDF** : chaque page est rendue en JPEG dans le navigateur (`PdfRenderService`) avant
   l'analyse, puis classée comme une image ;
-- un `.html` TBC seul ne contient AUCUNE donnée (page-cadre) et le navigateur ne transmet
-  que les fichiers choisis : l'écran le signale et propose « Ajouter les dossiers
-  « _files » » (puis relance l'analyse). Un dossier `_files` seul suffit ;
+- un `.html` TBC seul ne contient AUCUNE donnée (page-cadre) et le navigateur interdit de
+  lire un dossier voisin sans accord : au clic « Analyser », s'il manque des dossiers
+  `<nom>_files`, l'écran ouvre le dialogue d'accès au dossier (API File System Access,
+  `showDirectoryPicker`, positionné sur le dossier du `.html` grâce à la poignée native
+  du fichier — `showOpenFilePicker` / `getAsFileSystemHandle`) puis lit lui-même les
+  dossiers `_files` (`lireDossiersFiles`, 3 niveaux). Navigateur sans cette API ou accès
+  refusé : bandeau « Ajouter les dossiers « _files » ». Un dossier `_files` seul suffit ;
+- **photos → points** : `point_ref` = CLÉ du point dans la pièce, comme la page des photos
+  (`piece-photo-points.pointKey`) : l'ID de la ligne s'il existe, sinon le nom
+  (`import_masse.cle_point`). La colonne ID est donc importée (hors score). ⚠ Un nom en
+  guise d'ID rattachait la photo à une autre ligne ou à aucune ;
+- **déterminations intermédiaires** : choix « séparées » (une RDN par détermination) ou
+  « assemblées » (une seule RDIA) dans le plan. Assemblées sans fichier RDIA fourni : le
+  plan transmet les lignes de la libre et des n°k (`donnees`) et `assemble-rdi` accepte
+  `sources` [{label, rows}] — aucune RDN n'est créée ; RDIA existante réassemblée
+  (`piece_id`, verrou du dossier figé appliqué) ;
 - réponse : `plan`, `images`, `ecartes`, `points` (PPA / PPN), `rc_possible`,
   `rc_existant`, `pieces_existantes` (pièces à images et RC déjà présentes).
 Exécution par le front (`<app-import-masse>`, bouton « Import en masse ») avec les imports

@@ -19,10 +19,12 @@
         <strong>Déposez ici le dossier du levé, ou ses fichiers</strong>
         <span>CSV, Excel (un fichier ou une feuille par pièce), rapports HTML de TBC, PDF, photos des points, canevas,
           pages du rapport de consultation. Les sous-dossiers sont parcourus.</span>
-        <span class="astuce"><i class="fas fa-lightbulb"></i> Pour les rapports TBC, déposez le <strong>dossier</strong> : leurs données sont dans les dossiers « …_files ».</span>
+        <span class="astuce"><i class="fas fa-lightbulb"></i> Rapports TBC : choisissez simplement les fichiers « .html » — leurs dossiers
+          « …_files » sont retrouvés à l'analyse (le navigateur vous demande seulement d'autoriser la lecture du dossier).</span>
         <div class="im-choix">
-          <label class="btn secondaire"><i class="fas fa-file"></i> Choisir des fichiers
-            <input type="file" multiple accept=".csv,.xlsx,.html,.htm,.pdf,image/*" (change)="ajouter($any($event.target).files); $any($event.target).value = ''"></label>
+          <button type="button" class="btn secondaire" (click)="choisirFichiers(champFichiers)"><i class="fas fa-file"></i> Choisir des fichiers</button>
+          <input #champFichiers type="file" multiple hidden accept=".csv,.xlsx,.html,.htm,.pdf,image/*"
+                 (change)="ajouter($any($event.target).files); $any($event.target).value = ''">
           <label class="btn secondaire"><i class="fas fa-folder-open"></i> Choisir un dossier
             <input type="file" webkitdirectory multiple (change)="ajouter($any($event.target).files); $any($event.target).value = ''"></label>
         </div>
@@ -60,6 +62,15 @@
       <p class="im-note" *ngIf="pagesPdf || pdfIllisibles.length">
         <i class="fas fa-file-pdf"></i> {{ pagesPdf }} page(s) de PDF converties en images<span *ngIf="pdfIllisibles.length"> ·
         illisible(s) : {{ pdfIllisibles.join(', ') }}</span>.</p>
+      <div class="im-det" *ngIf="choixDeterminations">
+        <span class="titre"><i class="fas fa-layer-group"></i> Déterminations intermédiaires</span>
+        <label><input type="radio" name="modeDet" value="separees" [(ngModel)]="modeDeterminations" (ngModelChange)="appliquerModeDeterminations()"
+                      [disabled]="!nbDeterminations">
+          <span><strong>Séparées</strong> — une pièce par détermination (RDN n°1…{{ nbDeterminations || 'n' }})</span></label>
+        <label><input type="radio" name="modeDet" value="assemblees" [(ngModel)]="modeDeterminations" (ngModelChange)="appliquerModeDeterminations()">
+          <span><strong>Assemblées</strong> — une seule pièce (RDIA)<ng-container *ngIf="fichierRdia"> depuis le fichier fourni</ng-container><ng-container
+            *ngIf="!fichierRdia && nbDeterminations"> construite à partir des {{ nbDeterminations }} déterminations (+ la libre)</ng-container></span></label>
+      </div>
       <h4><i class="fas fa-file-lines"></i> Pièces ({{ aImporter }} à importer sur {{ plan.length }})</h4>
       <table *ngIf="plan.length">
         <thead><tr><th>Fichier</th><th>Type</th><th>N°</th><th *ngIf="multiSession">Session</th><th>Action</th><th>État</th></tr></thead>
@@ -119,9 +130,9 @@
                 </select>
               </td>
               <td>
-                <select *ngIf="pointsDe(img.type_piece).length" [(ngModel)]="img.point">
+                <select *ngIf="pointsDe(img.type_piece).length" [ngModel]="img.point_ref" (ngModelChange)="changerPointImage(img, $event)">
                   <option value="">— Sans point —</option>
-                  <option *ngFor="let p of pointsDe(img.type_piece)" [value]="p">{{ p }}</option>
+                  <option *ngFor="let p of pointsDe(img.type_piece)" [value]="p.cle">{{ p.nom }}</option>
                 </select>
               </td>
               <td class="ctx">{{ img.raison }}</td>

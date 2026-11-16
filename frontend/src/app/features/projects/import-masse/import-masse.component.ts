@@ -2,7 +2,8 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { Observable, from, of } from 'rxjs';
 import { catchError, concatMap, map, switchMap, toArray } from 'rxjs/operators';
 import {
-  CandidatImport, FichierDepose, ImagePlan, ImportMasseService, LignePlan, PlanImport, lireEntree, utile,
+  CandidatImport, FichierDepose, ImagePlan, ImportMasseService, LignePlan, PlanImport, PointPlan,
+  dossiersFilesManquants, estPageCadre, lireDossiersFiles, lireEntree, utile,
 } from '../../../core/services/import-masse.service';
 import { PiecesService } from '../../../core/services/pieces.service';
 import { PdfRenderService, canvasToJpeg } from '../../../core/services/pdf-render.service';
@@ -50,6 +51,10 @@ export class ImportMasseComponent {
   preparation = '';
   pagesPdf = 0;
   pdfIllisibles: string[] = [];
+  /** Poignée native d'un rapport HTML choisi (ouvre le dialogue de dossier au bon endroit). */
+  poigneeHtml: any = null;
+  /** Déterminations intermédiaires : une pièce par détermination, ou une seule assemblée. */
+  modeDeterminations: 'separees' | 'assemblees' = 'separees';
   erreur = '';
   survol = false;
   progression = 0;
@@ -76,10 +81,29 @@ export class ImportMasseComponent {
     this.ajouterDepots(Array.from(liste).map(f => ({ fichier: f, chemin: (f as any).webkitRelativePath || f.name })));
   }
 
+  /** « Choisir des fichiers » : sélecteur natif quand il existe (il fournit de quoi ouvrir
+   * ensuite le dossier des rapports HTML au bon endroit), sinon le champ fichier classique. */
+  async choisirFichiers(champ: HTMLInputElement): Promise<void> {
+    const w = window as any;
+    if (!w.showOpenFilePicker) { champ.click(); return; }
+    try {
+      const poignees: any[] = await w.showOpenFilePicker({ multiple: true });
+      const fichiers = await Promise.all(poignees.map(p => p.getFile()));
+      poignees.forEach((p, i) => { if (/\.html?$/i.test(fichiers[i].name)) this.poigneeHtml = p; });
+      this.ajouter(fichiers);
+    } catch { /* choix annulé */ }
+  }
+
   async onDrop(ev: DragEvent): Promise<void> {
     ev.preventDefault();
     this.survol = false;
     const items = Array.from(ev.dataTransfer?.items || []);
+    // Poignées natives (lues pendant l'évènement) : elles ouvrent le dossier d'un rapport HTML.
+    const poignees = items.map(i => (i as any).getAsFileSystemHandle?.()).filter(Boolean);
+    Promise.all(poignees).then(ps => {
+      const html = ps.find((p: any) => p?.kind === 'file' && /\.html?$/i.test(p.name));
+      if (html) this.poigneeHtml = html;
+    }).catch(() => {});
     const entrees = items.map(i => (i as any).webkitGetAsEntry?.()).filter(Boolean);
     if (entrees.length) {
       const lus = await Promise.all(entrees.map(e => lireEntree(e)));
@@ -128,11 +152,43 @@ export class ImportMasseComponent {
   analyser(): void {
     if (!this.depots.length) return;
     this.analyse = true; this.erreur = '';
+    const manquants = dossiersFilesManquants(this.depots);
+    if (manquants.size && (window as any).showDirectoryPicker) {
+      // Appelé dans le clic : le navigateur n'ouvre ce dialogue qu'en réponse à un geste.
+      this.recupererDossiersFiles(manquants).then(() => this.preparer());
+    } else {
+      this.preparer();
+    }
+  }
+
+  private preparer(): void {
     if (this.depots.some(d => /\.pdf$/i.test(d.chemin))) {
       this.convertirPdf().then(() => this.lancerAnalyse());
     } else {
       this.lancerAnalyse();
     }
+  }
+
+  /**
+   * Rapports HTML de TBC choisis sans leur dossier « _files » : le navigateur interdit à une
+   * page d'ouvrir un dossier voisin d'un fichier sans l'accord de l'utilisateur. On ouvre donc
+   * le dialogue d'accès au dossier, positionné sur celui du rapport ; un clic suffit, puis les
+   * dossiers « _files » sont lus automatiquement.
+   */
+  async recupererDossiersFiles(manquants: Map<string, Set<string>>): Promise<void> {
+    const cadres = this.depots.filter(d => /\.html?$/i.test(d.chemin) && !/_files\//i.test(d.chemin));
+    const verifies = await Promise.all(cadres.map(d => estPageCadre(d.fichier)));
+    if (!verifies.some(Boolean)) return;                 // rapports HTML autonomes : rien à chercher
+    this.preparation = 'Autorisez la lecture du dossier des rapports HTML…';
+    try {
+      const options: any = { id: 'sdgps-import-masse', mode: 'read' };
+      if (this.poigneeHtml) options.startIn = this.poigneeHtml;
+      const dossier = await (window as any).showDirectoryPicker(options);
+      for (const [prefixe, noms] of manquants) {
+        this.ajouterDepots(await lireDossiersFiles(dossier, noms, prefixe));
+      }
+    } catch { /* accès refusé ou annulé : le plan signalera les pages-cadres */ }
+    this.preparation = '';
   }
 
   private lancerAnalyse(): void {
@@ -144,6 +200,11 @@ export class ImportMasseComponent {
         this.genererRc = p.rc_possible;
         this.sessionParLigne = {};
         this.plan.forEach((_, i) => (this.sessionParLigne[i] = null));
+        // Action proposée par le serveur, gardée pour pouvoir changer de mode de déterminations.
+        this.plan.forEach(l => ((l as any)._propose = l.action));
+        this.modeDeterminations = this.plan.some(l => l.type_piece === 'RDN' && l.action !== 'ignorer') ? 'separees'
+          : (this.plan.some(l => l.type_piece === 'RDIA') ? 'assemblees' : 'separees');
+        this.appliquerModeDeterminations();
         this.analyse = false; this.etape = 'plan';
       },
       error: e => { this.analyse = false; this.erreur = e?.error?.detail || 'Analyse des fichiers impossible.'; },
@@ -185,18 +246,58 @@ export class ImportMasseComponent {
     return '';
   }
 
-  pointsDe(type: string | null): string[] {
+  // ---- déterminations intermédiaires : séparées (RDN n°k) ou assemblées (une RDIA) ----
+  /** Le choix n'a de sens que si le lot contient des déterminations (n°k ou assemblées). */
+  get choixDeterminations(): boolean {
+    return this.plan.some(l => (l.type_piece === 'RDN' || l.type_piece === 'RDIA') && !l.doublon);
+  }
+  get nbDeterminations(): number {
+    return this.plan.filter(l => l.type_piece === 'RDN' && !l.doublon && (l as any)._propose !== 'ignorer').length;
+  }
+  get fichierRdia(): LignePlan | undefined {
+    return this.plan.find(l => l.type_piece === 'RDIA' && !l.doublon && (l as any)._propose !== 'ignorer');
+  }
+
+  appliquerModeDeterminations(): void {
+    for (const l of this.plan) {
+      const propose = (l as any)._propose ?? l.action;
+      if (l.doublon || propose === 'ignorer') continue;
+      if (l.type_piece === 'RDN') l.action = this.modeDeterminations === 'separees' ? propose : 'ignorer';
+      if (l.type_piece === 'RDIA') l.action = this.modeDeterminations === 'assemblees' ? propose : 'ignorer';
+    }
+  }
+
+  /** Assemblée sans fichier RDIA fourni : l'application assemble la libre + les n°k. */
+  get assemblerDepuisDeterminations(): boolean {
+    return this.modeDeterminations === 'assemblees' && !this.fichierRdia && this.nbDeterminations > 0;
+  }
+
+  sourcesAssemblage(): { label: string; rows: any[] }[] {
+    const libre = this.plan.find(l => l.type_piece === 'RDL' && !l.doublon && l.donnees?.length);
+    const nk = this.plan.filter(l => l.type_piece === 'RDN' && !l.doublon && (l as any)._propose !== 'ignorer' && l.donnees?.length)
+      .sort((a, b) => (a.numero || 0) - (b.numero || 0));
+    return [...(libre ? [{ label: 'Libre', rows: libre.donnees! }] : []),
+            ...nk.map(l => ({ label: `N°${l.numero}`, rows: l.donnees! }))];
+  }
+
+  // ---- images ----
+  pointsDe(type: string | null): PointPlan[] {
     return (type === 'PPA' || type === 'PPN') ? (this.reponse?.points[type] || []) : [];
   }
 
   changerTypeImage(img: ImagePlan, type: string | null): void {
     img.type_piece = type;
-    if (!this.pointsDe(type).includes(img.point)) img.point = '';
+    if (!this.pointsDe(type).some(p => p.cle === img.point_ref)) { img.point = ''; img.point_ref = ''; }
+  }
+
+  changerPointImage(img: ImagePlan, cle: string): void {
+    img.point_ref = cle;
+    img.point = this.pointsDe(img.type_piece).find(p => p.cle === cle)?.nom || '';
   }
 
   get imagesRetenues(): ImagePlan[] { return this.images.filter(i => !!i.type_piece); }
   get imagesSansPoint(): number {
-    return this.imagesRetenues.filter(i => (i.type_piece === 'PPA' || i.type_piece === 'PPN') && !i.point).length;
+    return this.imagesRetenues.filter(i => (i.type_piece === 'PPA' || i.type_piece === 'PPN') && !i.point_ref).length;
   }
   get aImporter(): number { return this.plan.filter(l => l.action !== 'ignorer').length; }
   get pret(): boolean {
@@ -214,7 +315,8 @@ export class ImportMasseComponent {
     const travaux = this.plan.map((l, i) => ({ l, i, f: this.depots[l.index]?.fichier }))
       .filter(t => t.l.action !== 'ignorer' && t.f);
     const groupes = this.groupesImages();
-    const total = travaux.length + groupes.length + (this.genererRc ? 1 : 0);
+    const assembler = this.assemblerDepuisDeterminations;
+    const total = travaux.length + groupes.length + (this.genererRc ? 1 : 0) + (assembler ? 1 : 0);
     const avancer = (r: Resultat) => {
       this.resultats.push(r);
       this.progression = Math.round(100 * this.resultats.length / Math.max(1, total));
@@ -234,36 +336,49 @@ export class ImportMasseComponent {
     }));
 
     const etapeImages$ = from(groupes).pipe(concatMap(g => this.cible(g.type, creees).pipe(
-      switchMap(id => this.pieces.addImages(id, g.fichiers, g.point || undefined)),
+      switchMap(id => this.pieces.addImages(id, g.fichiers, g.pointRef || undefined)),
       map(() => ({ fichier: `${g.fichiers.length} image(s)`, ok: true,
                    detail: `${g.type}${g.point ? ' · point ' + g.point : ''}` })),
       catchError(e => of({ fichier: `${g.fichiers.length} image(s) ${g.type}`, ok: false, detail: this.messageErreur(e) })),
     )));
 
+    // Déterminations « assemblées » : une seule RDIA, remplacée si elle existe déjà.
+    const etapeRdia$: Observable<Resultat> = assembler
+      ? this.service.assemblerRdia(this.ssdgpsId, this.sourcesAssemblage(), this.reponse.pieces_existantes['RDIA']).pipe(
+          map(() => ({ fichier: 'Déterminations intermédiaires', ok: true,
+                       detail: `RDIA assemblée (${this.sourcesAssemblage().length} détermination(s))` })),
+          catchError(e => of({ fichier: 'Déterminations intermédiaires', ok: false, detail: this.messageErreur(e) })))
+      : from([] as Resultat[]);
+
     const etapeRc$ = this.genererRc ? this.rapportDeControle() : from([] as Resultat[]);
 
     etapePieces$.pipe(toArray()).subscribe(r1 => {
       r1.forEach(avancer);
-      etapeImages$.pipe(toArray()).subscribe(r2 => {
-        r2.forEach(avancer);
-        etapeRc$.pipe(toArray()).subscribe(r3 => {
-          r3.forEach(avancer);
-          this.etape = 'fin';
-          this.termine.emit(this.reussis);
+      etapeRdia$.pipe(toArray()).subscribe(r0 => {
+        r0.forEach(avancer);
+        etapeImages$.pipe(toArray()).subscribe(r2 => {
+          r2.forEach(avancer);
+          etapeRc$.pipe(toArray()).subscribe(r3 => {
+            r3.forEach(avancer);
+            this.etape = 'fin';
+            this.termine.emit(this.reussis);
+          });
         });
       });
     });
   }
 
   /** Images regroupées par pièce et par point (un envoi par groupe). */
-  groupesImages(): { type: string; point: string; fichiers: File[] }[] {
-    const groupes = new Map<string, { type: string; point: string; fichiers: File[] }>();
+  groupesImages(): { type: string; point: string; pointRef: string; fichiers: File[] }[] {
+    const groupes = new Map<string, { type: string; point: string; pointRef: string; fichiers: File[] }>();
     for (const img of this.imagesRetenues) {
       const f = this.depots[img.index]?.fichier;
       if (!f) continue;
-      const point = (img.type_piece === 'PPA' || img.type_piece === 'PPN') ? img.point : '';
-      const cle = `${img.type_piece}|${point}`;
-      if (!groupes.has(cle)) groupes.set(cle, { type: img.type_piece!, point, fichiers: [] });
+      const photo = img.type_piece === 'PPA' || img.type_piece === 'PPN';
+      // `point_ref` = clé du point dans la pièce (ID de ligne) : c'est elle que lit la page des photos.
+      const pointRef = photo ? (img.point_ref || '') : '';
+      const cle = `${img.type_piece}|${pointRef}`;
+      if (!groupes.has(cle)) groupes.set(cle, { type: img.type_piece!, point: photo ? img.point : '', pointRef, fichiers: [] });
       groupes.get(cle)!.fichiers.push(f);
     }
     return Array.from(groupes.values());

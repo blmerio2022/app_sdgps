@@ -2,14 +2,14 @@ import { TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { of, throwError } from 'rxjs';
 import { ImportMasseComponent } from './import-masse.component';
-import { ImportMasseService, lireEntree, utile } from '../../../core/services/import-masse.service';
+import { ImportMasseService, dossiersFilesManquants, lireDossiersFiles, lireEntree, utile } from '../../../core/services/import-masse.service';
 import { environment } from '../../../../environments/environment';
 
 const C = (type: string, over: any = {}): any => ({ type_piece: type, libelle: type, score: 1, champs_reconnus: 5, champs_total: 5,
   nom_reconnu: false, repetable: false, niveau: 'ssdgps', mapping: { a: 'A' }, numero_nom: null, ...over });
 const L = (over: any = {}): any => ({ index: 0, fichier: 'l/LPA.csv', mode: 'tableau', lisible: true, colonnes: ['A'], lignes: 3,
   candidats: [C('LPA')], type_piece: 'LPA', mapping: { a: 'A' }, numero: null, piece_existante: null, action: 'creer', ...over });
-const IMG = (index: number, type: string | null, point = ''): any => ({ index, fichier: `l/${index}.jpg`, nature_image: 'photo',
+const IMG = (index: number, type: string | null, point = '', ref = point ? '1' : ''): any => ({ index, fichier: `l/${index}.jpg`, nature_image: 'photo', point_ref: ref,
   type_piece: type, point, raison: '' });
 
 describe('ImportMasseService', () => {
@@ -61,7 +61,7 @@ describe('ImportMasseComponent', () => {
         L(), L({ index: 1, fichier: 'l/R 2_files/x.html', mode: 'html', nom_rapport: 'R 2', type_piece: 'RDN', numero: 2,
                  candidats: [C('RDN', { repetable: true, niveau: 'session' }), C('RDD')], mapping: {} })],
         images: [IMG(2, 'PPA', 'GPS1'), IMG(3, 'PPA', 'GPS1'), { ...IMG(4, 'CCSPA'), nature_image: 'plan' }, IMG(5, null)],
-        ecartes: [{ fichier: 'l/R 2.html', raison: 'Page-cadre' }], points: { PPA: ['GPS1', 'BT10'], PPN: ['S9'] },
+        ecartes: [{ fichier: 'l/R 2.html', raison: 'Page-cadre' }], points: { PPA: [{ nom: 'GPS1', cle: '1' }, { nom: 'BT10', cle: '2' }], PPN: [{ nom: 'S9', cle: '1' }] },
         rc_possible: true, rc_existant: false, pieces_existantes: { CCSPA: 'can1' } })),
       importer: jasmine.createSpy('importer').and.returnValue(of({ id: 'lpa1' })),
       importerHtml: jasmine.createSpy('importerHtml').and.returnValue(of({ id: 'rdn2' })),
@@ -100,7 +100,10 @@ describe('ImportMasseComponent', () => {
     expect(cmp.genererRc).toBeTrue();
     expect(cmp.imagesRetenues.length).toBe(3);
     cmp.changerTypeImage(cmp.images[3], 'PPN');
-    expect(cmp.pointsDe('PPN')).toEqual(['S9']);
+    expect(cmp.pointsDe('PPN')).toEqual([{ nom: 'S9', cle: '1' }]);
+    cmp.changerPointImage(cmp.images[3], '1');
+    expect(cmp.images[3].point).toBe('S9');
+    cmp.changerPointImage(cmp.images[3], '');
     expect(cmp.imagesSansPoint).toBe(1);
     expect(cmp.pret).toBeTrue();
   });
@@ -112,9 +115,9 @@ describe('ImportMasseComponent', () => {
     cmp.importer();
     expect(svc.importer).toHaveBeenCalledWith('s1', csv, cmp.plan[0], null);
     expect(svc.importerHtml).toHaveBeenCalledWith('s1', html, cmp.plan[1], null);
-    // Photos de GPS1 : un seul envoi, dans une pièce PPA créée pour l'occasion.
+    // Photos de GPS1 : un seul envoi, rattaché à la CLÉ du point (ID de ligne « 1 »), pas à son nom.
     expect(pieces.createImagePiece).toHaveBeenCalledWith('PPA', { ssdgps: 's1' });
-    expect(pieces.addImages).toHaveBeenCalledWith('ppa1', [photo, photo2], 'GPS1');
+    expect(pieces.addImages).toHaveBeenCalledWith('ppa1', [photo, photo2], '1');
     // Canevas : ajouté à la pièce CCSPA existante.
     expect(pieces.addImages).toHaveBeenCalledWith('can1', [canevas], undefined);
     expect(pieces.confirmComputeRc).toHaveBeenCalled();
@@ -164,5 +167,42 @@ describe('ImportMasseComponent', () => {
     cmp.ajouterDossiersManquants([dossier] as any);
     expect(cmp.depots.some(d => d.chemin === 'Rapport 1_files/x.html')).toBeTrue();
     expect(svc.plan).toHaveBeenCalledTimes(2);
+  });
+
+  it('déterminations : séparées par défaut, assemblées → une seule RDIA construite, sans RDN', () => {
+    deposer();
+    svc.assemblerRdia = jasmine.createSpy('assembler').and.returnValue(of({ id: 'rdia1' }));
+    svc.plan.and.returnValue(of({ plan: [
+        L({ index: 1, mode: 'html', type_piece: 'RDL', candidats: [C('RDL')], mapping: {}, donnees: [{ nom_point: 'A' }] }),
+        L({ index: 1, mode: 'html', type_piece: 'RDN', numero: 2, candidats: [C('RDN', { repetable: true })], mapping: {}, donnees: [{ nom_point: 'B' }] }),
+        L({ index: 1, mode: 'html', type_piece: 'RDN', numero: 1, candidats: [C('RDN', { repetable: true })], mapping: {}, donnees: [{ nom_point: 'C' }] })],
+      images: [], ecartes: [], points: { PPA: [], PPN: [] }, rc_possible: false, rc_existant: false, pieces_existantes: {} }));
+    cmp.analyser();
+    expect(cmp.choixDeterminations).toBeTrue();
+    expect(cmp.modeDeterminations).toBe('separees');
+    expect(cmp.aImporter).toBe(3);
+    cmp.modeDeterminations = 'assemblees';
+    cmp.appliquerModeDeterminations();
+    expect(cmp.aImporter).toBe(1);                        // la RDL seule ; les n°k partent dans la RDIA
+    expect(cmp.sourcesAssemblage().map(s => s.label)).toEqual(['Libre', 'N°1', 'N°2']);
+    cmp.importer();
+    expect(svc.importerHtml).toHaveBeenCalledTimes(1);
+    expect(svc.assemblerRdia).toHaveBeenCalledWith('s1', cmp.sourcesAssemblage(), undefined);
+    cmp.modeDeterminations = 'separees';
+    cmp.appliquerModeDeterminations();
+    expect(cmp.aImporter).toBe(3);
+  });
+
+  it('dossiers _files : manquants détectés, puis lus dans le dossier autorisé', async () => {
+    const f = (nom: string, chemin: string) => ({ fichier: new File(['x'], nom), chemin });
+    const manquants = dossiersFilesManquants([f('Rapport 1.html', 'levé/Rapport 1.html'), f('Rapport 2.html', 'levé/Rapport 2.html'),
+                                              f('x.html', 'levé/Rapport 2_files/x.html'), f('a.csv', 'levé/a.csv')]);
+    expect(Array.from(manquants.entries()).map(([d, n]) => [d, Array.from(n)])).toEqual([['levé/', ['Rapport 1']]]);
+    const fichier = (nom: string) => ({ kind: 'file', getFile: () => Promise.resolve(new File(['y'], nom)) });
+    const iter = (entrees: [string, any][]) => ({ entries: async function* () { yield* entrees; } });
+    const racine = iter([['Rapport 1_files', { kind: 'directory', ...iter([['abc.html', fichier('abc.html')]]) }],
+                         ['autre', { kind: 'directory', ...iter([]) }], ['Rapport 1.html', fichier('Rapport 1.html')]]);
+    const lus = await lireDossiersFiles(racine, new Set(['Rapport 1']), 'levé/');
+    expect(lus.map(d => d.chemin)).toEqual(['levé/Rapport 1_files/abc.html']);
   });
 });

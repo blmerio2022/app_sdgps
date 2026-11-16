@@ -167,6 +167,13 @@ def evaluer_type(code, columns, contexte, custom_map=None, mots=None):
     part_champs = len(mapping) / len(champs)
     part_colonnes = len(mapping) / max(1, len([c for c in columns if str(c).strip()]))
     score = (2 * part_champs * part_colonnes / (part_champs + part_colonnes)) if mapping else 0.0
+    # La colonne « ID » ne compte pas dans le score (tous les types en ont une) mais est
+    # importée, comme à l'import unitaire : la page des photos rattache par l'ID de la ligne.
+    if mapping:
+        ident = [c for c in effective_champs(code, custom_map) if c.get('name') == 'id']
+        if ident:
+            mapping.update({k: v for k, v in correspondance(
+                [c for c in columns if c not in mapping.values()], ident).items()})
     dans_nom, numero = _code_dans_nom(os.path.basename(contexte or ''), code)
     numero = numero or numero_dans_nom(os.path.basename(contexte or ''))
     if dans_nom:
@@ -175,7 +182,7 @@ def evaluer_type(code, columns, contexte, custom_map=None, mots=None):
     if mot and mapping:
         score += BONUS_MOT
     return {'type_piece': code, 'score': round(min(score, 1.9), 3), 'mapping': mapping,
-            'champs_reconnus': len(mapping), 'champs_total': len(champs),
+            'champs_reconnus': len([k for k in mapping if k != 'id']), 'champs_total': len(champs),
             'nom_reconnu': dans_nom or mot, 'numero_nom': numero}
 
 
@@ -316,7 +323,7 @@ def analyser_html(fichier, nature, chemin):
         return {**base, 'lisible': True, 'lignes': len(rows), 'type_piece': None, 'candidats': candidats,
                 'raison': f'{raison}, mais ce type ne s’applique pas à un {nature}.'}
     return {**base, 'lisible': True, 'lignes': len(rows), 'type_piece': type_, 'candidats': candidats,
-            'confiance': 1.0, 'raison': raison,
+            'confiance': 1.0, 'raison': raison, '_det_rows': rows,
             'numero': _nombre_final(nom) if type_ == 'RDN' else None}
 
 
@@ -349,16 +356,16 @@ def analyser_image(fichier, nature, chemin, points):
     """`points` : {nom normalisé: (type PPA|PPN, nom du point)}."""
     nom = os.path.basename(chemin or getattr(fichier, 'name', '') or '')
     base_nom = _norm(re.sub(r'\.[^.]+$', '', nom))
-    item = {'fichier': chemin, 'mode': 'image', 'point': '', 'type_piece': None, 'raison': ''}
+    item = {'fichier': chemin, 'mode': 'image', 'point': '', 'point_ref': '', 'type_piece': None, 'raison': ''}
     sorte = nature_image(fichier)
     item['nature_image'] = sorte
     mots = {t for t in mots_cles_trouves(_contexte(chemin)) if t in TYPES_IMAGES}
     applicables = [t for t in TYPES_IMAGES if natures_applicable(t, nature)]
 
     if base_nom in points:
-        t, point = points[base_nom]
+        t, point, cle = points[base_nom]
         if natures_applicable(t, nature):
-            item.update(type_piece=t, point=point, raison=f'Nom du fichier = point « {point} »')
+            item.update(type_piece=t, point=point, point_ref=cle, raison=f'Nom du fichier = point « {point} »')
             return item
     choix = [t for t in mots if t in applicables]
     if len(choix) == 1:
@@ -400,34 +407,62 @@ def _dans_dossier_files(chemin):
     return any(p.lower().endswith('_files') for p in re.split(r'[\\/]', chemin or '')[:-1])
 
 
+def lignes_mappees(item):
+    """Lignes d'un tableau analysé, en dicts {champ cible: valeur} (via sa correspondance)."""
+    mapping = item.get('mapping') or {}
+    colonnes = item.get('colonnes') or []
+    index = {champ: colonnes.index(col) for champ, col in mapping.items() if col in colonnes}
+    return [{champ: (str(r[i]).strip() if i < len(r) and r[i] is not None else '') for champ, i in index.items()}
+            for r in item.get('_rows') or []]
+
+
+def cle_point(ligne):
+    """Clé d'un point, COMME la page des photos : l'ID de la ligne s'il existe, sinon le nom.
+    C'est cette clé que porte `point_ref` ; un nom à la place d'un ID rattachait la photo à
+    une autre ligne (le point « 8 » sous la ligne d'ID 8) ou à aucune."""
+    ident = ligne.get('id')
+    return str(ident).strip() if ident not in (None, '') else str(ligne.get('nom_point') or '').strip()
+
+
+def _sans_extension(nom):
+    return os.path.splitext(str(nom or ''))[0]
+
+
 def points_connus(ssdgps, plan):
-    """{nom normalisé: (type, nom)} des PPA / PPN (fichier image et nom), puis de la LPA."""
+    """{nom normalisé: (type, nom, clé)} des points des PPA / PPN (par nom et par fichier
+    image), puis des points de la LPA (photo de point ancien sans ligne PPA : clé = nom)."""
     from .models import Piece
 
     points, noms_lpa = {}, set()
+
+    def inscrire(type_, ligne, ecraser):
+        nom = str(ligne.get('nom_point') or '').strip()
+        if not nom:
+            return
+        entree = (type_, nom, cle_point(ligne))
+        for cle in (nom, _sans_extension(ligne.get('fichier_image'))):
+            if cle and (ecraser or _norm(cle) not in points):
+                points[_norm(cle)] = entree
+
+    # Pièces déjà en base d'abord, puis celles du lot (prioritaires : elles seront créées).
     for p in Piece.objects.filter(ssdgps=ssdgps, is_deleted=False, type_piece__in=('PPA', 'PPN', 'LPA')):
         for r in (p.payload or {}).get('rows') or []:
             if not isinstance(r, dict):
                 continue
             if p.type_piece == 'LPA':
                 noms_lpa.add(_norm(r.get('nom_point')))
-                continue
-            for cle in (r.get('fichier_image'), r.get('nom_point')):
-                if cle:
-                    points.setdefault(_norm(re.sub(r'\.[^.]+$', '', str(cle))), (p.type_piece, r.get('nom_point') or cle))
+            else:
+                inscrire(p.type_piece, r, ecraser=False)
     for item in plan:
-        if item.get('type_piece') == 'LPA':
-            noms_lpa |= {_norm(n) for n in _valeurs(item, 'nom_point')}
+        if item.get('type_piece') == 'LPA' and item.get('mode') == 'tableau':
+            noms_lpa |= {_norm(r.get('nom_point')) for r in lignes_mappees(item)}
     for item in plan:
-        if item.get('type_piece') in ('PPA', 'PPN'):
-            noms = _valeurs(item, 'nom_point')
-            fichiers = _valeurs(item, 'fichier_image')
-            for i, n in enumerate(noms):
-                points[_norm(n)] = (item['type_piece'], n)
-                if i < len(fichiers):
-                    points[_norm(re.sub(r'\.[^.]+$', '', fichiers[i]))] = (item['type_piece'], n)
+        if item.get('type_piece') in ('PPA', 'PPN') and item.get('mode') == 'tableau' and item.get('action', 'creer') != 'ignorer':
+            for r in lignes_mappees(item):
+                inscrire(item['type_piece'], r, ecraser=True)
     for n in noms_lpa:
-        points.setdefault(n, ('PPA', n))
+        if n and n not in points:
+            points[n] = ('PPA', n, n)
     return points, noms_lpa
 
 
@@ -498,13 +533,19 @@ def analyser_lot(fichiers, chemins, ssdgps, custom_map=None):
 
     completer_plan(plan, ssdgps)
     for item in plan:
+        # Lignes des déterminations (libre, n°k) : de quoi assembler une RDIA sans créer les
+        # pièces séparées, si l'opérateur choisit « assemblées ».
+        if item.get('type_piece') in ('RDL', 'RDN'):
+            item['donnees'] = item.get('_det_rows') or lignes_mappees(item)
+        item.pop('_det_rows', None)
         item.pop('_rows', None)
     # Affichage : tableaux, puis rapports dans l'ordre du dossier (RFB, RDL, RDN n°1…n, RDD).
     rang = {'RFB': 0, 'RDL': 1, 'RDN': 2, 'RDD': 3}
     plan.sort(key=lambda i: (i.get('mode') != 'tableau', rang.get(i.get('type_piece'), 9),
                              i.get('numero') or 0, i.get('action') == 'ignorer'))
-    noms_points = {'PPA': sorted({v[1] for v in points.values() if v[0] == 'PPA'}),
-                   'PPN': sorted({v[1] for v in points.values() if v[0] == 'PPN'})}
+    # Points proposés à l'opérateur pour une photo non rattachée : nom affiché + clé.
+    noms_points = {t: sorted(({'nom': v[1], 'cle': v[2]} for v in set(points.values()) if v[0] == t),
+                             key=lambda p: p['nom'].lower()) for t in ('PPA', 'PPN')}
     types_apres = {i['type_piece'] for i in plan if i.get('action') != 'ignorer' and i.get('type_piece')}
     from .models import Piece
     vivantes = list(Piece.objects.filter(ssdgps=ssdgps, is_deleted=False).order_by('ordre')
@@ -513,7 +554,7 @@ def analyser_lot(fichiers, chemins, ssdgps, custom_map=None):
     # Pièces à images et RC déjà présentes : les images s'y ajoutent, le RC est recalculé.
     pieces_existantes = {}
     for t, pk in vivantes:
-        if t in TYPES_IMAGES + ('RC',):
+        if t in TYPES_IMAGES + ('RC', 'RDIA'):
             pieces_existantes.setdefault(t, str(pk))
     tous = types_apres | existants
     return {

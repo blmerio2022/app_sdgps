@@ -1256,6 +1256,8 @@ class PieceViewSet(viewsets.ModelViewSet):
             target = self._org_scoped_queryset().filter(pk=piece_id, is_deleted=False).first()
             if target is None:
                 return Response({'detail': 'Pièce introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+            # Hors `get_object()` : verrou du dossier figé posé ici.
+            self._check_modifiable(target.ssdgps)
             ssdgps_id = str(target.ssdgps_id)
             session_id = str(target.session_id) if target.session_id else None
         else:
@@ -1286,13 +1288,26 @@ class PieceViewSet(viewsets.ModelViewSet):
             ordered = (list(scope.filter(type_piece='RDL').order_by('ordre'))
                        + list(scope.filter(type_piece='RDN').order_by('numero', 'ordre')))
 
-        if not ordered:
+        # `sources` : déterminations fournies DIRECTEMENT ({label, rows}, dans l'ordre) — import
+        # en masse en mode « assemblées » : une seule RDIA, sans pièces RDL / RDN séparées.
+        directes = request.data.get('sources')
+        if directes:
+            try:
+                directes = json.loads(directes) if isinstance(directes, str) else directes
+            except (json.JSONDecodeError, TypeError):
+                directes = None
+            if not isinstance(directes, list) or not all(
+                    isinstance(d, dict) and isinstance(d.get('rows'), list) for d in directes):
+                return Response({'detail': '« sources » : liste de {label, rows} attendue.'}, status=400)
+            ordered = []
+            sources = [{'label': str(d.get('label') or ''), 'rows': d['rows']} for d in directes]
+        elif not ordered:
             return Response({'detail': (
                 'Aucune détermination (RDL / RDNₖ) trouvée dans ce SSDGPS/session : '
                 'ajoutez-en avant d\'assembler.')}, status=400)
-
-        sources = [{'label': self._det_label(p), 'rows': (p.payload or {}).get('rows') or []}
-                   for p in ordered]
+        else:
+            sources = [{'label': self._det_label(p), 'rows': (p.payload or {}).get('rows') or []}
+                       for p in ordered]
         rows = assemble_determinations(sources)
         if not rows:
             return Response(
