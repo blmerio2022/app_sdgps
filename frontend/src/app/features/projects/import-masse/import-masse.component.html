@@ -14,39 +14,54 @@
 
     <!-- 1. Dépôt -->
     <section class="im-corps" *ngIf="etape === 'depot'">
-      <label class="im-zone" [class.survol]="survol" (drop)="onDrop($event)" (dragover)="onDragOver($event)" (dragleave)="survol = false">
+      <div class="im-zone" [class.survol]="survol" (drop)="onDrop($event)" (dragover)="onDragOver($event)" (dragleave)="survol = false">
         <i class="fas fa-cloud-arrow-up"></i>
-        <strong>Déposez ici tous les fichiers du levé</strong>
-        <span>CSV ou Excel (.xlsx) — le type de chaque pièce est reconnu d'après ses colonnes et son nom.</span>
-        <input type="file" multiple accept=".csv,.xlsx" (change)="ajouter($any($event.target).files); $any($event.target).value = ''">
-      </label>
-      <ul class="im-fichiers" *ngIf="fichiers.length">
-        <li *ngFor="let f of fichiers; let i = index">
-          <i class="fas fa-file-csv"></i> <span class="nom">{{ f.name }}</span>
-          <span class="taille">{{ (f.size / 1024) | number:'1.0-0' }} Ko</span>
+        <strong>Déposez ici le dossier du levé, ou ses fichiers</strong>
+        <span>CSV, Excel (une pièce par feuille), rapports HTML de TBC, photos des points, canevas, pages du rapport de consultation.</span>
+        <span class="astuce"><i class="fas fa-lightbulb"></i> Pour les rapports TBC, déposez le <strong>dossier</strong> : leurs données sont dans les dossiers « …_files ».</span>
+        <div class="im-choix">
+          <label class="btn secondaire"><i class="fas fa-file"></i> Choisir des fichiers
+            <input type="file" multiple accept=".csv,.xlsx,.html,.htm,image/*" (change)="ajouter($any($event.target).files); $any($event.target).value = ''"></label>
+          <label class="btn secondaire"><i class="fas fa-folder-open"></i> Choisir un dossier
+            <input type="file" webkitdirectory multiple (change)="ajouter($any($event.target).files); $any($event.target).value = ''"></label>
+        </div>
+      </div>
+      <div class="im-resume" *ngIf="depots.length">
+        <span><i class="fas fa-table"></i> {{ resumeDepot.tableaux }} tableau(x)</span>
+        <span><i class="fas fa-file-code"></i> {{ resumeDepot.html }} fichier(s) HTML</span>
+        <span><i class="fas fa-image"></i> {{ resumeDepot.images }} image(s)</span>
+        <span *ngIf="ignoresAuDepot" class="ign">{{ ignoresAuDepot }} autre(s) fichier(s) ignoré(s)</span>
+        <span class="spacer"></span>
+        <button type="button" class="lien" (click)="vider()">Tout retirer</button>
+      </div>
+      <ul class="im-fichiers" *ngIf="depots.length && depots.length <= 40">
+        <li *ngFor="let d of depots; let i = index">
+          <i class="fas fa-file"></i> <span class="nom">{{ d.chemin }}</span>
+          <span class="taille">{{ (d.fichier.size / 1024) | number:'1.0-0' }} Ko</span>
           <button type="button" (click)="retirer(i)" title="Retirer"><i class="fas fa-xmark"></i></button>
         </li>
       </ul>
-      <p class="im-note"><i class="fas fa-circle-info"></i> Les photos, croquis et PDF s'importent toujours pièce par pièce (assistant d'ajout).</p>
     </section>
 
     <!-- 2. Plan -->
-    <section class="im-corps im-plan" *ngIf="etape === 'plan'">
-      <table>
-        <thead><tr><th>Fichier</th><th>Type proposé</th><th>N°</th><th *ngIf="multiSession">Session</th><th>Action</th><th>État</th></tr></thead>
+    <section class="im-corps im-plan" *ngIf="etape === 'plan' && reponse">
+      <h4><i class="fas fa-file-lines"></i> Pièces ({{ aImporter }} à importer sur {{ plan.length }})</h4>
+      <table *ngIf="plan.length">
+        <thead><tr><th>Fichier</th><th>Type</th><th>N°</th><th *ngIf="multiSession">Session</th><th>Action</th><th>État</th></tr></thead>
         <tbody>
           <tr *ngFor="let l of plan; let i = index" [class.ignore]="l.action === 'ignorer'">
             <td>
-              <span class="nom">{{ l.fichier }}</span>
-              <span class="ctx" *ngIf="l.lisible">{{ l.lignes }} ligne(s), {{ l.colonnes.length }} colonne(s)</span>
-              <span class="ctx err" *ngIf="!l.lisible">{{ l.erreur }}</span>
+              <span class="nom"><i class="fas" [ngClass]="icone(l)"></i> {{ l.mode === 'html' ? l.nom_rapport : l.fichier }}</span>
+              <span class="ctx" *ngIf="l.lisible">{{ l.lignes }} ligne(s)<span *ngIf="l.feuille"> · feuille « {{ l.feuille }} »</span></span>
+              <span class="ctx" *ngIf="l.raison">{{ l.raison }}</span>
+              <span class="ctx err" *ngIf="!l.lisible && l.erreur">{{ l.erreur }}</span>
             </td>
             <td>
               <select [ngModel]="l.type_piece" (ngModelChange)="changerType(l, $event)" [disabled]="!l.lisible || !l.candidats.length">
                 <option [ngValue]="null">— Aucun —</option>
-                <option *ngFor="let c of l.candidats" [ngValue]="c.type_piece">{{ c.type_piece }} · {{ c.libelle }} ({{ pourcent(c) }} %)</option>
+                <option *ngFor="let c of l.candidats" [ngValue]="c.type_piece">{{ c.type_piece }} · {{ c.libelle }}<ng-container *ngIf="l.mode === 'tableau'"> ({{ pourcent(c) }} %)</ng-container></option>
               </select>
-              <span class="ctx" *ngIf="candidat(l) as c">{{ c.champs_reconnus }}/{{ c.champs_total }} colonnes reconnues<span *ngIf="c.nom_reconnu"> · code dans le nom</span></span>
+              <span class="ctx" *ngIf="l.mode === 'tableau' && candidat(l) as c">{{ c.champs_reconnus }}/{{ c.champs_total }} colonnes reconnues<span *ngIf="c.nom_reconnu"> · indice dans le nom</span></span>
               <span class="ctx avert" *ngIf="l.ambigu && !l.type_piece">Plusieurs types possibles : à préciser</span>
               <span class="ctx avert" *ngIf="l.doublon">Doublon d'une pièce unique</span>
             </td>
@@ -72,6 +87,44 @@
           </tr>
         </tbody>
       </table>
+
+      <ng-container *ngIf="images.length">
+        <h4><i class="fas fa-images"></i> Images ({{ imagesRetenues.length }} à importer sur {{ images.length }})
+          <span class="avert" *ngIf="imagesSansPoint">· {{ imagesSansPoint }} photo(s) sans point : choisissez-le, ou elles iront sans rattachement</span></h4>
+        <table>
+          <thead><tr><th>Image</th><th>Nature</th><th>Pièce</th><th>Point</th><th>Pourquoi</th></tr></thead>
+          <tbody>
+            <tr *ngFor="let img of images" [class.ignore]="!img.type_piece">
+              <td><span class="nom"><i class="fas fa-image"></i> {{ img.fichier }}</span></td>
+              <td><span class="pastille" [ngClass]="img.nature_image">{{ img.nature_image === 'photo' ? 'Photo' : (img.nature_image === 'plan' ? 'Plan' : 'Document') }}</span></td>
+              <td>
+                <select [ngModel]="img.type_piece" (ngModelChange)="changerTypeImage(img, $event)">
+                  <option [ngValue]="null">— Ignorer —</option>
+                  <option *ngFor="let t of typesImages" [ngValue]="t">{{ t }} · {{ libellesImages[t] }}</option>
+                </select>
+              </td>
+              <td>
+                <select *ngIf="pointsDe(img.type_piece).length" [(ngModel)]="img.point">
+                  <option value="">— Sans point —</option>
+                  <option *ngFor="let p of pointsDe(img.type_piece)" [value]="p">{{ p }}</option>
+                </select>
+              </td>
+              <td class="ctx">{{ img.raison }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </ng-container>
+
+      <label class="im-rc" *ngIf="reponse.rc_possible">
+        <input type="checkbox" [(ngModel)]="genererRc">
+        <span><strong>{{ reponse.rc_existant ? 'Recalculer' : 'Générer' }} le rapport de contrôle (RC)</strong> à partir de la LPA et des
+          déterminations intermédiaires, une fois les pièces importées.</span>
+      </label>
+
+      <details class="im-ecartes" *ngIf="reponse.ecartes.length">
+        <summary>{{ reponse.ecartes.length }} fichier(s) écarté(s)</summary>
+        <ul><li *ngFor="let e of reponse.ecartes"><span class="nom">{{ e.fichier }}</span> — {{ e.raison }}</li></ul>
+      </details>
     </section>
 
     <!-- 3. Import -->
@@ -79,8 +132,8 @@
       <div class="im-barre"><span [style.width.%]="progression"></span></div>
       <p class="im-bilan" *ngIf="etape === 'fin'">
         <i class="fas" [ngClass]="reussis === resultats.length ? 'fa-circle-check ok' : 'fa-triangle-exclamation avert'"></i>
-        {{ reussis }} pièce(s) importée(s) sur {{ resultats.length }}.
-        <span *ngIf="reussis">Elles sont en brouillon : vérifiez-les puis validez-les.</span>
+        {{ reussis }} opération(s) réussie(s) sur {{ resultats.length }}.
+        <span *ngIf="reussis">Les pièces sont en brouillon : vérifiez-les puis validez-les.</span>
       </p>
       <ul class="im-resultats">
         <li *ngFor="let r of resultats" [class.ko]="!r.ok">
@@ -93,14 +146,14 @@
       <ng-container *ngIf="etape === 'depot'">
         <span class="spacer"></span>
         <button type="button" class="btn secondaire" (click)="fermer()">Annuler</button>
-        <button type="button" class="btn" (click)="analyser()" [disabled]="!fichiers.length || analyse">
-          <i class="fas" [ngClass]="analyse ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'"></i> Analyser {{ fichiers.length }} fichier(s)</button>
+        <button type="button" class="btn" (click)="analyser()" [disabled]="!depots.length || analyse">
+          <i class="fas" [ngClass]="analyse ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'"></i> Analyser {{ depots.length }} fichier(s)</button>
       </ng-container>
       <ng-container *ngIf="etape === 'plan'">
         <button type="button" class="btn secondaire" (click)="etape = 'depot'"><i class="fas fa-arrow-left"></i> Fichiers</button>
         <span class="spacer"></span>
         <button type="button" class="btn" (click)="importer()" [disabled]="!pret">
-          <i class="fas fa-file-import"></i> Importer {{ aImporter }} pièce(s)</button>
+          <i class="fas fa-file-import"></i> Importer {{ aImporter }} pièce(s) et {{ imagesRetenues.length }} image(s)</button>
       </ng-container>
       <ng-container *ngIf="etape === 'fin'">
         <span class="spacer"></span>

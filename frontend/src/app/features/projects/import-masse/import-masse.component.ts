@@ -1,17 +1,27 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
-import { from, of } from 'rxjs';
-import { catchError, concatMap, map } from 'rxjs/operators';
-import { CandidatImport, ImportMasseService, LignePlan } from '../../../core/services/import-masse.service';
+import { Observable, from, of } from 'rxjs';
+import { catchError, concatMap, map, switchMap, toArray } from 'rxjs/operators';
+import {
+  CandidatImport, FichierDepose, ImagePlan, ImportMasseService, LignePlan, PlanImport, lireEntree, utile,
+} from '../../../core/services/import-masse.service';
+import { PiecesService } from '../../../core/services/pieces.service';
 
 export interface SessionChoix { id: string; numero_session: number; }
 
 type Etape = 'depot' | 'plan' | 'import' | 'fin';
 interface Resultat { fichier: string; ok: boolean; detail: string; }
 
+export const LIBELLES_IMAGES: Record<string, string> = {
+  PPA: 'Photos des points anciens', PPN: 'Photos des points nouveaux',
+  CCSPA: 'Canevas de contrôle de stabilité', CDC: 'Canevas de densification', CLC: 'Canevas de levé',
+  RDC: 'Rapport de consultation',
+};
+
 /**
- * Import en masse d'un dossier (modale) : déposer tous les fichiers d'un levé, vérifier le
- * plan proposé (type, numéro, session, créer / remplacer / ignorer), puis importer.
- * Chaque ligne passe par l'import unitaire : mêmes contrôles côté serveur.
+ * Import en masse d'un dossier (modale) : déposer les fichiers — ou le DOSSIER entier, pour
+ * que les rapports HTML de TBC soient lus depuis leur dossier `_files` —, vérifier le plan
+ * proposé (pièces, images rattachées aux points, rapport de contrôle), puis importer.
+ * Chaque étape passe par les imports unitaires : mêmes contrôles côté serveur.
  */
 @Component({
   selector: 'app-import-masse',
@@ -27,39 +37,72 @@ export class ImportMasseComponent {
   @Output() termine = new EventEmitter<number>();
 
   etape: Etape = 'depot';
-  fichiers: File[] = [];
+  depots: FichierDepose[] = [];
+  ignoresAuDepot = 0;
+  reponse: PlanImport | null = null;
   plan: LignePlan[] = [];
+  images: ImagePlan[] = [];
   sessionParLigne: Record<number, string | null> = {};
+  genererRc = false;
   analyse = false;
   erreur = '';
   survol = false;
   progression = 0;
   resultats: Resultat[] = [];
+  readonly libellesImages = LIBELLES_IMAGES;
+  readonly typesImages = Object.keys(LIBELLES_IMAGES);
 
-  constructor(private service: ImportMasseService) {}
+  constructor(private service: ImportMasseService, private pieces: PiecesService) {}
 
-  // ---- étape 1 : dépôt ----
+  // ---- étape 1 : dépôt (fichiers ou dossier) ----
+  ajouterDepots(liste: FichierDepose[]): void {
+    const deja = new Set(this.depots.map(d => d.chemin + d.fichier.size));
+    for (const d of liste) {
+      if (!utile(d.chemin)) { this.ignoresAuDepot++; continue; }
+      if (deja.has(d.chemin + d.fichier.size)) continue;
+      deja.add(d.chemin + d.fichier.size);
+      this.depots.push(d);
+    }
+  }
+
   ajouter(liste: FileList | File[] | null): void {
     if (!liste) return;
-    const deja = new Set(this.fichiers.map(f => f.name + f.size));
-    Array.from(liste).forEach(f => {
-      if (deja.has(f.name + f.size)) return;
-      deja.add(f.name + f.size);
-      this.fichiers.push(f);
-    });
+    this.ajouterDepots(Array.from(liste).map(f => ({ fichier: f, chemin: (f as any).webkitRelativePath || f.name })));
   }
-  onDrop(ev: DragEvent): void { ev.preventDefault(); this.survol = false; this.ajouter(ev.dataTransfer?.files || null); }
+
+  async onDrop(ev: DragEvent): Promise<void> {
+    ev.preventDefault();
+    this.survol = false;
+    const items = Array.from(ev.dataTransfer?.items || []);
+    const entrees = items.map(i => (i as any).webkitGetAsEntry?.()).filter(Boolean);
+    if (entrees.length) {
+      const lus = await Promise.all(entrees.map(e => lireEntree(e)));
+      this.ajouterDepots(lus.flat());
+    } else {
+      this.ajouter(ev.dataTransfer?.files || null);
+    }
+  }
   onDragOver(ev: DragEvent): void { ev.preventDefault(); this.survol = true; }
-  retirer(i: number): void { this.fichiers.splice(i, 1); }
+  retirer(i: number): void { this.depots.splice(i, 1); }
+  vider(): void { this.depots = []; this.ignoresAuDepot = 0; }
+
+  get resumeDepot(): { tableaux: number; html: number; images: number } {
+    const c = (re: RegExp) => this.depots.filter(d => re.test(d.chemin)).length;
+    return { tableaux: c(/\.(csv|xlsx)$/i), html: c(/\.html?$/i), images: c(/\.(jpe?g|png|webp|gif|bmp|tiff?|heic)$/i) };
+  }
 
   analyser(): void {
-    if (!this.fichiers.length) return;
+    if (!this.depots.length) return;
     this.analyse = true; this.erreur = '';
-    this.service.plan(this.ssdgpsId, this.fichiers).subscribe({
+    this.service.plan(this.ssdgpsId, this.depots).subscribe({
       next: p => {
-        this.plan = p.plan; this.analyse = false; this.etape = 'plan';
+        this.reponse = p;
+        this.plan = p.plan;
+        this.images = p.images;
+        this.genererRc = p.rc_possible;
         this.sessionParLigne = {};
         this.plan.forEach((_, i) => (this.sessionParLigne[i] = null));
+        this.analyse = false; this.etape = 'plan';
       },
       error: e => { this.analyse = false; this.erreur = e?.error?.detail || 'Analyse des fichiers impossible.'; },
     });
@@ -85,32 +128,118 @@ export class ImportMasseComponent {
   blocage(l: LignePlan, i: number): string {
     if (l.action === 'ignorer') return '';
     if (!l.type_piece) return 'Choisissez un type';
-    if (!Object.keys(l.mapping || {}).length) return 'Aucune colonne reconnue';
+    if (l.mode === 'tableau' && !Object.keys(l.mapping || {}).length) return 'Aucune colonne reconnue';
     if (this.candidat(l)?.repetable && !l.numero) return 'Numéro requis';
     if (this.sessionRequise(l) && !this.sessionParLigne[i]) return 'Session requise';
     return '';
   }
 
-  get aImporter(): number { return this.plan.filter(l => l.action !== 'ignorer').length; }
-  get pret(): boolean { return this.aImporter > 0 && this.plan.every((l, i) => !this.blocage(l, i)); }
-  pourcent(c?: CandidatImport | null): number { return Math.round(Math.min(1, c?.score || 0) * 100); }
+  pointsDe(type: string | null): string[] {
+    return (type === 'PPA' || type === 'PPN') ? (this.reponse?.points[type] || []) : [];
+  }
 
-  // ---- étape 3 : import ----
+  changerTypeImage(img: ImagePlan, type: string | null): void {
+    img.type_piece = type;
+    if (!this.pointsDe(type).includes(img.point)) img.point = '';
+  }
+
+  get imagesRetenues(): ImagePlan[] { return this.images.filter(i => !!i.type_piece); }
+  get imagesSansPoint(): number {
+    return this.imagesRetenues.filter(i => (i.type_piece === 'PPA' || i.type_piece === 'PPN') && !i.point).length;
+  }
+  get aImporter(): number { return this.plan.filter(l => l.action !== 'ignorer').length; }
+  get pret(): boolean {
+    return (this.aImporter > 0 || this.imagesRetenues.length > 0 || this.genererRc)
+      && this.plan.every((l, i) => !this.blocage(l, i));
+  }
+  pourcent(c?: CandidatImport | null): number { return Math.round(Math.min(1, c?.score || 0) * 100); }
+  icone(l: LignePlan): string { return l.mode === 'html' ? 'fa-file-code' : (l.feuille ? 'fa-file-excel' : 'fa-file-csv'); }
+
+  // ---- étape 3 : import (pièces, puis images, puis rapport de contrôle) ----
   importer(): void {
-    if (!this.pret) return;
+    if (!this.pret || !this.reponse) return;
     this.etape = 'import'; this.progression = 0; this.resultats = [];
-    const travaux = this.plan.map((l, i) => ({ l, i, f: this.fichiers.find(x => x.name === l.fichier) }))
+    const creees: Record<string, string> = {};                 // type → pièce (pour y rattacher les images)
+    const travaux = this.plan.map((l, i) => ({ l, i, f: this.depots[l.index]?.fichier }))
       .filter(t => t.l.action !== 'ignorer' && t.f);
-    const total = travaux.length;
-    from(travaux).pipe(
-      concatMap(t => this.service.importer(this.ssdgpsId, t.f!, t.l, this.sessionParLigne[t.i]).pipe(
-        map(() => ({ fichier: t.l.fichier, ok: true, detail: t.l.action === 'remplacer' ? 'remplacée' : 'créée' })),
+    const groupes = this.groupesImages();
+    const total = travaux.length + groupes.length + (this.genererRc ? 1 : 0);
+    const avancer = (r: Resultat) => {
+      this.resultats.push(r);
+      this.progression = Math.round(100 * this.resultats.length / Math.max(1, total));
+    };
+
+    const etapePieces$ = from(travaux).pipe(concatMap(t => {
+      const appel = t.l.mode === 'html'
+        ? this.service.importerHtml(this.ssdgpsId, t.f!, t.l, this.sessionParLigne[t.i])
+        : this.service.importer(this.ssdgpsId, t.f!, t.l, this.sessionParLigne[t.i]);
+      return appel.pipe(
+        map((p: any) => {
+          if (p?.id && t.l.type_piece && !creees[t.l.type_piece]) creees[t.l.type_piece] = p.id;
+          return { fichier: t.l.fichier, ok: true, detail: `${t.l.type_piece}${t.l.numero ? ' n°' + t.l.numero : ''} ${t.l.action === 'remplacer' ? 'remplacée' : 'créée'}` };
+        }),
         catchError(e => of({ fichier: t.l.fichier, ok: false, detail: this.messageErreur(e) })),
-      )),
-    ).subscribe({
-      next: r => { this.resultats.push(r); this.progression = Math.round(100 * this.resultats.length / total); },
-      complete: () => { this.etape = 'fin'; this.termine.emit(this.reussis); },
+      );
+    }));
+
+    const etapeImages$ = from(groupes).pipe(concatMap(g => this.cible(g.type, creees).pipe(
+      switchMap(id => this.pieces.addImages(id, g.fichiers, g.point || undefined)),
+      map(() => ({ fichier: `${g.fichiers.length} image(s)`, ok: true,
+                   detail: `${g.type}${g.point ? ' · point ' + g.point : ''}` })),
+      catchError(e => of({ fichier: `${g.fichiers.length} image(s) ${g.type}`, ok: false, detail: this.messageErreur(e) })),
+    )));
+
+    const etapeRc$ = this.genererRc ? this.rapportDeControle() : from([] as Resultat[]);
+
+    etapePieces$.pipe(toArray()).subscribe(r1 => {
+      r1.forEach(avancer);
+      etapeImages$.pipe(toArray()).subscribe(r2 => {
+        r2.forEach(avancer);
+        etapeRc$.pipe(toArray()).subscribe(r3 => {
+          r3.forEach(avancer);
+          this.etape = 'fin';
+          this.termine.emit(this.reussis);
+        });
+      });
     });
+  }
+
+  /** Images regroupées par pièce et par point (un envoi par groupe). */
+  groupesImages(): { type: string; point: string; fichiers: File[] }[] {
+    const groupes = new Map<string, { type: string; point: string; fichiers: File[] }>();
+    for (const img of this.imagesRetenues) {
+      const f = this.depots[img.index]?.fichier;
+      if (!f) continue;
+      const point = (img.type_piece === 'PPA' || img.type_piece === 'PPN') ? img.point : '';
+      const cle = `${img.type_piece}|${point}`;
+      if (!groupes.has(cle)) groupes.set(cle, { type: img.type_piece!, point, fichiers: [] });
+      groupes.get(cle)!.fichiers.push(f);
+    }
+    return Array.from(groupes.values());
+  }
+
+  /** Pièce qui reçoit les images d'un type : créée à l'étape précédente, existante, ou nouvelle. */
+  private cible(type: string, creees: Record<string, string>): Observable<string> {
+    const id = creees[type] || this.reponse?.pieces_existantes[type];
+    if (id) return of(id);
+    return this.pieces.createImagePiece(type, { ssdgps: this.ssdgpsId } as any).pipe(map((p: any) => {
+      creees[type] = p.id;
+      return p.id as string;
+    }));
+  }
+
+  private rapportDeControle(): Observable<Resultat> {
+    const parent = { ssdgps: this.ssdgpsId } as any;
+    return this.pieces.previewComputeRc(parent).pipe(
+      switchMap(apercu => {
+        const existant = this.reponse?.pieces_existantes['RC'];
+        return (existant ? this.service.remplacerLignes(existant, apercu.rows)
+                         : this.pieces.confirmComputeRc(parent, apercu.rows, apercu.source)).pipe(
+          map(() => ({ fichier: 'Rapport de contrôle', ok: true,
+                       detail: `${apercu.rows.length} ligne(s) ${existant ? 'recalculées' : 'calculées'}` })));
+      }),
+      catchError(e => of({ fichier: 'Rapport de contrôle', ok: false, detail: this.messageErreur(e) })),
+    );
   }
 
   get reussis(): number { return this.resultats.filter(r => r.ok).length; }

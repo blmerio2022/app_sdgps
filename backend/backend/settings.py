@@ -313,6 +313,10 @@ CORS_ALLOW_ALL_ORIGINS = DEBUG
 # Adresse publique du front, pour les liens des e-mails de notification (vide = pas de lien).
 FRONTEND_URL = config('FRONTEND_URL', default='')
 
+# Import en masse d'un levé : dossier complet (rapports TBC, CSV, photos des points).
+# Django plafonne par défaut à 100 fichiers par requête.
+DATA_UPLOAD_MAX_NUMBER_FILES = config('DATA_UPLOAD_MAX_NUMBER_FILES', default=500, cast=int)
+
 # Comptes inactifs : désactivés après N jours sans connexion par
 # `manage.py desactiver_comptes_inactifs` (0 = jamais). Super Admins jamais désactivés.
 COMPTES_INACTIFS_JOURS = config('COMPTES_INACTIFS_JOURS', default=0, cast=int)

@@ -11,9 +11,10 @@ from django.conf import settings
 SUPPORTED_EXTENSIONS = {'.csv', '.xlsx'}
 
 
-def parse_uploaded_table(file_obj):
+def parse_uploaded_table(file_obj, feuille=None):
     """
     Retourne (columns: list[str], rows: list[list[str]]).
+    `feuille` : nom de la feuille d'un classeur Excel (défaut : la feuille active).
     Lève ValueError si le format n'est pas supporté ou si le fichier est vide/corrompu.
     """
     ext = os.path.splitext(file_obj.name)[1].lower()
@@ -21,7 +22,23 @@ def parse_uploaded_table(file_obj):
         raise ValueError(f"Format « {ext} » non supporté. Utilisez un fichier .csv ou .xlsx.")
     if ext == '.csv':
         return _parse_csv(file_obj)
-    return _parse_xlsx(file_obj)
+    return _parse_xlsx(file_obj, feuille)
+
+
+def feuilles_excel(file_obj):
+    """Noms des feuilles NON VIDES d'un classeur .xlsx, dans l'ordre du classeur."""
+    import openpyxl
+    file_obj.seek(0)
+    try:
+        wb = openpyxl.load_workbook(file_obj, read_only=True, data_only=True)
+    except Exception as exc:  # noqa: BLE001 — fichier corrompu ou non xlsx
+        raise ValueError(f"Classeur Excel illisible : {exc}")
+    noms = []
+    for ws in wb.worksheets:
+        if any(any(c is not None and str(c).strip() for c in row)
+               for row in ws.iter_rows(max_row=5, values_only=True)):
+            noms.append(ws.title)
+    return noms
 
 
 def _parse_csv(file_obj):
@@ -49,12 +66,19 @@ def _parse_csv(file_obj):
     return all_rows[0], all_rows[1:]
 
 
-def _parse_xlsx(file_obj):
+def _parse_xlsx(file_obj, feuille=None):
     import openpyxl
     file_obj.seek(0)
     wb = openpyxl.load_workbook(file_obj, read_only=True, data_only=True)
-    ws = wb.active
-    rows_iter = ws.iter_rows(values_only=True)
+    if feuille:
+        if feuille not in wb.sheetnames:
+            raise ValueError(f"Feuille « {feuille} » introuvable dans le classeur.")
+        ws = wb[feuille]
+    else:
+        ws = wb.active
+    # L'en-tête est la première ligne non vide (une feuille peut commencer plus bas).
+    rows_iter = (r for r in ws.iter_rows(values_only=True)
+                 if any(c is not None and str(c).strip() for c in r))
     try:
         header_row = next(rows_iter)
     except StopIteration:

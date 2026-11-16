@@ -887,6 +887,8 @@ class PieceViewSet(viewsets.ModelViewSet):
             instance = self._org_scoped_queryset().filter(pk=piece_id, is_deleted=False).first()
             if instance is None:
                 return Response({'detail': 'Pièce introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+            # Hors `get_object()` : le verrou du dossier figé doit être posé ici.
+            self._check_modifiable(instance.ssdgps)
             rows = None
             payload_raw = request.data.get('payload')
             if payload_raw:
@@ -1685,13 +1687,15 @@ class PieceViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='import-plan', parser_classes=[parsers.MultiPartParser])
     def import_plan(self, request):
         """
-        POST /api/v1/pieces/import-plan/ (multipart) — `ssdgps` + `fichiers` (plusieurs).
-        Analyse les fichiers d'un levé et PROPOSE un plan d'import (type, numéro,
-        correspondance des colonnes, création ou remplacement). NE PERSISTE RIEN : chaque
-        ligne du plan s'exécute ensuite par `import/` (phase 2). Cf. `pieces/import_masse.py`.
+        POST /api/v1/pieces/import-plan/ (multipart) — `ssdgps` + `fichiers` (plusieurs)
+        + `chemins` (JSON, chemins relatifs alignés). Analyse les fichiers d'un levé —
+        tableaux CSV / Excel (une pièce par feuille), rapports HTML de TBC, images — et
+        PROPOSE un plan (`plan`, `images`, `ecartes`, `points`, `rc_possible`). NE PERSISTE
+        RIEN : le front exécute ensuite chaque ligne par les imports unitaires.
+        Cf. `pieces/import_masse.py`.
         """
         from .catalog import _custom_fields_map
-        from .import_masse import analyser_fichier, completer_plan
+        from .import_masse import analyser_lot
 
         ssdgps = Ssdgps.objects.select_related('affaire__propriete__projet').filter(
             pk=request.data.get('ssdgps'), is_deleted=False).first()
@@ -1704,12 +1708,18 @@ class PieceViewSet(viewsets.ModelViewSet):
         fichiers = request.FILES.getlist('fichiers')
         if not fichiers:
             return Response({'detail': 'Aucun fichier reçu.'}, status=status.HTTP_400_BAD_REQUEST)
-        if len(fichiers) > 60:
-            return Response({'detail': 'Au plus 60 fichiers à la fois.'}, status=status.HTTP_400_BAD_REQUEST)
-        custom = _custom_fields_map()
-        plan = [analyser_fichier(f, ssdgps.nature_ssdgps, custom) for f in fichiers]
-        completer_plan(plan, ssdgps)
-        return Response({'ssdgps': str(ssdgps.id), 'nature': ssdgps.nature_ssdgps, 'plan': plan})
+        if len(fichiers) > 400:
+            return Response({'detail': 'Au plus 400 fichiers à la fois.'}, status=status.HTTP_400_BAD_REQUEST)
+        # `chemins` : chemins relatifs (dossier déposé), alignés sur `fichiers` — ils relient
+        # une page-cadre TBC à son dossier `_files` et portent des indices (« 04-photos… »).
+        try:
+            chemins = json.loads(request.data.get('chemins') or '[]')
+        except (json.JSONDecodeError, TypeError):
+            chemins = []
+        if not isinstance(chemins, list):
+            chemins = []
+        resultat = analyser_lot(fichiers, [str(c or '') for c in chemins], ssdgps, _custom_fields_map())
+        return Response({'ssdgps': str(ssdgps.id), 'nature': ssdgps.nature_ssdgps, **resultat})
 
     @action(detail=False, methods=['post'], url_path='import', parser_classes=[parsers.MultiPartParser])
     def import_file(self, request):
@@ -1732,7 +1742,8 @@ class PieceViewSet(viewsets.ModelViewSet):
         except KeyError:
             return Response({'detail': 'Type de pièce inconnu.'}, status=400)
         try:
-            columns, rows = parse_uploaded_table(f)
+            # `feuille` : une feuille précise d'un classeur à plusieurs pièces (import en masse).
+            columns, rows = parse_uploaded_table(f, request.data.get('feuille') or None)
         except ValueError as e:
             return Response({'detail': str(e)}, status=400)
 

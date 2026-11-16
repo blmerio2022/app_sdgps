@@ -43,3 +43,26 @@
   border: 1px solid transparent; color: #fff; background: var(--accent-color);
   &:disabled { opacity: .5; cursor: not-allowed; }
   &.secondaire { background: transparent; color: var(--text-muted); border-color: var(--border-color); } }
+
+/* Dépôt de dossier, résumé, sections du plan, images, RC. */
+.im-zone { cursor: default;
+  .astuce { font-size: 12px; color: var(--text-muted); i { color: #d9a441; margin-right: 4px; } } }
+.im-choix { display: flex; gap: 8px; margin-top: 8px;
+  label { position: relative; overflow: hidden; cursor: pointer;
+    input { position: absolute; inset: 0; opacity: 0; cursor: pointer; } } }
+.im-resume { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin-top: 12px; font-size: 12.5px; color: var(--text-color);
+  i { color: var(--accent-color); margin-right: 4px; } .ign { color: var(--text-muted); }
+  .lien { border: none; background: transparent; color: var(--text-muted); cursor: pointer; font-size: 12px; &:hover { color: #e74c3c; } } }
+.im-plan h4 { margin: 4px 0 8px; font-size: 13.5px; color: var(--text-color); display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  i { color: var(--accent-color); } .avert { font-size: 12px; font-weight: 400; color: #e67e22; } }
+.im-plan table + h4, .im-plan table + .im-rc { margin-top: 18px; }
+.im-plan td.ctx { display: table-cell; max-width: 260px; }
+.pastille { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap;
+  &.photo { color: #2ecc71; background: rgba(46, 204, 113, .12); } &.plan { color: #3498db; background: rgba(52, 152, 219, .12); }
+  &.document { color: var(--text-muted); background: var(--hover-bg); } }
+.im-rc { display: flex; align-items: flex-start; gap: 9px; margin-top: 16px; padding: 11px 13px; border-radius: 10px; font-size: 12.5px;
+  color: var(--text-color); background: rgba(204, 88, 88, .06); border: 1px solid rgba(204, 88, 88, .3); cursor: pointer;
+  input { margin-top: 2px; accent-color: var(--accent-color); } }
+.im-ecartes { margin-top: 12px; font-size: 12px; color: var(--text-muted);
+  summary { cursor: pointer; } ul { margin: 6px 0 0; padding-left: 18px; } li { margin-bottom: 2px; } }
+.im-modale { width: 1180px; }

@@ -703,22 +703,39 @@ corbeille exclues ; archive construite dans un fichier temporaire ; refus 413 au
 Tests : `projects/tests_export_dossier.py`.
 
 **Import en masse d'un dossier.** `POST /api/v1/pieces/import-plan/` (multipart `ssdgps` +
-`fichiers`, ≤ 60 ; portée RBAC, refusé sur un dossier figé ; NE PERSISTE RIEN) analyse les
-fichiers tabulaires d'un levé (`pieces/import_masse.py`, déterministe, sans IA) : score par
-type applicable à la nature = part des champs retrouvés × part des colonnes reconnues
-(libellé ou nom technique, sans casse/accents/ponctuation) + bonus si le code du type figure
-en mot isolé dans le nom du fichier (son nombre suivant = numéro d'une pièce répétable).
-Ex æquo en tête (RDN / RDD / RDL partagent leurs en-têtes) → `ambigu`, aucun type imposé.
-Plan : type, candidats (avec leur correspondance de colonnes et leur `niveau`), numéro (sinon
-premier libre), `remplacer` si une pièce de même type/numéro existe, doublon d'une pièce
-unique écarté. L'exécution passe ligne à ligne par l'import unitaire `pieces/import/`
-(phase 2, mapping du plan) : mêmes validations, droits et verrou. ⚠ Le ré-import par
-`piece_id` ne passe pas par `get_object()` : il appelle désormais `_check_modifiable`
-(il modifiait auparavant une pièce d'un dossier figé). Front : bouton « Import en masse » de
-la page des pièces → `<app-import-masse>` (dépôt, plan éditable, session requise en
-multi-session pour une pièce de niveau session, import séquentiel, bilan). Photos, croquis
-et PDF restent à l'assistant d'ajout. Tests : `pieces/tests_import_masse.py`,
-`import-masse.component.spec.ts`.
+`fichiers` ≤ 400 + `chemins` JSON des chemins relatifs ; portée RBAC, refusé sur un dossier
+figé ; NE PERSISTE RIEN) — `pieces/import_masse.py::analyser_lot`, déterministe, sans IA :
+- **tableaux** : CSV et **chaque feuille non vide d'un classeur Excel** (`feuilles_excel`,
+  `parse_uploaded_table(f, feuille)`, l'import unitaire accepte `feuille`). Score = part des
+  champs retrouvés × part des colonnes reconnues (libellé ou nom technique, sans casse /
+  accents / ponctuation, petite faute tolérée) + bonus si le code du type ou un mot-clé
+  (`MOTS_CLES` : « liste points anciens », « observations », « fermeture »…) figure dans le
+  nom du fichier, de la feuille ou du dossier parent. Ex æquo → `ambigu` ; PPA / PPN
+  (mêmes colonnes) départagées par le nom, sinon en croisant les points avec la LPA ;
+- **rapports HTML de TBC** : le CONTENU décide — « fermeture de boucle » → RFB ;
+  ajustement du réseau : 0 point fixe → RDL, 1 → RDN (n° = nombre final du nom du
+  rapport), plusieurs → RDD. Les `.html` TBC sont des **pages-cadres** : les données sont
+  dans `<nom>_files/` ; d'où le dépôt de DOSSIER (front : glisser-déposer récursif +
+  `webkitdirectory`). Page-cadre seule → signalée ; redondante → `ecartes`. Plusieurs
+  rapports pour une pièce unique (copie d'une autre étude dans un `_files`) → celui au
+  nombre de points le plus courant, les autres en doublon ;
+- **images** : nom de fichier = point (colonnes « Fichier Image » / « Nom Point » des
+  PPA / PPN du lot ou de la base, points de la LPA) → photo rattachée au point ; sinon
+  mot-clé (« stabilité », « densification », « levé », « consultation »…), sinon NATURE
+  (`nature_image`, Pillow : peu de blanc + couleurs saturées = photo de terrain → PPA / PPN
+  à rattacher par l'opérateur ; fond blanc paysage = plan → seul canevas applicable à la
+  nature, sinon à préciser ; fond blanc portrait = document → RDC) ;
+- réponse : `plan`, `images`, `ecartes`, `points` (PPA / PPN), `rc_possible`,
+  `rc_existant`, `pieces_existantes` (pièces à images et RC déjà présentes).
+Exécution par le front (`<app-import-masse>`, bouton « Import en masse ») avec les imports
+unitaires, dans l'ordre : pièces (`import/` avec `mapping` et `feuille`, `import-html/`
+SANS lignes — le serveur relit le fichier), puis images groupées par pièce et par point
+(`images/` + `point_ref`, pièce issue du CSV, existante ou créée vide), puis le **rapport de
+contrôle** si coché (`compute-rc` ; RC existant → lignes remplacées, version archivée).
+⚠ Les ré-imports par `piece_id` (`import/` et `import-html/`) ne passent pas par
+`get_object()` : ils appellent `_check_modifiable`. `DATA_UPLOAD_MAX_NUMBER_FILES` = 500.
+Tests : `pieces/tests_import_masse.py`, `tests_import_masse_exemple.py` (bout en bout sur le
+levé d'exemple réel, sauté s'il est absent — non versionné), `import-masse.component.spec.ts`.
 
 **Recherche globale (Ctrl+K).** `GET /api/v1/recherche/?q=` (`projects/recherche.py`, ≥ 2
 caractères, 6 résultats par groupe) : SDGPS (n°, nature), projets (code, nom), propriétés
