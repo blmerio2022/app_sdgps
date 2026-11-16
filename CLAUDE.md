@@ -700,6 +700,24 @@ corbeille exclues ; archive construite dans un fichier temporaire ; refus 413 au
 (ZIP) » de la page des pièces (`ProjectsService.exportSsdgpsZip`, blob + nom du serveur).
 Tests : `projects/tests_export_dossier.py`.
 
+**Import en masse d'un dossier.** `POST /api/v1/pieces/import-plan/` (multipart `ssdgps` +
+`fichiers`, ≤ 60 ; portée RBAC, refusé sur un dossier figé ; NE PERSISTE RIEN) analyse les
+fichiers tabulaires d'un levé (`pieces/import_masse.py`, déterministe, sans IA) : score par
+type applicable à la nature = part des champs retrouvés × part des colonnes reconnues
+(libellé ou nom technique, sans casse/accents/ponctuation) + bonus si le code du type figure
+en mot isolé dans le nom du fichier (son nombre suivant = numéro d'une pièce répétable).
+Ex æquo en tête (RDN / RDD / RDL partagent leurs en-têtes) → `ambigu`, aucun type imposé.
+Plan : type, candidats (avec leur correspondance de colonnes et leur `niveau`), numéro (sinon
+premier libre), `remplacer` si une pièce de même type/numéro existe, doublon d'une pièce
+unique écarté. L'exécution passe ligne à ligne par l'import unitaire `pieces/import/`
+(phase 2, mapping du plan) : mêmes validations, droits et verrou. ⚠ Le ré-import par
+`piece_id` ne passe pas par `get_object()` : il appelle désormais `_check_modifiable`
+(il modifiait auparavant une pièce d'un dossier figé). Front : bouton « Import en masse » de
+la page des pièces → `<app-import-masse>` (dépôt, plan éditable, session requise en
+multi-session pour une pièce de niveau session, import séquentiel, bilan). Photos, croquis
+et PDF restent à l'assistant d'ajout. Tests : `pieces/tests_import_masse.py`,
+`import-masse.component.spec.ts`.
+
 **Version de l'application : `v<majeure>.<mineure>.<n>`, calculée depuis git.** Visible par
 TOUS, connecté ou non : pied de la page de connexion, bas du menu latéral (clic → « À
 propos » : commit, dates, environnement), API **publique** `GET /api/version/` (inscrite

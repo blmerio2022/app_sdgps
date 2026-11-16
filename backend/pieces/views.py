@@ -1682,6 +1682,35 @@ class PieceViewSet(viewsets.ModelViewSet):
         return Response(RapportGenerationSerializer(generation).data,
                         status=status.HTTP_202_ACCEPTED)
 
+    @action(detail=False, methods=['post'], url_path='import-plan', parser_classes=[parsers.MultiPartParser])
+    def import_plan(self, request):
+        """
+        POST /api/v1/pieces/import-plan/ (multipart) — `ssdgps` + `fichiers` (plusieurs).
+        Analyse les fichiers d'un levé et PROPOSE un plan d'import (type, numéro,
+        correspondance des colonnes, création ou remplacement). NE PERSISTE RIEN : chaque
+        ligne du plan s'exécute ensuite par `import/` (phase 2). Cf. `pieces/import_masse.py`.
+        """
+        from .catalog import _custom_fields_map
+        from .import_masse import analyser_fichier, completer_plan
+
+        ssdgps = Ssdgps.objects.select_related('affaire__propriete__projet').filter(
+            pk=request.data.get('ssdgps'), is_deleted=False).first()
+        if ssdgps is None:
+            return Response({'detail': 'SDGPS introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+        projet = ssdgps.affaire.propriete.projet
+        if not is_scope_visible(request.user, projet.organization_id, projet.created_by_id):
+            return Response({'detail': 'SDGPS introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+        self._check_modifiable(ssdgps)
+        fichiers = request.FILES.getlist('fichiers')
+        if not fichiers:
+            return Response({'detail': 'Aucun fichier reçu.'}, status=status.HTTP_400_BAD_REQUEST)
+        if len(fichiers) > 60:
+            return Response({'detail': 'Au plus 60 fichiers à la fois.'}, status=status.HTTP_400_BAD_REQUEST)
+        custom = _custom_fields_map()
+        plan = [analyser_fichier(f, ssdgps.nature_ssdgps, custom) for f in fichiers]
+        completer_plan(plan, ssdgps)
+        return Response({'ssdgps': str(ssdgps.id), 'nature': ssdgps.nature_ssdgps, 'plan': plan})
+
     @action(detail=False, methods=['post'], url_path='import', parser_classes=[parsers.MultiPartParser])
     def import_file(self, request):
         """
@@ -1756,6 +1785,9 @@ class PieceViewSet(viewsets.ModelViewSet):
             instance = self._org_scoped_queryset().filter(pk=piece_id, is_deleted=False).first()
             if instance is None:
                 return Response({'detail': 'Pièce introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+            # Ce chemin ne passe pas par `get_object()` : le verrou du cycle de vie doit être
+            # posé ici, sinon un ré-import modifiait une pièce d'un dossier figé.
+            self._check_modifiable(instance.ssdgps)
             update_data = {'payload': payload, 'source_saisie': 'import', 'fichier': f}
             serializer = self.get_serializer(instance, data=update_data, partial=True)
             serializer.is_valid(raise_exception=True)

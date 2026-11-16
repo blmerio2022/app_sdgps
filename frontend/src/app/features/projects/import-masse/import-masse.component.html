@@ -1,0 +1,111 @@
+<div class="im-fond" (click)="fermer()">
+  <div class="im-modale" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-label="Import en masse">
+    <header class="im-tete">
+      <h3><i class="fas fa-layer-group"></i> Import en masse</h3>
+      <ol class="im-etapes">
+        <li [class.on]="etape === 'depot'">1 · Fichiers</li>
+        <li [class.on]="etape === 'plan'">2 · Plan</li>
+        <li [class.on]="etape === 'import' || etape === 'fin'">3 · Import</li>
+      </ol>
+      <button type="button" class="im-x" (click)="fermer()" [disabled]="etape === 'import'" aria-label="Fermer"><i class="fas fa-xmark"></i></button>
+    </header>
+
+    <p class="im-erreur" *ngIf="erreur"><i class="fas fa-triangle-exclamation"></i> {{ erreur }}</p>
+
+    <!-- 1. Dépôt -->
+    <section class="im-corps" *ngIf="etape === 'depot'">
+      <label class="im-zone" [class.survol]="survol" (drop)="onDrop($event)" (dragover)="onDragOver($event)" (dragleave)="survol = false">
+        <i class="fas fa-cloud-arrow-up"></i>
+        <strong>Déposez ici tous les fichiers du levé</strong>
+        <span>CSV ou Excel (.xlsx) — le type de chaque pièce est reconnu d'après ses colonnes et son nom.</span>
+        <input type="file" multiple accept=".csv,.xlsx" (change)="ajouter($any($event.target).files); $any($event.target).value = ''">
+      </label>
+      <ul class="im-fichiers" *ngIf="fichiers.length">
+        <li *ngFor="let f of fichiers; let i = index">
+          <i class="fas fa-file-csv"></i> <span class="nom">{{ f.name }}</span>
+          <span class="taille">{{ (f.size / 1024) | number:'1.0-0' }} Ko</span>
+          <button type="button" (click)="retirer(i)" title="Retirer"><i class="fas fa-xmark"></i></button>
+        </li>
+      </ul>
+      <p class="im-note"><i class="fas fa-circle-info"></i> Les photos, croquis et PDF s'importent toujours pièce par pièce (assistant d'ajout).</p>
+    </section>
+
+    <!-- 2. Plan -->
+    <section class="im-corps im-plan" *ngIf="etape === 'plan'">
+      <table>
+        <thead><tr><th>Fichier</th><th>Type proposé</th><th>N°</th><th *ngIf="multiSession">Session</th><th>Action</th><th>État</th></tr></thead>
+        <tbody>
+          <tr *ngFor="let l of plan; let i = index" [class.ignore]="l.action === 'ignorer'">
+            <td>
+              <span class="nom">{{ l.fichier }}</span>
+              <span class="ctx" *ngIf="l.lisible">{{ l.lignes }} ligne(s), {{ l.colonnes.length }} colonne(s)</span>
+              <span class="ctx err" *ngIf="!l.lisible">{{ l.erreur }}</span>
+            </td>
+            <td>
+              <select [ngModel]="l.type_piece" (ngModelChange)="changerType(l, $event)" [disabled]="!l.lisible || !l.candidats.length">
+                <option [ngValue]="null">— Aucun —</option>
+                <option *ngFor="let c of l.candidats" [ngValue]="c.type_piece">{{ c.type_piece }} · {{ c.libelle }} ({{ pourcent(c) }} %)</option>
+              </select>
+              <span class="ctx" *ngIf="candidat(l) as c">{{ c.champs_reconnus }}/{{ c.champs_total }} colonnes reconnues<span *ngIf="c.nom_reconnu"> · code dans le nom</span></span>
+              <span class="ctx avert" *ngIf="l.ambigu && !l.type_piece">Plusieurs types possibles : à préciser</span>
+              <span class="ctx avert" *ngIf="l.doublon">Doublon d'une pièce unique</span>
+            </td>
+            <td><input type="number" min="1" class="num" *ngIf="candidat(l)?.repetable" [(ngModel)]="l.numero"></td>
+            <td *ngIf="multiSession">
+              <select *ngIf="sessionRequise(l)" [(ngModel)]="sessionParLigne[i]">
+                <option [ngValue]="null">— Session —</option>
+                <option *ngFor="let s of sessions" [ngValue]="s.id">Session {{ s.numero_session }}</option>
+              </select>
+            </td>
+            <td>
+              <select [(ngModel)]="l.action" [disabled]="!l.type_piece">
+                <option value="creer">Créer</option>
+                <option value="remplacer" *ngIf="l.piece_existante">Remplacer l'existante</option>
+                <option value="ignorer">Ignorer</option>
+              </select>
+            </td>
+            <td>
+              <span class="etat ok" *ngIf="l.action !== 'ignorer' && !blocage(l, i)"><i class="fas fa-check"></i> Prêt</span>
+              <span class="etat ko" *ngIf="blocage(l, i)"><i class="fas fa-circle-exclamation"></i> {{ blocage(l, i) }}</span>
+              <span class="etat" *ngIf="l.action === 'ignorer'">Ignoré</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 3. Import -->
+    <section class="im-corps" *ngIf="etape === 'import' || etape === 'fin'">
+      <div class="im-barre"><span [style.width.%]="progression"></span></div>
+      <p class="im-bilan" *ngIf="etape === 'fin'">
+        <i class="fas" [ngClass]="reussis === resultats.length ? 'fa-circle-check ok' : 'fa-triangle-exclamation avert'"></i>
+        {{ reussis }} pièce(s) importée(s) sur {{ resultats.length }}.
+        <span *ngIf="reussis">Elles sont en brouillon : vérifiez-les puis validez-les.</span>
+      </p>
+      <ul class="im-resultats">
+        <li *ngFor="let r of resultats" [class.ko]="!r.ok">
+          <i class="fas" [ngClass]="r.ok ? 'fa-check' : 'fa-xmark'"></i> <span class="nom">{{ r.fichier }}</span> — {{ r.detail }}
+        </li>
+      </ul>
+    </section>
+
+    <footer class="im-pied">
+      <ng-container *ngIf="etape === 'depot'">
+        <span class="spacer"></span>
+        <button type="button" class="btn secondaire" (click)="fermer()">Annuler</button>
+        <button type="button" class="btn" (click)="analyser()" [disabled]="!fichiers.length || analyse">
+          <i class="fas" [ngClass]="analyse ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'"></i> Analyser {{ fichiers.length }} fichier(s)</button>
+      </ng-container>
+      <ng-container *ngIf="etape === 'plan'">
+        <button type="button" class="btn secondaire" (click)="etape = 'depot'"><i class="fas fa-arrow-left"></i> Fichiers</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" (click)="importer()" [disabled]="!pret">
+          <i class="fas fa-file-import"></i> Importer {{ aImporter }} pièce(s)</button>
+      </ng-container>
+      <ng-container *ngIf="etape === 'fin'">
+        <span class="spacer"></span>
+        <button type="button" class="btn" (click)="fermer()">Terminer</button>
+      </ng-container>
+    </footer>
+  </div>
+</div>

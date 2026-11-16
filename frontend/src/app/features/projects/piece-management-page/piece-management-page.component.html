@@ -68,6 +68,11 @@
               [title]="assistantTitle">
         <i class="fas fa-list-check"></i> Assistant
       </button>
+      <!-- Tous les fichiers d'un levé d'un coup : type reconnu, plan à confirmer -->
+      <button class="btn btn-assistant" *ngIf="!showDeleted && ssdgps" (click)="importMasseOuvert = true" [disabled]="isLocked"
+              [title]="isLocked ? 'Dossier figé : import impossible' : 'Importer plusieurs fichiers d'un coup : le type de chaque pièce est reconnu'">
+        <i class="fas fa-layer-group"></i> Import en masse
+      </button>
       <!-- Archive complète du dossier (fiche, CSV, sources, photos, dernier rapport) -->
       <button class="btn btn-assistant" *ngIf="!showDeleted && ssdgps" (click)="exporterZip()" [disabled]="exportZip"
               title="Télécharger tout le dossier en ZIP : fiche récapitulative, données CSV, fichiers sources, photos, dernier rapport">
@@ -776,3 +781,7 @@
 </div>
 
 <!-- Consultation, ajout et édition d'une pièce sont désormais des pages dédiées routées. -->
+
+<app-import-masse *ngIf="importMasseOuvert && ssdgps" [ssdgpsId]="ssdgps.id" [sessions]="sessions"
+                  [multiSession]="ssdgps.type_ssdgps === 'multi-session'"
+                  (fermee)="importMasseOuvert = false" (termine)="onImportMasse($event)"></app-import-masse>

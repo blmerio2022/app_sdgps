@@ -873,6 +873,13 @@ export class PieceManagementPageComponent implements OnInit {
       : "Suivre ce dossier pièce par pièce à partir d'un modèle";
   }
 
+  /** Modale « Import en masse ». */
+  importMasseOuvert = false;
+
+  onImportMasse(reussis: number): void {
+    if (reussis) this.loadPieces();
+  }
+
   /** Export ZIP du dossier en cours. */
   exportZip = false;
 

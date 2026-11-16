@@ -25,11 +25,13 @@ import { SousNiveauxMenuComponent } from './sous-niveaux-menu/sous-niveaux-menu.
 import { IaRedactionComponent } from './ia-redaction/ia-redaction.component';
 
 import { PieceVersionsComponent } from './piece-versions/piece-versions.component';
+import { ImportMasseComponent } from './import-masse/import-masse.component';
 
 @NgModule({
   declarations: [
     IaRedactionComponent,
     PieceVersionsComponent,
+    ImportMasseComponent,
     ProjectListComponent, ProjectExplorerComponent, ProjectSsdgpsListComponent,
     PieceColumnMapperComponent, PieceManagementPageComponent, PieceAddWizardComponent,
     PieceDetailModalComponent, PieceImageGalleryComponent,
