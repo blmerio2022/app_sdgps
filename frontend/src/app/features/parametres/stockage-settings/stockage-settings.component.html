@@ -1,0 +1,76 @@
+<div class="st-page">
+  <header class="page-header">
+    <h1><i class="fas fa-hard-drive"></i> Mon espace de stockage</h1>
+    <p class="subtitle">Fichiers importés, images et photos de points sont imputés à <strong>l'organisation du créateur
+      du projet</strong>. Quand son quota est atteint, tout nouvel envoi est refusé : rien n'est enregistré.</p>
+    <button type="button" class="st-actualiser" (click)="charger()" [disabled]="chargement">
+      <i class="fas fa-rotate" [class.fa-spin]="chargement"></i> Actualiser</button>
+  </header>
+
+  <div class="st-erreur" *ngIf="erreur"><i class="fas fa-triangle-exclamation"></i> {{ erreur }}</div>
+  <div class="st-chargement" *ngIf="chargement && !donnees"><i class="fas fa-spinner fa-spin"></i> Chargement…</div>
+
+  <ng-container *ngIf="donnees">
+    <section class="st-carte st-vide" *ngIf="!quota">
+      <i class="fas fa-circle-info"></i>
+      <p>Votre compte n'est rattaché à aucune organisation : aucun quota ne s'applique à vos envois.</p>
+    </section>
+
+    <section class="st-carte st-quota" *ngIf="quota" [ngClass]="niveau">
+      <div class="st-tete">
+        <div>
+          <span class="st-org">{{ quota.organization_name }}</span>
+          <h2 *ngIf="niveau === 'illimite'">Espace illimité</h2>
+          <h2 *ngIf="niveau !== 'illimite'">{{ taille(quota.remaining_bytes) }} disponibles</h2>
+        </div>
+        <span class="st-badge" [ngSwitch]="niveau">
+          <ng-container *ngSwitchCase="'illimite'"><i class="fas fa-infinity"></i> Aucun plafond</ng-container>
+          <ng-container *ngSwitchCase="'ok'"><i class="fas fa-circle-check"></i> Espace suffisant</ng-container>
+          <ng-container *ngSwitchCase="'attention'"><i class="fas fa-circle-exclamation"></i> Bientôt plein</ng-container>
+          <ng-container *ngSwitchCase="'critique'"><i class="fas fa-triangle-exclamation"></i> Presque plein</ng-container>
+          <ng-container *ngSwitchCase="'plein'"><i class="fas fa-ban"></i> Quota dépassé</ng-container>
+        </span>
+      </div>
+
+      <div class="st-jauge" *ngIf="niveau !== 'illimite'" role="progressbar" [attr.aria-valuenow]="quota.usage_percent"
+           aria-valuemin="0" aria-valuemax="100" [attr.aria-label]="'Occupation du quota : ' + quota.usage_percent + ' %'">
+        <span [style.width.%]="largeur"></span>
+      </div>
+
+      <dl class="st-chiffres">
+        <div><dt>Utilisé</dt><dd>{{ taille(quota.used_bytes) }}</dd></div>
+        <div *ngIf="niveau !== 'illimite'"><dt>Plafond</dt><dd>{{ taille(quota.effective_quota_bytes) }}</dd></div>
+        <div *ngIf="niveau !== 'illimite'"><dt>Restant</dt><dd>{{ taille(quota.remaining_bytes) }}</dd></div>
+        <div *ngIf="niveau !== 'illimite'"><dt>Occupation</dt><dd>{{ pourcent(quota.usage_percent) }}</dd></div>
+        <div><dt>Votre part</dt><dd>{{ taille(donnees.ma_part_bytes) }}<small *ngIf="quota.used_bytes"> ({{ maPart }} %)</small></dd></div>
+      </dl>
+
+      <p class="st-message" *ngIf="niveau === 'plein'">
+        <i class="fas fa-ban"></i> Le quota est atteint : les imports de fichiers, d'images et de photos de points sont refusés
+        jusqu'à ce que de la place soit libérée ou que le super administrateur relève le quota.</p>
+      <p class="st-message" *ngIf="niveau === 'critique' || niveau === 'attention'">
+        <i class="fas fa-circle-exclamation"></i> Un import volumineux (photos de points notamment) risque d'être refusé.
+        Vérifiez la place restante avant d'importer.</p>
+    </section>
+
+    <section class="st-carte" *ngIf="donnees.mes_projets.length">
+      <h3><i class="fas fa-folder-open"></i> Vos projets les plus lourds</h3>
+      <ul class="st-projets">
+        <li *ngFor="let p of donnees.mes_projets">
+          <span class="st-nom"><strong>{{ p.code }}</strong> {{ p.nom }}</span>
+          <span class="st-barre"><span [style.width.%]="pourcentProjet(p.bytes)"></span></span>
+          <span class="st-taille">{{ taille(p.bytes) }}</span>
+        </li>
+      </ul>
+    </section>
+
+    <section class="st-carte st-conseils" *ngIf="quota && niveau !== 'illimite'">
+      <h3><i class="fas fa-lightbulb"></i> Libérer de l'espace</h3>
+      <ul>
+        <li>Supprimez les images et photos en double ou inutiles des pièces.</li>
+        <li>Les pièces placées en corbeille ne comptent plus dans le quota.</li>
+        <li>Le quota est fixé par le super administrateur : demandez-lui de le relever si l'espace manque durablement.</li>
+      </ul>
+    </section>
+  </ng-container>
+</div>

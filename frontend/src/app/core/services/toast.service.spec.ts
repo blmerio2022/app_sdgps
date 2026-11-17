@@ -31,4 +31,20 @@ describe('ToastService', () => {
     expect(toastr.warning).toHaveBeenCalled();
     expect(toastr.info).toHaveBeenCalled();
   });
+
+  it('refus de quota : titré comme tel et affiché longtemps, quel que soit l’écran', () => {
+    service.error('Échec', 'Quota de stockage dépassé pour l’organisation « A » : …');
+    const [msg, title, opts] = toastr.error.calls.mostRecent().args as any[];
+    expect(msg).toContain('« A »');
+    expect(title).toBe('Quota de stockage de l\'organisation dépassé');
+    expect(opts.timeOut).toBeGreaterThanOrEqual(15000);
+    expect(opts.closeButton).toBeTrue();
+  });
+
+  it('une erreur ordinaire garde son titre et sa durée', () => {
+    service.error('Échec', 'Import impossible');
+    const [, title, opts] = toastr.error.calls.mostRecent().args as any[];
+    expect(title).toBe('Échec');
+    expect(opts.timeOut).toBe(4000);
+  });
 });

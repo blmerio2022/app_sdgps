@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormsModule } from '@angular/forms';
+import { RouterTestingModule } from '@angular/router/testing';
 import { of } from 'rxjs';
 import { ImportMasseComponent } from './import-masse.component';
 import { ImportMasseService } from '../../../core/services/import-masse.service';
@@ -17,7 +18,7 @@ describe('ImportMasseComponent (gabarit)', () => {
       points: { PPA: [], PPN: [] }, rc_possible: false, rc_existant: false, pieces_existantes: {} })) };
     TestBed.configureTestingModule({
       declarations: [ImportMasseComponent],
-      imports: [FormsModule],
+      imports: [FormsModule, RouterTestingModule],
       providers: [{ provide: ImportMasseService, useValue: svc }, { provide: PiecesService, useValue: {} },
                   { provide: PdfRenderService, useValue: {} }],
     });

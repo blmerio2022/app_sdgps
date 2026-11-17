@@ -132,7 +132,7 @@ describe('ImportMasseComponent', () => {
     svc.importer.and.returnValue(throwError(() => ({ error: { detail: 'Dossier figé' } })));
     cmp.analyser();
     cmp.importer();
-    expect(cmp.resultats[0]).toEqual({ fichier: 'l/LPA.csv', ok: false, detail: 'Dossier figé' });
+    expect(cmp.resultats[0]).toEqual({ fichier: 'l/LPA.csv', ok: false, nature: 'piece', detail: 'Dossier figé' });
     expect(svc.remplacerLignes).toHaveBeenCalledWith('rc0', [{}, {}]);
   });
 
@@ -265,6 +265,37 @@ describe('ImportMasseComponent', () => {
     pieces.addImages.and.returnValue(throwError(() => ({ error: { detail: 'Quota de stockage dépassé pour l’organisation' } })));
     cmp.importer();
     expect(cmp.refusQuota).toBe(1);
+  });
+
+  it('quota : le bilan dit quelles pièces et quelles images ont été refusées, et pourquoi', () => {
+    deposer();
+    svc.plan.and.returnValue(of({ plan: [L()], images: [IMG(2, 'PPA', 'GPS1'), IMG(3, 'PPA', 'GPS1')], ecartes: [],
+      points: { PPA: [{ nom: 'GPS1', cle: '1' }], PPN: [] }, rc_possible: false, rc_existant: false,
+      pieces_existantes: { PPA: 'ppa1' } }));
+    cmp.analyser();
+    const refus = { error: { code: 'QUOTA_DEPASSE', detail: 'Quota de stockage dépassé pour l’organisation « Org »',
+      quota: { organization_name: 'Org', quota_bytes: 1000, used_bytes: 990, remaining_bytes: 10, incoming_bytes: 500 } } };
+    svc.importer.and.returnValue(throwError(() => refus));
+    pieces.addImages.and.returnValue(throwError(() => refus));
+    cmp.importer();
+    expect(cmp.refusQuota).toBe(2);
+    expect(cmp.piecesRefuseesQuota.length).toBe(1);
+    expect(cmp.piecesRefuseesQuota[0].detail).toContain('ses données n\'ont pas été ajoutées');
+    expect(cmp.imagesRefuseesQuota).toBe(2);
+    expect(cmp.chiffresQuota?.organization_name).toBe('Org');
+    expect(cmp.chiffresQuota?.remaining_bytes).toBe(10);
+    expect(cmp.nomsRefuses(cmp.lotsImagesRefusesQuota)).toContain('point GPS1');
+  });
+
+  it('une autre erreur n’est pas comptée comme un refus de quota', () => {
+    deposer();
+    svc.plan.and.returnValue(of({ plan: [L()], images: [], ecartes: [], points: { PPA: [], PPN: [] },
+      rc_possible: false, rc_existant: false, pieces_existantes: {} }));
+    cmp.analyser();
+    svc.importer.and.returnValue(throwError(() => ({ error: { detail: 'Colonne manquante' } })));
+    cmp.importer();
+    expect(cmp.refusQuota).toBe(0);
+    expect(cmp.resultats[0].detail).toBe('Colonne manquante');
   });
 });
 

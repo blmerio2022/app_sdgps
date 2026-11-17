@@ -747,8 +747,10 @@ figé ; NE PERSISTE RIEN) — `pieces/import_masse.py::analyser_lot`, détermini
   (`import_masse.cle_point`). La colonne ID est donc importée (hors score). ⚠ Un nom en
   guise d'ID rattachait la photo à une autre ligne ou à aucune ;
 - **quota de stockage** : le plan renvoie `quota` (organisation imputée = créateur du
-  projet) ; l'écran prévient AVANT l'import si les fichiers n'y tiennent pas, et résume
-  les refus après (un quota plein faisait refuser les photos une à une : points sans photo) ;
+  projet) ; l'écran prévient AVANT l'import si les fichiers n'y tiennent pas, et le bilan
+  regroupe les refus : pièces NON CRÉÉES (leurs données ne sont pas ajoutées — chaque pièce
+  importée garde son fichier source) et images non ajoutées (points sans photo), avec les
+  chiffres du serveur et un lien vers *Mon espace de stockage* ;
 - « Choisir des fichiers » utilise le champ fichier CLASSIQUE (le sélecteur natif
   `showOpenFilePicker` laissait la liste vide chez l'utilisateur) ;
 - **déterminations intermédiaires** : choix « séparées » (une RDN par détermination) ou
@@ -768,6 +770,29 @@ contrôle** si coché (`compute-rc` ; RC existant → lignes remplacées, versio
 `get_object()` : ils appellent `_check_modifiable`. `DATA_UPLOAD_MAX_NUMBER_FILES` = 500.
 Tests : `pieces/tests_import_masse.py`, `tests_import_masse_exemple.py` (bout en bout sur le
 levé d'exemple réel, formats « une pièce par dossier » et « à plat », sauté s'il est absent — non versionné), `import-masse.component.spec.ts`.
+
+**Quota de stockage : refus EXPLIQUÉ + espace visible par l'opérateur.** Le quota
+(`analytics/quotas.py`) est imputé à l'organisation PRINCIPALE du créateur du projet ;
+`storage_quota_bytes` NULL = défaut `DEFAULT_ORGANIZATION_STORAGE_QUOTA_BYTES` (0 = illimité).
+- refus : dans une vue / un serializer DRF, appeler **`ensure_within_quota_api`** (lève
+  `QuotaDepasse`, 400) — jamais un `ValidationError` aplati en erreur de champ. Corps :
+  `{code: 'QUOTA_DEPASSE', detail, quota: {organization_name, quota_bytes, used_bytes,
+  remaining_bytes, incoming_bytes}}`. Branché : pièce avec fichier (`import/`,
+  `import-html/`, création), `images/`, logo d'organisation, avatar ;
+- front : `core/services/stockage.service.ts` (`estRefusQuota`, `refusQuota`,
+  `messageRefusQuota`, `octetsLisibles`). **`ToastService.error` reconnaît le message**
+  (préfixe « Quota de stockage dépassé ») : quel que soit l'écran, le toast est titré « Quota
+  de stockage de l'organisation dépassé » et reste 15 s — rien à faire dans un nouvel écran
+  qui affiche `error.detail`. ⚠ Un écran qui lit `error.code` comme erreur du champ
+  « Code » doit d'abord tester `estRefusQuota` (cf. liste des organisations) ;
+- **Mon espace de stockage** (`/parametres/stockage`, tous rôles, aussi en zone admin) :
+  `GET /api/v1/analytics/mon-stockage/` (`stockage_utilisateur`) — quota de l'organisation,
+  utilisé / restant / occupation, part de l'appelant et SES projets les plus lourds (jamais
+  ceux d'un collègue) ;
+- écran super admin *Quotas de stockage* : la saisie est en **Go** ; un plafond < 100 Mo ou
+  inférieur à la consommation est confirmé (« 0,01 » = 10 Mo bloquait les photos) ;
+- tests : `analytics/tests_quota_message.py`, specs `stockage.service`, `toast.service`,
+  `stockage-settings`, `storage-quotas`, `import-masse`, `menu.config`.
 
 **Recherche globale (Ctrl+K).** `GET /api/v1/recherche/?q=` (`projects/recherche.py`, ≥ 2
 caractères, 6 résultats par groupe) : SDGPS (n°, nature), projets (code, nom), propriétés

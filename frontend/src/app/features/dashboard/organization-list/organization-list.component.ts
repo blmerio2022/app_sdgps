@@ -1,4 +1,5 @@
 import { formatDateTime } from '../../../shared/utils/date-format.util';
+import { estRefusQuota, messageRefusQuota } from '../../../core/services/stockage.service';
 import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from '../../../shared/components/table-pagination/table-pagination.component';
 import { Component, OnInit, ChangeDetectorRef, ViewChild } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
@@ -1260,7 +1261,9 @@ export class OrganizationListComponent implements OnInit {
         
         if (error.status === 400 && error.error) {
           // Erreurs de validation du backend
-          if (error.error.code) {
+          if (estRefusQuota(error)) {
+            errorMessage = messageRefusQuota(error);
+          } else if (error.error.code) {
             errorMessage = `Code invalide : ${error.error.code}`;
           } else if (error.error.name) {
             errorMessage = `Nom invalide : ${error.error.name}`;
@@ -1405,7 +1408,9 @@ export class OrganizationListComponent implements OnInit {
         let errorMessage = 'Une erreur est survenue lors de la modification.';
         
         if (error.status === 400 && error.error) {
-          if (error.error.code) {
+          if (estRefusQuota(error)) {
+            errorMessage = messageRefusQuota(error);
+          } else if (error.error.code) {
             errorMessage = `Code invalide : ${error.error.code}`;
           } else if (error.error.name) {
             errorMessage = `Nom invalide : ${error.error.name}`;

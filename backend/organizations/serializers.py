@@ -5,7 +5,7 @@ from rest_framework import serializers
 from accounts.models import Organization, Membership
 from accounts.fields import AuthorDisplayField
 from accounts.avatars import normalize_avatar, validate_avatar
-from analytics.quotas import ensure_within_quota
+from analytics.quotas import ensure_within_quota_api
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
@@ -79,7 +79,7 @@ class OrganizationSerializer(serializers.ModelSerializer):
             return value                      # image non ré-encodable : on garde l'originale
 
         contenu, nom = normalise
-        ensure_within_quota(self.instance, contenu.size)
+        ensure_within_quota_api(self.instance, contenu.size)
 
         value.file = contenu.file
         value.name = nom

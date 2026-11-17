@@ -72,6 +72,9 @@ export class StorageQuotasComponent implements OnInit {
       this.toast.error('Quota', 'Le quota ne peut pas être négatif.');
       return;
     }
+    // La saisie est en Go : « 0,01 » donne 10 Mo, ce qui bloque vite les imports (photos de
+    // points refusées). Un plafond sous 100 Mo, ou sous la consommation actuelle, est confirmé.
+    if (bytes !== null && bytes > 0 && !this.confirmerPlafond(quota, bytes)) return;
 
     this.saving[id] = true;
     this.quotaService.setQuota(id, bytes).subscribe({
@@ -87,6 +90,22 @@ export class StorageQuotasComponent implements OnInit {
         this.toast.error('Quota', err?.error?.detail || "Échec de l'enregistrement du quota.");
       },
     });
+  }
+
+  /** Seuil sous lequel un plafond est jugé suspect (saisie en Go mal interprétée). */
+  static readonly PLAFOND_SUSPECT = 100 * 1024 * 1024;
+
+  /** Demande confirmation d'un plafond très petit ou inférieur à la consommation actuelle. */
+  confirmerPlafond(quota: OrganizationQuota, bytes: number): boolean {
+    const raisons: string[] = [];
+    if (bytes < StorageQuotasComponent.PLAFOND_SUSPECT) {
+      raisons.push(`Ce plafond ne vaut que ${humanBytes(bytes)} (la saisie est en Go).`);
+    }
+    if (bytes < quota.used_bytes) {
+      raisons.push(`L'organisation utilise déjà ${humanBytes(quota.used_bytes)} : tout nouvel import sera refusé.`);
+    }
+    if (!raisons.length) return true;
+    return window.confirm(`Quota de « ${quota.organization_name} »\n\n${raisons.join('\n')}\n\nConfirmer ce plafond ?`);
   }
 
   /** Repasse l'organisation au défaut global (quota non arbitré). */

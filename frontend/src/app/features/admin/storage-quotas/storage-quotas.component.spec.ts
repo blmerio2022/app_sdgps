@@ -79,6 +79,30 @@ describe('StorageQuotasComponent', () => {
     expect(service.setQuota).not.toHaveBeenCalled();
   });
 
+  it('un plafond minuscule (« 0,01 » Go = 10 Mo) est confirmé avant enregistrement', () => {
+    cmp.ngOnInit();
+    const confirmer = spyOn(window, 'confirm').and.returnValue(false);
+    cmp.draft['org-1'] = 0.01;
+    cmp.save(cmp.quotas[0]);
+    expect(confirmer).toHaveBeenCalled();
+    expect(confirmer.calls.mostRecent().args[0]).toContain('10,2 Mo');
+    expect(service.setQuota).not.toHaveBeenCalled();
+
+    confirmer.and.returnValue(true);
+    service.setQuota.and.returnValue(of(quota({ quota_bytes: 10737418 })));
+    cmp.save(cmp.quotas[0]);
+    expect(service.setQuota).toHaveBeenCalledWith('org-1', 10737418);
+  });
+
+  it('un plafond sous la consommation actuelle est confirmé ; un plafond normal ne l’est pas', () => {
+    cmp.ngOnInit();
+    const confirmer = spyOn(window, 'confirm').and.returnValue(true);
+    expect(cmp.confirmerPlafond(cmp.quotas[0], 2 * 1024 ** 3)).toBeTrue();
+    expect(confirmer).not.toHaveBeenCalled();
+    cmp.confirmerPlafond(cmp.quotas[0], 200 * 1024 ** 2);   // < 512 Mo utilisés
+    expect(confirmer.calls.mostRecent().args[0]).toContain('tout nouvel import sera refusé');
+  });
+
   describe('restitution de l’usage', () => {
     it('barre bornée à 100 % même en dépassement', () => {
       expect(cmp.usageWidth(quota({ usage_percent: 180 }))).toBe(100);

@@ -1,4 +1,5 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { RefusQuota, estRefusQuota, octetsLisibles, refusQuota } from '../../../core/services/stockage.service';
 import { Observable, from, of } from 'rxjs';
 import { catchError, concatMap, map, switchMap, toArray } from 'rxjs/operators';
 import {
@@ -11,7 +12,15 @@ import { PdfRenderService, canvasToJpeg } from '../../../core/services/pdf-rende
 export interface SessionChoix { id: string; numero_session: number; }
 
 type Etape = 'depot' | 'plan' | 'import' | 'fin';
-interface Resultat { fichier: string; ok: boolean; detail: string; }
+interface Resultat {
+  fichier: string; ok: boolean; detail: string;
+  /** Ce que l'envoi devait ajouter : une pièce (ses données) ou un lot d'images. */
+  nature?: 'piece' | 'images' | 'autre';
+  /** Refus pour quota de stockage dépassé (chiffres du serveur si fournis). */
+  quota?: boolean;
+  chiffres?: RefusQuota | null;
+  nbImages?: number;
+}
 
 export const LIBELLES_IMAGES: Record<string, string> = {
   PPA: 'Photos des points anciens', PPN: 'Photos des points nouveaux',
@@ -305,8 +314,37 @@ export class ImportMasseComponent {
     return `${((octets || 0) / (1024 * 1024)).toFixed(1).replace('.', ',')} Mo`;
   }
 
+  /** Résultat d'un envoi en échec. Un refus de quota reçoit un libellé court (« … non créée ») :
+   * l'explication complète est donnée UNE fois, dans l'encadré du bilan. */
+  private echec(fichier: string, e: any, nature: 'piece' | 'images', libelleQuota: string): Resultat {
+    if (estRefusQuota(e)) {
+      return { fichier, ok: false, nature, quota: true, chiffres: refusQuota(e),
+               detail: `${libelleQuota} (quota de stockage dépassé).` };
+    }
+    return { fichier, ok: false, nature, detail: this.messageErreur(e) };
+  }
+
   /** Refus pour quota, regroupés dans le bilan (un message au lieu d'un par photo). */
-  get refusQuota(): number { return this.resultats.filter(r => !r.ok && /quota/i.test(r.detail)).length; }
+  get refusQuota(): number { return this.resultats.filter(r => r.quota).length; }
+  get piecesRefuseesQuota(): Resultat[] { return this.resultats.filter(r => r.quota && r.nature === 'piece'); }
+  get lotsImagesRefusesQuota(): Resultat[] { return this.resultats.filter(r => r.quota && r.nature === 'images'); }
+  get imagesRefuseesQuota(): number { return this.lotsImagesRefusesQuota.reduce((n, r) => n + (r.nbImages || 0), 0); }
+  /** Chiffres du dernier refus (le plus à jour) : organisation, utilisé, plafond, restant. */
+  get chiffresQuota(): RefusQuota | null {
+    return [...this.resultats].reverse().find(r => r.chiffres)?.chiffres || null;
+  }
+  readonly taille = octetsLisibles;
+
+  /** Liste lisible des envois refusés (tronquée au-delà de 8). */
+  nomsRefuses(liste: Resultat[]): string {
+    const noms = liste.map(r => r.fichier);
+    return noms.slice(0, 8).join(', ') + (noms.length > 8 ? `… (+${noms.length - 8})` : '');
+  }
+
+  /** Page « Mon espace de stockage », dans la zone courante (opérateur ou admin). */
+  get lienStockage(): string {
+    return (typeof location !== 'undefined' && location.pathname.startsWith('/admin') ? '/admin' : '') + '/parametres/stockage';
+  }
 
   sourcesAssemblage(): { label: string; rows: any[] }[] {
     const libre = this.plan.find(l => l.type_piece === 'RDL' && !l.doublon && l.donnees?.length);
@@ -367,7 +405,8 @@ export class ImportMasseComponent {
           if (p?.id && t.l.type_piece && !creees[t.l.type_piece]) creees[t.l.type_piece] = p.id;
           return { fichier: t.l.fichier, ok: true, detail: `${t.l.type_piece}${t.l.numero ? ' n°' + t.l.numero : ''} ${t.l.action === 'remplacer' ? 'remplacée' : 'créée'}` };
         }),
-        catchError(e => of({ fichier: t.l.fichier, ok: false, detail: this.messageErreur(e) })),
+        catchError(e => of(this.echec(t.l.fichier, e, 'piece',
+          `${t.l.type_piece || 'Pièce'}${t.l.numero ? ' n°' + t.l.numero : ''} non ${t.l.action === 'remplacer' ? 'remplacée' : 'créée'} : ses données n'ont pas été ajoutées`))),
       );
     }));
 
@@ -375,7 +414,8 @@ export class ImportMasseComponent {
       switchMap(id => this.pieces.addImages(id, g.fichiers, g.pointRef || undefined)),
       map(() => ({ fichier: `${g.fichiers.length} image(s)`, ok: true,
                    detail: `${g.type}${g.point ? ' · point ' + g.point : ''}` })),
-      catchError(e => of({ fichier: `${g.fichiers.length} image(s) ${g.type}`, ok: false, detail: this.messageErreur(e) })),
+      catchError(e => of({ ...this.echec(`${g.fichiers.length} image(s) ${g.type}${g.point ? ' · point ' + g.point : ''}`, e, 'images',
+        `${g.fichiers.length} image(s) non ajoutée(s)`), nbImages: g.fichiers.length })),
     )));
 
     // Déterminations « assemblées » : une seule RDIA, remplacée si elle existe déjà.

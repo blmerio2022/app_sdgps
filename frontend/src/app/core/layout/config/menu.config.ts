@@ -94,6 +94,14 @@ export const USER_MENU: MenuItem[] = [
         route: '/parametres/securite',
         type: 'link',
         description: 'Double authentification et sessions ouvertes'
+      },
+      {
+        id: 'mon-stockage',
+        title: 'Mon espace de stockage',
+        icon: 'fas fa-hard-drive',
+        route: '/parametres/stockage',
+        type: 'link',
+        description: 'Quota de votre organisation : utilisé, restant, vos projets les plus lourds'
       }
     ]
   }
@@ -273,6 +281,14 @@ export const ADMIN_MENU: MenuItem[] = [
         route: '/admin/parametres/securite',
         type: 'link',
         description: 'Double authentification et sessions ouvertes'
+      },
+      {
+        id: 'mon-stockage',
+        title: 'Mon espace de stockage',
+        icon: 'fas fa-hard-drive',
+        route: '/admin/parametres/stockage',
+        type: 'link',
+        description: 'Quota de votre organisation : utilisé, restant, vos projets les plus lourds'
       },
       {
         id: 'descriptions-champs',

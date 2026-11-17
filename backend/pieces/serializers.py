@@ -4,7 +4,7 @@ from rest_framework import serializers
 from .models import CachetSignature, Piece, PieceImage, RapportGeneration
 from .validators import validate_piece_coherence, points_without_photo
 from accounts.fields import AuthorDisplayField
-from analytics.quotas import ensure_within_quota, organization_of_user
+from analytics.quotas import ensure_within_quota_api, organization_of_user
 
 
 class PieceImageSerializer(serializers.ModelSerializer):
@@ -141,12 +141,8 @@ class PieceSerializer(serializers.ModelSerializer):
         fichier = attrs.get('fichier')
         if fichier is not None and ssdgps is not None:
             projet = ssdgps.affaire.propriete.projet
-            try:
-                ensure_within_quota(organization_of_user(projet.created_by),
+            ensure_within_quota_api(organization_of_user(projet.created_by),
                                     getattr(fichier, 'size', 0) or 0)
-            except DjangoValidationError as e:
-                raise serializers.ValidationError(
-                    {'fichier': e.messages[0] if e.messages else str(e)})
         return attrs
 
 

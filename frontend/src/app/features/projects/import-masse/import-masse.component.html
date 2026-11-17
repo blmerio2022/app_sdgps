@@ -180,11 +180,24 @@
         {{ reussis }} opération(s) réussie(s) sur {{ resultats.length }}.
         <span *ngIf="reussis">Les pièces sont en brouillon : vérifiez-les puis validez-les.</span>
       </p>
-      <p class="im-quota" *ngIf="etape === 'fin' && refusQuota">
+      <div class="im-quota im-quota-bilan" *ngIf="etape === 'fin' && refusQuota">
         <i class="fas fa-hard-drive"></i>
-        <span><strong>{{ refusQuota }} envoi(s) refusé(s) : quota de stockage dépassé.</strong> Les fichiers concernés — souvent des
-          photos de points — n'ont pas été enregistrés. Relevez le quota ou libérez de l'espace, puis relancez l'import des images.</span>
-      </p>
+        <div>
+          <strong>Quota de stockage de l'organisation dépassé{{ chiffresQuota ? ' — « ' + chiffresQuota.organization_name + ' »' : '' }}</strong>
+          <span *ngIf="chiffresQuota">{{ taille(chiffresQuota.used_bytes) }} utilisés sur {{ taille(chiffresQuota.quota_bytes) }}
+            (reste {{ taille(chiffresQuota.remaining_bytes) }}). Le serveur a refusé les envois qui ne tenaient plus dans cet espace :
+            rien de ces envois n'a été enregistré.</span>
+          <span *ngIf="piecesRefuseesQuota.length"><b>{{ piecesRefuseesQuota.length }} pièce(s) non créée(s)</b> — leurs données n'ont
+            pas été ajoutées, car chaque pièce importée conserve son fichier source :
+            {{ nomsRefuses(piecesRefuseesQuota) }}.</span>
+          <span *ngIf="imagesRefuseesQuota"><b>{{ imagesRefuseesQuota }} image(s) non ajoutée(s)</b>
+            ({{ lotsImagesRefusesQuota.length }} envoi(s)) — les points concernés restent sans photo :
+            {{ nomsRefuses(lotsImagesRefusesQuota) }}.</span>
+          <span>Libérez de l'espace (images inutiles, pièces en corbeille) ou demandez au super administrateur de relever le
+            quota, puis relancez l'import de ces fichiers.
+            <a [routerLink]="lienStockage" (click)="fermer()">Voir l'espace de stockage</a></span>
+        </div>
+      </div>
       <ul class="im-resultats">
         <li *ngFor="let r of resultats" [class.ko]="!r.ok">
           <i class="fas" [ngClass]="r.ok ? 'fa-check' : 'fa-xmark'"></i> <span class="nom">{{ r.fichier }}</span> — {{ r.detail }}

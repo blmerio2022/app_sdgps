@@ -65,3 +65,17 @@ describe('menu.config — Réseau GPS ouvert à tous les rôles', () => {
     expect(item?.roles).toEqual(['ROLE_SUPER_ADMIN', 'ROLE_ADMIN_SYSTEME', 'ROLE_ORGANISATION_ADMIN']);
   });
 });
+
+describe('menu.config — Mon espace de stockage (tous les rôles)', () => {
+  const sous = (menu: any[]) => menu.find(i => i.id === 'parametres')?.children?.find((c: any) => c.id === 'mon-stockage');
+
+  it('opérateur : Paramètres › Mon espace de stockage', () => {
+    expect(sous(USER_MENU)?.route).toBe('/parametres/stockage');
+    expect(sous(USER_MENU)?.roles).toBeFalsy();
+  });
+
+  it('admin : même page dans la zone admin, ouverte aux 3 rôles', () => {
+    expect(sous(ADMIN_MENU)?.route).toBe('/admin/parametres/stockage');
+    expect(sous(ADMIN_MENU)?.roles).toBeFalsy();
+  });
+});

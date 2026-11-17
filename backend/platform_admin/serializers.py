@@ -7,7 +7,7 @@ from django.core.exceptions import ValidationError
 import re
 
 from accounts.avatars import normalize_avatar, validate_avatar
-from analytics.quotas import ensure_within_quota, organization_of_user
+from analytics.quotas import ensure_within_quota_api, organization_of_user
 
 User = get_user_model()
 
@@ -119,7 +119,7 @@ class SuperAdminProfileSerializer(serializers.ModelSerializer):
 
         contenu, nom = normalise
         organisation = organization_of_user(self.context['request'].user)
-        ensure_within_quota(organisation, contenu.size)
+        ensure_within_quota_api(organisation, contenu.size)
 
         value.file = contenu.file
         value.name = nom

@@ -21,6 +21,7 @@ Sémantique du champ `Organization.storage_quota_bytes` :
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db.models import Sum
+from rest_framework.exceptions import APIException
 
 from accounts.models import CustomUser, Membership, Organization
 from pieces.models import Piece, PieceImage
@@ -28,15 +29,49 @@ from pieces.models import Piece, PieceImage
 from .services import _file_size
 
 
+CODE_QUOTA_DEPASSE = 'QUOTA_DEPASSE'
+
+
 class QuotaExceeded(ValidationError):
     """Dépassement de quota. Sous-classe de `ValidationError` pour que les serializers
     DRF la transforment naturellement en 400 avec le message métier."""
 
-    def __init__(self, message, *, quota_bytes=0, used_bytes=0, incoming_bytes=0):
-        super().__init__(message)
+    def __init__(self, message, *, quota_bytes=0, used_bytes=0, incoming_bytes=0,
+                 organization_name=''):
+        super().__init__(message, code=CODE_QUOTA_DEPASSE)
         self.quota_bytes = quota_bytes
         self.used_bytes = used_bytes
         self.incoming_bytes = incoming_bytes
+        self.organization_name = organization_name
+
+    def payload(self) -> dict:
+        """Corps de réponse API : le message ET les chiffres, pour que le front explique
+        le refus (organisation, consommation, plafond, place restante, poids refusé)."""
+        return {
+            'code': CODE_QUOTA_DEPASSE,
+            'detail': self.messages[0] if self.messages else str(self),
+            'quota': {
+                'organization_name': self.organization_name,
+                'quota_bytes': self.quota_bytes,
+                'used_bytes': self.used_bytes,
+                'remaining_bytes': max(0, self.quota_bytes - self.used_bytes),
+                'incoming_bytes': self.incoming_bytes,
+            },
+        }
+
+
+class QuotaDepasse(APIException):
+    """Refus API d'un téléversement pour quota dépassé (400, corps structuré).
+
+    Levée depuis un serializer, elle traverse `is_valid()` (qui ne capture que les
+    erreurs de validation) : la réponse garde son `code` au lieu d'être aplatie en
+    erreur de champ."""
+    status_code = 400
+    default_code = CODE_QUOTA_DEPASSE
+
+    def __init__(self, exc: QuotaExceeded):
+        super().__init__(exc.messages[0] if exc.messages else str(exc))
+        self.detail = exc.payload()
 
 
 def human_bytes(value) -> str:
@@ -161,11 +196,23 @@ def ensure_within_quota(organization, incoming_bytes) -> None:
 
     raise QuotaExceeded(
         f"Quota de stockage dépassé pour l'organisation « {organization.name} » : "
-        f"{human_bytes(used)} utilisés sur {human_bytes(quota)}, et ce fichier ajoute "
-        f"{human_bytes(incoming)}. Libérez de l'espace ou demandez au super "
-        f"administrateur de relever le quota.",
+        f"{human_bytes(used)} utilisés sur {human_bytes(quota)} "
+        f"(reste {human_bytes(max(0, quota - used))}), et cet envoi ajoute "
+        f"{human_bytes(incoming)}. L'envoi est refusé : rien n'a été enregistré. "
+        f"Libérez de l'espace (pièces ou images inutiles, corbeille vidée) ou demandez "
+        f"au super administrateur de relever le quota.",
         quota_bytes=quota, used_bytes=used, incoming_bytes=incoming,
+        organization_name=organization.name,
     )
+
+
+def ensure_within_quota_api(organization, incoming_bytes) -> None:
+    """Variante pour les vues et serializers DRF : lève `QuotaDepasse` (réponse 400
+    structurée, `code: QUOTA_DEPASSE`) au lieu d'une erreur de validation."""
+    try:
+        ensure_within_quota(organization, incoming_bytes)
+    except QuotaExceeded as exc:
+        raise QuotaDepasse(exc) from exc
 
 
 def organization_of_user(user):
@@ -177,3 +224,34 @@ def organization_of_user(user):
                   .select_related('organization')
                   .order_by('joined_at').first())
     return membership.organization if membership else None
+
+
+def stockage_utilisateur(user, top=10) -> dict:
+    """Espace de stockage vu par un opérateur : quota de SON organisation (celle à qui
+    sont imputés ses projets), sa propre part et ses projets les plus lourds — de quoi
+    savoir où libérer de la place. Ne nomme que les projets que l'utilisateur a créés :
+    la consommation des collègues n'est donnée qu'en total (pas de liste d'autrui)."""
+    from collections import defaultdict
+    from projects.models import Projet
+
+    organisation = organization_of_user(user)
+    par_projet = defaultdict(int)
+    for cle, champ in (('ssdgps__affaire__propriete__projet_id', Piece.objects.filter(
+            is_deleted=False, ssdgps__affaire__propriete__projet__created_by=user,
+            ssdgps__affaire__propriete__projet__is_deleted=False).exclude(fichier='')),
+            ('piece__ssdgps__affaire__propriete__projet_id', PieceImage.objects.filter(
+                piece__is_deleted=False, piece__ssdgps__affaire__propriete__projet__created_by=user,
+                piece__ssdgps__affaire__propriete__projet__is_deleted=False))):
+        for ligne in champ.values(cle).annotate(total=Sum('taille_octets')):
+            par_projet[ligne[cle]] += int(ligne['total'] or 0)
+    projets = {p.pk: p for p in Projet.objects.filter(pk__in=par_projet.keys())}
+    classement = sorted(par_projet.items(), key=lambda kv: kv[1], reverse=True)
+    return {
+        'organisation': quota_state(organisation) if organisation is not None else None,
+        'ma_part_bytes': sum(par_projet.values()),
+        'mes_projets': [
+            {'id': str(pk), 'code': getattr(projets.get(pk), 'code_projet', '') or '',
+             'nom': getattr(projets.get(pk), 'nom_projet', '') or '', 'bytes': octets}
+            for pk, octets in classement[:top] if octets > 0
+        ],
+    }

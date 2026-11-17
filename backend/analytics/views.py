@@ -97,3 +97,16 @@ class ActiviteView(APIView):
         if depuis and jusqu_a and depuis > jusqu_a:
             return Response({'detail': 'Période invalide.'}, status=http.HTTP_400_BAD_REQUEST)
         return Response(calculer(request.user, depuis, jusqu_a, request.query_params.get('organisation') or None))
+
+
+class MonStockageView(APIView):
+    """
+    GET /api/v1/analytics/mon-stockage/ — espace de stockage de l'organisation de
+    l'appelant (quota, consommation, place restante) + sa part et ses projets les plus
+    lourds. Ouvert à TOUS les utilisateurs connectés : un opérateur doit pouvoir savoir,
+    avant d'importer, s'il lui reste de la place.
+    """
+
+    def get(self, request):
+        from .quotas import stockage_utilisateur
+        return Response(stockage_utilisateur(request.user))

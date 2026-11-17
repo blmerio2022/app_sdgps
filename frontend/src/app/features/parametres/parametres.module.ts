@@ -10,6 +10,7 @@ import { CachetsSettingsComponent } from './cachets-settings/cachets-settings.co
 import { IaSettingsComponent } from './ia-settings/ia-settings.component';
 import { NotificationsSettingsComponent } from './notifications-settings/notifications-settings.component';
 import { SecuriteSettingsComponent } from './securite-settings/securite-settings.component';
+import { StockageSettingsComponent } from './stockage-settings/stockage-settings.component';
 import { SharedModule } from '../../shared/shared.module';
 
 /**
@@ -29,12 +30,13 @@ const routes: Routes = [
   { path: 'intelligence-artificielle', component: IaSettingsComponent },
   { path: 'notifications', component: NotificationsSettingsComponent },
   { path: 'securite', component: SecuriteSettingsComponent },
+  { path: 'stockage', component: StockageSettingsComponent },
 ];
 
 @NgModule({
   declarations: [PieceSortSettingsComponent, PieceFieldsSettingsComponent, TolerancesSettingsComponent,
                  CachetsSettingsComponent, IaSettingsComponent, NotificationsSettingsComponent,
-                 SecuriteSettingsComponent],
+                 SecuriteSettingsComponent, StockageSettingsComponent],
   imports: [
     CommonModule,
     FormsModule,

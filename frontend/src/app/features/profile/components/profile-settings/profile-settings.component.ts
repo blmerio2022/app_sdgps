@@ -1,4 +1,5 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
+import { estRefusQuota, messageRefusQuota } from '../../../../core/services/stockage.service';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { ProfileService, UserProfile } from '../../services/profile.service';
 import { LayoutService } from '../../../../core/layout/services/layout.service';
@@ -418,7 +419,12 @@ export class ProfileSettingsComponent implements OnInit, OnDestroy {
           console.error('Erreur upload photo:', error);
           this.isUploadingPhoto = false;
           this.savingProfile = false;
-          this.toastr.error('Erreur lors de l\'upload de la photo', 'Erreur');
+          if (estRefusQuota(error)) {
+            this.toastr.error(messageRefusQuota(error), 'Quota de stockage de l\'organisation dépassé',
+                              { timeOut: 15000, closeButton: true });
+          } else {
+            this.toastr.error(error?.error?.detail || 'Erreur lors de l\'upload de la photo', 'Erreur');
+          }
         }
       })
     );

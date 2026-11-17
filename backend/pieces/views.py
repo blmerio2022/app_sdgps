@@ -20,7 +20,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
-from analytics.quotas import ensure_within_quota, organization_of_user
+from analytics.quotas import QuotaExceeded, ensure_within_quota, organization_of_user
 from accounts.audit import journaliser
 from accounts.models import AuditEvent
 from projects.models import Session, Ssdgps
@@ -743,9 +743,8 @@ class PieceViewSet(viewsets.ModelViewSet):
                 organization_of_user(piece.ssdgps.affaire.propriete.projet.created_by),
                 sum(f.size for f in files),
             )
-        except DjangoValidationError as e:
-            return Response({'detail': e.messages[0] if e.messages else str(e)},
-                            status=status.HTTP_400_BAD_REQUEST)
+        except QuotaExceeded as e:
+            return Response(e.payload(), status=status.HTTP_400_BAD_REQUEST)
 
         # Rattachement optionnel à un point (PPA/PPN) : appliqué à tout le lot.
         point_ref = (request.data.get('point_ref') or '').strip()
