@@ -1190,3 +1190,48 @@ describe('PieceManagementPageComponent (intégration IA)', () => {
     expect(cmp.loadPieces).toHaveBeenCalled();
   });
 });
+
+describe('PieceManagementPageComponent — rapport d’une pièce', () => {
+  let cmp: PieceManagementPageComponent;
+  let piecesSvc: jasmine.SpyObj<{ downloadPieceReport: any }>;
+  const piece = { id: 'p7', type_piece: 'RDIA', type_piece_display: 'RDIA', statut: 'brouillon' } as any;
+
+  beforeEach(() => {
+    piecesSvc = jasmine.createSpyObj('PiecesService', ['downloadPieceReport']);
+    piecesSvc.downloadPieceReport.and.returnValue(of({ data: '', content_type: 'application/pdf',
+                                                        filename: 'RAPPORT_PIECE-RDIA_x.pdf' }));
+    const sanitizer = { bypassSecurityTrustResourceUrl: (u: string) => u } as any;
+    const stub = { get: () => of([]), save: () => of([]), resetToSource: () => of([]) } as any;
+    cmp = new PieceManagementPageComponent(
+      {} as any, piecesSvc as any, {} as any, { navigate: () => {} } as any,
+      {} as any, {} as any, stub, stub, sanitizer,
+    );
+    cmp.ssdgps = { id: 's1', numero_ssdgps: 2, type_ssdgps: 'mono-session' } as any;
+  });
+
+  it('génère le rapport de la pièce et l’affiche dans la modale', () => {
+    const evt = jasmine.createSpyObj('evt', ['stopPropagation']);
+    cmp.openPieceReport(piece, evt);
+    expect(evt.stopPropagation).toHaveBeenCalled();
+    expect(piecesSvc.downloadPieceReport).toHaveBeenCalledWith('s1', 'p7');
+    expect(cmp.pieceReport).toBe(piece);
+    expect(cmp.pieceReportUrl).toBeTruthy();
+    expect(cmp.pieceReportLoading).toBeFalse();
+  });
+
+  it('affiche l’erreur du serveur', () => {
+    piecesSvc.downloadPieceReport.and.returnValue(throwError(() => ({ status: 404, error: { detail: 'Pièce introuvable pour ce SSDGPS.' } })));
+    cmp.openPieceReport(piece);
+    expect(cmp.pieceReportError).toBe('Pièce introuvable pour ce SSDGPS.');
+    expect(cmp.pieceReportUrl).toBeNull();
+  });
+
+  it('fermer libère le PDF ; la page de garde générale n’a pas de rapport', () => {
+    cmp.openPieceReport(piece);
+    cmp.closePieceReport();
+    expect(cmp.pieceReport).toBeNull();
+    expect(cmp.pieceReportUrl).toBeNull();
+    expect(cmp.peutRapportPiece({ type_piece: 'PGSDGPS' } as any)).toBeFalse();
+    expect(cmp.peutRapportPiece(piece)).toBeTrue();
+  });
+});

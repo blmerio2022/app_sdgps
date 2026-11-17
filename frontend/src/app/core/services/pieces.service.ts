@@ -529,6 +529,18 @@ export class PiecesService {
       `${this.base}report-cover/`, { params });
   }
 
+  /**
+   * Rapport d'UNE pièce, en PDF base64 (même transport que `downloadReport`). Synchrone :
+   * une seule pièce se rend en quelques secondes. Quel que soit son statut — c'est avant
+   * de la valider que l'opérateur veut voir ce qu'elle donnera.
+   */
+  downloadPieceReport(ssdgpsId: string, pieceId: string):
+      Observable<{ filename: string; content_type: string; data: string }> {
+    const params = new HttpParams().set('ssdgps', ssdgpsId).set('piece', pieceId);
+    return this.http.get<{ filename: string; content_type: string; data: string }>(
+      `${this.base}report/`, { params });
+  }
+
   /** État courant d'une génération (sondé pendant le rendu). */
   getReportJob(id: string): Observable<RapportGeneration> {
     return this.http.get<RapportGeneration>(`${this.rapportsBase}${id}/`);

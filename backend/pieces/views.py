@@ -1458,6 +1458,27 @@ class PieceViewSet(viewsets.ModelViewSet):
         else:
             pieces = list(qs.order_by('ordre', 'type_piece', 'numero'))
 
+        # Rapport d'UNE pièce (`piece=<uuid>`) : l'opérateur génère et visualise le rendu
+        # d'une pièce précise, QUEL QUE SOIT son statut — c'est justement avant de la
+        # valider qu'il veut voir ce qu'elle donnera. Même portée RBAC (`_scope`) ; la
+        # session de la pièce identifie l'en-tête (sauf mono-session, cf. report.py).
+        piece_seule = None
+        piece_id = request.query_params.get('piece') or None
+        if piece_id:
+            if session_id or sessions_plage is not None:
+                return None, Response({'detail': "Le rapport d'une pièce ne se combine pas "
+                                                 "avec une portée de session."}, status=400)
+            piece_seule = self._scope(self.queryset.filter(
+                pk=piece_id, ssdgps_id=ssdgps_id, is_deleted=False)).select_related('session').first()
+            if piece_seule is None:
+                return None, Response({'detail': 'Pièce introuvable pour ce SSDGPS.'},
+                                      status=status.HTTP_404_NOT_FOUND)
+            if piece_seule.type_piece in EXCLUDED_TYPES:
+                return None, Response({'detail': "Cette pièce ne figure pas dans le rapport."},
+                                      status=400)
+            pieces = [piece_seule]
+            session = piece_seule.session
+
         if not pieces and exiger_pieces:
             return None, Response(
                 {'detail': 'Aucune pièce valide à inclure dans le rapport.'}, status=400)
@@ -1480,6 +1501,7 @@ class PieceViewSet(viewsets.ModelViewSet):
             'pieces': pieces,
             'duplex': duplex,
             'cachet': cachet,
+            'piece_seule': piece_seule,
         }, None
 
     @action(detail=False, methods=['get'], url_path='report')
@@ -1537,6 +1559,12 @@ class PieceViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         filename = report_filename(ssdgps, session, sessions=sessions_plage)
+        if contexte.get('piece_seule') is not None:
+            # « RAPPORT_SDGPS_… » → « RAPPORT_PIECE-RDIA_… » : un fichier d'une seule pièce
+            # ne doit pas se confondre avec le rapport complet du dossier.
+            p = contexte['piece_seule']
+            suffixe = f"{p.type_piece}{'-N' + str(p.numero) if p.numero else ''}"
+            filename = filename.replace('RAPPORT_SDGPS', f'RAPPORT_PIECE-{suffixe}', 1)
 
         # Consultation/export journalisé : pour des données foncières, savoir QUI a
         # sorti QUEL rapport et QUAND fait partie de la traçabilité attendue — les

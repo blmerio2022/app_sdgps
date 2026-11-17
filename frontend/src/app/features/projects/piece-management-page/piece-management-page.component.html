@@ -63,42 +63,49 @@
           <i class="fas fa-table"></i>
         </button>
       </div>
-      <!-- Liste de contrôle guidée du dossier (assistant de création, étape « Pièces »). -->
-      <button class="btn btn-assistant" *ngIf="!showDeleted" (click)="openInAssistant()"
-              [title]="assistantTitle">
-        <i class="fas fa-list-check"></i> Assistant
-      </button>
-      <!-- Tous les fichiers d'un levé d'un coup : type reconnu, plan à confirmer -->
-      <button class="btn btn-assistant" *ngIf="!showDeleted && ssdgps" (click)="importMasseOuvert = true" [disabled]="isLocked"
-              [title]="titreImportMasse">
-        <i class="fas fa-layer-group"></i> Import en masse
-      </button>
-      <!-- Archive complète du dossier (fiche, CSV, sources, photos, dernier rapport) -->
-      <button class="btn btn-assistant" *ngIf="!showDeleted && ssdgps" (click)="exporterZip()" [disabled]="exportZip"
-              title="Télécharger tout le dossier en ZIP : fiche récapitulative, données CSV, fichiers sources, photos, dernier rapport">
-        <i class="fas" [ngClass]="exportZip ? 'fa-spinner fa-spin' : 'fa-file-zipper'"></i> Exporter (ZIP)
-      </button>
-      <!-- N°6 : brouillons rédigés par l'IA (observations des pièces, note de synthèse) -->
-      <app-ia-redaction *ngIf="!showDeleted && ssdgps" [ssdgpsId]="ssdgps.id" [verrouille]="isLocked"
-                        (enregistre)="onObservationsIa($event)"></app-ia-redaction>
-      <button class="btn btn-report" *ngIf="!showDeleted"
+      <!-- Outils du dossier : une barre unifiée de boutons « fantômes » (icône + libellé),
+           séparés d'un filet — au lieu de quatre pavés de couleurs différentes. -->
+      <div class="hdr-tools" *ngIf="!showDeleted && ssdgps" role="toolbar" aria-label="Outils du dossier">
+        <!-- Liste de contrôle guidée du dossier (assistant de création, étape « Pièces »). -->
+        <button type="button" class="hdr-tool" (click)="openInAssistant()" [title]="assistantTitle">
+          <i class="fas fa-list-check"></i><span class="lbl">Assistant</span>
+        </button>
+        <!-- Tous les fichiers d'un levé d'un coup : type reconnu, plan à confirmer -->
+        <button type="button" class="hdr-tool" (click)="importMasseOuvert = true" [disabled]="isLocked"
+                [title]="titreImportMasse">
+          <i class="fas fa-layer-group"></i><span class="lbl">Import en masse</span>
+        </button>
+        <!-- Archive complète du dossier (fiche, CSV, sources, photos, dernier rapport) -->
+        <button type="button" class="hdr-tool" (click)="exporterZip()" [disabled]="exportZip"
+                title="Télécharger tout le dossier en ZIP : fiche récapitulative, données CSV, fichiers sources, photos, dernier rapport">
+          <i class="fas" [ngClass]="exportZip ? 'fa-spinner fa-spin' : 'fa-file-zipper'"></i><span class="lbl">Exporter</span>
+        </button>
+        <!-- N°6 : brouillons rédigés par l'IA (observations des pièces, note de synthèse) -->
+        <app-ia-redaction [ssdgpsId]="ssdgps.id" [verrouille]="isLocked"
+                          (enregistre)="onObservationsIa($event)"></app-ia-redaction>
+      </div>
+
+      <!-- Décisions du cycle de vie : seules celles ouvertes à l'utilisateur -->
+      <div class="hdr-decisions" *ngIf="availableTransitions.length">
+        <button *ngFor="let t of availableTransitions" type="button" class="hdr-btn"
+                [ngClass]="transitionMeta(t).danger ? 'hdr-btn--danger' : 'hdr-btn--workflow'"
+                [disabled]="workflowBusy"
+                (click)="askTransition(t)">
+          <i class="fas" [ngClass]="transitionMeta(t).icon"></i><span>{{ transitionMeta(t).label }}</span>
+        </button>
+      </div>
+
+      <button type="button" class="hdr-btn hdr-btn--report" *ngIf="!showDeleted"
               [disabled]="validCount === 0"
               [title]="validCount === 0 ? 'Aucune pièce valide à inclure dans le rapport' : 'Générer le rapport PDF des pièces valides'"
               (click)="openReportModal()">
-        <i class="fas fa-file-pdf"></i> Rapport PDF
-        <span *ngIf="validCount > 0" class="btn-count">{{ validCount }}</span>
+        <i class="fas fa-file-pdf"></i><span>Rapport PDF</span>
+        <span *ngIf="validCount > 0" class="hdr-count">{{ validCount }}</span>
       </button>
-      <!-- Décisions du cycle de vie : seules celles ouvertes à l'utilisateur -->
-      <button *ngFor="let t of availableTransitions" class="btn"
-              [ngClass]="transitionMeta(t).danger ? 'btn-danger-soft' : 'btn-workflow'"
-              [disabled]="workflowBusy"
-              (click)="askTransition(t)">
-        <i class="fas" [ngClass]="transitionMeta(t).icon"></i> {{ transitionMeta(t).label }}
-      </button>
-      <button class="btn btn-success" *ngIf="!showDeleted" (click)="openAddWizard()"
+      <button type="button" class="hdr-btn hdr-btn--primary" *ngIf="!showDeleted" (click)="openAddWizard()"
               [disabled]="isLocked"
               [title]="isLocked ? lockMessage : 'Ajouter une pièce'">
-        <i class="fas fa-plus-circle"></i> Ajouter
+        <i class="fas fa-plus"></i><span>Ajouter</span>
       </button>
     </div>
   </header>
@@ -257,6 +264,7 @@
       </div>
       <div class="item-actions" (click)="$event.stopPropagation()">
         <button class="icon-btn" *ngIf="!p.is_deleted" title="Voir" (click)="openDetail(p, $event, 'view')"><i class="fas fa-eye"></i></button>
+        <button class="icon-btn" *ngIf="!p.is_deleted && peutRapportPiece(p)" title="Rapport de la pièce (PDF)" (click)="openPieceReport(p, $event)"><i class="fas fa-file-pdf"></i></button>
         <button class="icon-btn" *ngIf="!p.is_deleted" title="Modifier" (click)="openDetail(p, $event, 'edit')"><i class="fas fa-edit"></i></button>
         <a class="icon-btn" *ngIf="p.fichier_url" [href]="p.fichier_url" target="_blank" title="Voir le fichier"><i class="fas fa-external-link-alt"></i></a>
         <button class="icon-btn danger" *ngIf="!p.is_deleted" title="Supprimer" (click)="openDeleteModal(p, $event)"><i class="fas fa-trash-alt"></i></button>
@@ -358,6 +366,7 @@
             </td>
             <td class="actions-col" (click)="$event.stopPropagation()">
               <button class="btn-icon" *ngIf="!p.is_deleted" title="Voir" (click)="openDetail(p, $event, 'view')"><i class="fas fa-eye"></i></button>
+              <button class="btn-icon" *ngIf="!p.is_deleted && peutRapportPiece(p)" title="Rapport de la pièce (PDF)" (click)="openPieceReport(p, $event)"><i class="fas fa-file-pdf"></i></button>
               <button class="btn-icon" *ngIf="!p.is_deleted" title="Modifier" (click)="openDetail(p, $event, 'edit')"><i class="fas fa-edit"></i></button>
               <a class="btn-icon" *ngIf="p.fichier_url" [href]="p.fichier_url" target="_blank" title="Voir le fichier"><i class="fas fa-external-link-alt"></i></a>
               <button class="btn-icon btn-icon-danger" *ngIf="!p.is_deleted" title="Supprimer" (click)="openDeleteModal(p, $event)"><i class="fas fa-trash"></i></button>
@@ -776,6 +785,41 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" (click)="closeCoverPreview()">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== Modale rapport d'une pièce ========== -->
+<div class="modal-overlay cover-preview-overlay" *ngIf="pieceReport" (click)="closePieceReport()">
+  <div class="modal-content cover-preview piece-report" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-header-left">
+        <span class="header-icon"><i class="fas fa-file-pdf"></i></span>
+        <h3>Rapport de la pièce — {{ pieceReport.type_piece_display || pieceReport.type_piece }}<ng-container *ngIf="pieceReport.numero"> n°{{ pieceReport.numero }}</ng-container></h3>
+      </div>
+      <button class="close-btn" (click)="closePieceReport()" aria-label="Fermer"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body cover-preview-body">
+      <p class="cover-preview-hint">
+        <i class="fas fa-circle-info"></i>
+        Rendu de cette seule pièce, tel qu'il sortira dans le rapport (page de garde, séparateur,
+        contenu), quel que soit son statut<ng-container *ngIf="pieceReport.statut !== 'valide'"> — elle
+        n'est pas encore validée : le rapport complet du dossier ne la reprendra qu'une fois validée</ng-container>.
+      </p>
+      <p class="report-status" *ngIf="pieceReportLoading">
+        <i class="fas fa-spinner fa-spin"></i> Génération du rapport de la pièce…
+      </p>
+      <p class="report-error" *ngIf="pieceReportError">
+        <i class="fas fa-exclamation-triangle"></i> {{ pieceReportError }}
+      </p>
+      <iframe class="cover-preview-frame" *ngIf="pieceReportUrl && !pieceReportError"
+              [src]="pieceReportUrl" title="Rapport de la pièce"></iframe>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" (click)="closePieceReport()">Fermer</button>
+      <button class="btn btn-report" [disabled]="!pieceReportUrl" (click)="downloadPieceReport()">
+        <i class="fas fa-download"></i> Télécharger
+      </button>
     </div>
   </div>
 </div>

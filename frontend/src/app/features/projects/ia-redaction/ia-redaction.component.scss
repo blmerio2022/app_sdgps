@@ -1,6 +1,22 @@
 :host { display: contents; }
 
 .iar { position: relative; display: inline-flex; }
+
+/* Dans la barre d'outils de la liste des pièces : même bouton « fantôme » que ses voisins
+   (cf. `.hdr-tool` de piece-management-page), au lieu du dégradé violet autonome. */
+:host-context(.hdr-tools) {
+  .iar { align-items: stretch; }
+  .iar-btn {
+    position: relative; gap: 7px; padding: 0 12px; height: 100%; border: none; border-radius: 7px;
+    background: transparent; box-shadow: none; color: var(--text-color); font-size: 13px; font-weight: 500;
+    white-space: nowrap;
+    > i:first-child { color: #9b6bdf; }
+    &::before { content: ''; position: absolute; left: -1px; top: 8px; bottom: 8px; width: 1px; background: var(--border-color); }
+    &:hover { filter: none; background: var(--hover-bg); }
+  }
+  // Même règle que les outils voisins : icônes seules sur écran étroit.
+  @media (max-width: 1500px) { .iar-lbl { display: none; } .iar-btn { padding: 0 11px; } }
+}
 .iar-btn {
   display: inline-flex; align-items: center; gap: 8px; padding: 9px 15px; border-radius: 8px; cursor: pointer;
   font-size: 13.5px; font-weight: 600; color: #fff; border: 1px solid transparent;

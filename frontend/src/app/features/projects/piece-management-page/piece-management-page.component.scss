@@ -52,10 +52,13 @@
 
 /* ---------- En-tête ---------- */
 .level-header {
-  flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 18px;
+  flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  gap: 14px 16px; padding-bottom: 18px;
 
+  // Écran étroit : les actions passent SOUS le titre au lieu de l'écraser.
   .level-title {
-    display: flex; align-items: center; gap: 14px;
+    display: flex; align-items: center; gap: 14px; flex: 1 0 auto; min-width: 260px;
+    h2 { white-space: nowrap; }
     .level-icon {
       width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;
       border-radius: 11px; font-size: 18px; color: var(--accent-color);
@@ -64,7 +67,7 @@
     h2 { margin: 0; font-size: 22px; font-weight: 600; }
     .subtitle { margin: 1px 0 0; font-size: 13px; color: var(--text-muted); }
   }
-  .header-actions { display: flex; align-items: center; gap: 10px; }
+  .header-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
   .view-toggle {
     display: flex; align-items: center; background: var(--secondary-color); border: 1px solid var(--border-color); border-radius: 6px; padding: 2px;
     .view-toggle-btn {
@@ -509,11 +512,6 @@
 .lock-banner { border-color: rgba(90, 155, 213, 0.45); > i { color: #5a9bd5; } }
 .reject-banner { border-color: rgba(231, 76, 60, 0.45); > i { color: #e74c3c; } }
 
-.btn-assistant {
-  background: linear-gradient(135deg, #d46a6a, var(--accent-color)); color: #fff; border: none; font-weight: 600;
-  box-shadow: 0 2px 8px rgba(204, 88, 88, 0.25);
-  &:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(204, 88, 88, 0.4); }
-}
 .btn-workflow {
   background: linear-gradient(135deg, #1f6feb, #14396b); color: #fff; border: none;
   &:hover:not(:disabled) { filter: brightness(1.1); }
@@ -721,4 +719,73 @@
   color: var(--accent-color); font-size: 10.5px; font-weight: 700; vertical-align: middle;
   .sort-rank { line-height: 1; }
   i { margin-left: 0; opacity: 1; font-size: 10px; }
+}
+
+/* ---------- Actions d'en-tête de la liste des pièces ----------
+   Hiérarchie visuelle : outils du dossier (barre fantôme unifiée) → décisions du cycle de
+   vie (contour) → Rapport PDF (accent teinté) → Ajouter (seul bouton plein). Hauteur
+   commune 36 px, libellés jamais coupés. */
+$hdr-h: 36px;
+
+.hdr-tools {
+  display: inline-flex; align-items: stretch; height: $hdr-h; padding: 2px; border-radius: 10px;
+  background: var(--secondary-color); border: 1px solid var(--border-color);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.hdr-tool {
+  position: relative; display: inline-flex; align-items: center; gap: 7px; padding: 0 12px;
+  border: none; border-radius: 7px; background: transparent; cursor: pointer; white-space: nowrap;
+  color: var(--text-color); font-size: 13px; font-weight: 500; transition: background 0.15s, color 0.15s;
+  i { font-size: 13px; color: var(--text-muted); transition: color 0.15s; }
+  // Filet de séparation entre deux outils (masqué au survol pour un pavé net).
+  & + .hdr-tool::before {
+    content: ''; position: absolute; left: -1px; top: 8px; bottom: 8px; width: 1px; background: var(--border-color);
+  }
+  &:hover:not(:disabled) { background: var(--hover-bg); i { color: var(--accent-color); } }
+  &:focus-visible { outline: 2px solid var(--accent-color); outline-offset: -2px; }
+  &:disabled { opacity: 0.45; cursor: not-allowed; }
+}
+
+.hdr-decisions { display: inline-flex; gap: 8px; }
+
+.hdr-btn {
+  display: inline-flex; align-items: center; gap: 8px; height: $hdr-h; padding: 0 15px; border-radius: 10px;
+  font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  i { font-size: 13px; }
+  &:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+  &:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; transform: none; }
+
+  &--workflow {
+    color: #5a9bd5; background: rgba(90, 155, 213, 0.08); border-color: rgba(90, 155, 213, 0.45);
+    &:hover:not(:disabled) { background: rgba(90, 155, 213, 0.16); border-color: #5a9bd5; }
+  }
+  &--danger {
+    color: #e74c3c; background: rgba(231, 76, 60, 0.06); border-color: rgba(231, 76, 60, 0.45);
+    &:hover:not(:disabled) { background: rgba(231, 76, 60, 0.14); border-color: #e74c3c; }
+  }
+  &--report {
+    color: var(--accent-color); background: rgba(204, 88, 88, 0.1); border-color: rgba(204, 88, 88, 0.45);
+    &:hover:not(:disabled) { background: rgba(204, 88, 88, 0.18); border-color: var(--accent-color); }
+  }
+  &--primary {
+    color: #fff; background: linear-gradient(135deg, #d46a6a 0%, var(--accent-color) 100%);
+    box-shadow: 0 2px 8px rgba(204, 88, 88, 0.3);
+    &:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 5px 14px rgba(204, 88, 88, 0.4); }
+  }
+}
+.hdr-count {
+  min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; display: inline-grid; place-items: center;
+  font-size: 11.5px; font-weight: 700; color: #fff; background: var(--accent-color);
+}
+
+// Écran étroit : les outils passent en icônes seules (le libellé reste dans l'infobulle).
+@media (max-width: 1500px) {
+  .hdr-tool { padding: 0 11px; .lbl { display: none; } }
+}
+
+/* Rapport d'une pièce : plus large que l'aperçu de garde (tableaux en paysage). */
+.modal-content.cover-preview.piece-report {
+  max-width: 1100px; width: 94vw;
+  .cover-preview-frame { height: 70vh; }
 }

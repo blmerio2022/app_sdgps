@@ -133,6 +133,18 @@ describe('PiecesService', () => {
    * ne rend que cette page — l'opérateur vérifie la liste des pièces avant d'engager
    * plusieurs minutes de rendu.
    */
+  describe('downloadPieceReport()', () => {
+    it('porte sur report/ avec le SDGPS et la seule pièce demandée', () => {
+      service.downloadPieceReport('s1', 'p7').subscribe();
+      const req = httpMock.expectOne(r => r.url === `${BASE}report/`);
+      expect(req.request.method).toBe('GET');
+      expect(req.request.params.get('ssdgps')).toBe('s1');
+      expect(req.request.params.get('piece')).toBe('p7');
+      expect(req.request.params.has('session')).toBeFalse();
+      req.flush({});
+    });
+  });
+
   describe('previewReportCover()', () => {
     it('porte sur report-cover/ avec la session et le mode choisis', () => {
       service.previewReportCover('s1', 'sess-2', true).subscribe();

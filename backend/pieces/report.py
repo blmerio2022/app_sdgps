@@ -674,6 +674,15 @@ def _piece_content(piece, landscape=False, sort_config=None, fields_config=None,
     rows = _sorted_renumbered(payload.get('rows') or [], sort_brut)
     rows_ecarts = _sorted_renumbered(payload.get('rows_ecarts') or [], sort_ecarts)
 
+    # RDIA : chaque détermination nommée avec son ou ses point(s) fixe(s) dans la colonne
+    # « Détermination » (« N°3 — Fixe : GPS1 »), dans les DEUX versions — le lecteur n'a
+    # plus à chercher le point tenu fixe dans les autres colonnes. Rendu seulement.
+    if piece.type_piece == 'RDIA':
+        from .rc import avec_points_fixes, libelles_determinations
+        libelles = libelles_determinations(payload.get('rows') or [])
+        rows = avec_points_fixes(rows, libelles)
+        rows_ecarts = avec_points_fixes(rows_ecarts, libelles)
+
     # `columns` vide = l'opérateur a désactivé toutes les colonnes de cette vue/version
     # (visible == []) → aucun tableau rendu pour cette version.
     # Colonnes brutes = FILTRE-MAÎTRE « import » de l'opérateur (un champ non importé n'est

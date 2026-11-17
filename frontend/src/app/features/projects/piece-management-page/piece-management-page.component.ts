@@ -235,6 +235,7 @@ export class PieceManagementPageComponent implements OnInit {
     if (this.boundHandleClickOutside) document.removeEventListener('click', this.boundHandleClickOutside);
     this.stopReportTimer();
     this.revokeCoverPreview();
+    this.revokePieceReport();
   }
 
   /**
@@ -1317,6 +1318,73 @@ export class PieceManagementPageComponent implements OnInit {
     this.coverPreviewUrl = null;
   }
 
+
+  // ============================================
+  // Rapport d'une pièce (générer + visualiser)
+  // ============================================
+  /** Pièce dont le rapport est affiché (null : modale fermée). */
+  pieceReport: Piece | null = null;
+  pieceReportLoading = false;
+  pieceReportError = '';
+  pieceReportUrl: SafeResourceUrl | null = null;
+  private pieceReportObjectUrl: string | null = null;
+  private pieceReportBlob: Blob | null = null;
+  private pieceReportFilename = '';
+
+  /** La page de garde générale (PGSDGPS) ne figure pas dans le rapport. */
+  peutRapportPiece(p: Piece): boolean { return !!p && p.type_piece !== 'PGSDGPS'; }
+
+  /** Génère le rapport de CETTE pièce et l'affiche dans une modale (PDF intégré). */
+  openPieceReport(p: Piece, event?: Event): void {
+    event?.stopPropagation();
+    if (!this.ssdgps || !this.peutRapportPiece(p)) return;
+    this.revokePieceReport();
+    this.pieceReport = p;
+    this.pieceReportLoading = true;
+    this.pieceReportError = '';
+    const demandee = p;
+    this.piecesService.downloadPieceReport(this.ssdgps.id, p.id).subscribe({
+      next: (res) => {
+        if (this.pieceReport !== demandee) return;          // modale fermée ou autre pièce entre-temps
+        this.pieceReportBlob = this.base64ToBlob(res.data, res.content_type || 'application/pdf');
+        this.pieceReportFilename = res.filename || 'rapport-piece.pdf';
+        this.pieceReportObjectUrl = URL.createObjectURL(this.pieceReportBlob);
+        this.pieceReportUrl = this.sanitizer.bypassSecurityTrustResourceUrl(this.pieceReportObjectUrl);
+        this.pieceReportLoading = false;
+      },
+      error: (err) => {
+        if (this.pieceReport !== demandee) return;
+        this.pieceReportLoading = false;
+        this.pieceReportError = PieceManagementPageComponent.reportErrorMessage(err);
+      },
+    });
+  }
+
+  downloadPieceReport(): void {
+    if (!this.pieceReportBlob) return;
+    const url = URL.createObjectURL(this.pieceReportBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = this.pieceReportFilename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  closePieceReport(): void {
+    this.pieceReport = null;
+    this.pieceReportLoading = false;
+    this.pieceReportError = '';
+    this.revokePieceReport();
+  }
+
+  private revokePieceReport(): void {
+    if (this.pieceReportObjectUrl) {
+      URL.revokeObjectURL(this.pieceReportObjectUrl);
+      this.pieceReportObjectUrl = null;
+    }
+    this.pieceReportUrl = null;
+    this.pieceReportBlob = null;
+  }
 
   // ============================================
   // Ajout de pièce

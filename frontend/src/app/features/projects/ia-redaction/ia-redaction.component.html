@@ -1,7 +1,7 @@
 <div class="iar" *ngIf="disponible">
   <button type="button" class="iar-btn" (click)="basculerMenu($event)" [attr.aria-expanded]="menuOuvert"
           title="Rédiger et gérer les textes du dossier avec l'IA">
-    <i class="fas fa-wand-magic-sparkles"></i> Rédiger
+    <i class="fas fa-wand-magic-sparkles"></i> <span class="iar-lbl">Rédiger</span>
     <i class="fas fa-chevron-down iar-caret"></i>
   </button>
   <div class="iar-menu" *ngIf="menuOuvert" role="menu">

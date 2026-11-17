@@ -225,6 +225,36 @@ def determinations_from_rdia(rdia_rows):
     return [{'numero': label, 'rows': rows} for label, rows in groups]
 
 
+def libelles_determinations(rdia_rows):
+    """
+    Libellé de chaque détermination d'une RDIA, enrichi de son ou ses point(s) FIXE(S) :
+    {« N°1 »: « N°1 — Fixe : GPS1 », « N°2 »: « N°2 — Fixes : A, B », « Libre »: « Libre »}.
+
+    Sert au rapport : à la lecture, l'opérateur voit pour chaque détermination le point tenu
+    fixe sans le chercher ligne par ligne (σ = « FIXE »). Une détermination libre, sans point
+    fixe, garde son libellé. Les données enregistrées ne sont pas modifiées.
+    """
+    libelles = {}
+    for det in determinations_from_rdia(rdia_rows):
+        label = det['numero']
+        fixes = _fixed_points(det['rows'])
+        if fixes and label:
+            mot = 'Fixes' if len(fixes) > 1 else 'Fixe'
+            libelles[label] = f"{label} — {mot} : {', '.join(fixes)}"
+        else:
+            libelles[label] = label
+    return libelles
+
+
+def avec_points_fixes(rows, libelles):
+    """Copie des lignes dont la colonne `determination` porte le libellé enrichi."""
+    out = []
+    for r in rows or []:
+        label = str(r.get('determination', '')).strip()
+        out.append({**r, 'determination': libelles.get(label, r.get('determination', ''))})
+    return out
+
+
 def compute_rapport_controle(lpa_rows, determinations):
     """
     lpa_rows : list[dict] du LPA (clés `nom_point`, `x_m`, `y_m`).

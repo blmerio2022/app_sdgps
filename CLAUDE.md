@@ -307,6 +307,28 @@ génération complète pour rien.
 - tests : `backend/pieces/tests_rapport_apercu.py`, `pieces.service.spec.ts`,
   `piece-management-page.component.spec.ts`.
 
+**Rapport d'UNE pièce (générer + visualiser).** `GET /api/v1/pieces/report/?ssdgps=…&piece=…`
+(même `_resoudre_portee_rapport`, même RBAC) rend la seule pièce demandée — page de garde,
+séparateur, contenu — **quel que soit son statut** (c'est avant de la valider que
+l'opérateur veut la voir), avec la session de la pièce ; incompatible avec une portée de
+session (400) ; PGSDGPS exclue. Fichier `RAPPORT_PIECE-<type>[-N<n>]_…`, génération
+journalisée comme le rapport complet. Front : icône PDF des actions de chaque pièce (vue
+tableau et cartes) → modale `<iframe>` + Télécharger (`PiecesService.downloadPieceReport`).
+Tests : `pieces/tests_rapport_piece.py`, specs `pieces.service`, `piece-management-page`.
+
+**RDIA : point fixe dans la colonne « Détermination » du rapport.** Au rendu seulement
+(données intactes), chaque détermination porte son ou ses point(s) tenu(s) fixe(s) — σ =
+« FIXE » — dans les DEUX versions : « N°3 — Fixe : BT11 », « N°2 — Fixes : A, B »,
+« Libre » inchangé (`rc.libelles_determinations` / `avec_points_fixes`, appliqués dans
+`report._piece_content`).
+
+**Actions d'en-tête de la liste des pièces.** Hiérarchie : outils du dossier dans une barre
+fantôme unifiée `.hdr-tools` (Assistant, Import en masse, Exporter, Rédiger — le bouton IA
+adopte ce style par `:host-context(.hdr-tools)`), décisions du cycle de vie en contour
+(`.hdr-btn--workflow|--danger`), Rapport PDF teinté accent (`--report`), Ajouter seul bouton
+plein (`--primary`). Hauteur 36 px, libellés jamais coupés ; ≤ 1500 px les outils passent en
+icônes seules (libellé en infobulle) ; l'en-tête passe à la ligne au lieu d'écraser le titre.
+
 **Cachet + signature apposés sur les pages du rapport (option, strictement personnel).**
 L'opérateur tamponnait et signait à la main chaque page imprimée. Il enregistre désormais
 une fois la photo de son cachet signé ; l'application en retire le fond et l'appose, s'il
