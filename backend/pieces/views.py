@@ -750,6 +750,7 @@ class PieceViewSet(viewsets.ModelViewSet):
         point_ref = (request.data.get('point_ref') or '').strip()
         max_ordre = piece.images.aggregate(m=Max('ordre'))['m']
         next_ordre = (max_ordre + 1) if max_ordre is not None else 0
+        ecrits = []          # fichiers posés sur le stockage : à effacer si le lot échoue
         try:
             with transaction.atomic():
                 for idx, f in enumerate(files):
@@ -759,16 +760,40 @@ class PieceViewSet(viewsets.ModelViewSet):
                                      point_ref=point_ref, **meta)
                     img.full_clean()
                     img.save()
+                    ecrits.append(img.fichier.name)
                     # Aperçu PNG pour les formats non affichables nativement (TIFF).
                     if (img.format or '').upper() in NON_WEB_FORMATS:
                         preview = make_png_preview(img.fichier)
                         if preview:
                             img.apercu.save(f'{img.pk}.png', preview, save=True)
         except DjangoValidationError as e:
+            self._effacer_fichiers(ecrits)
             detail = e.message_dict if hasattr(e, 'message_dict') else e.messages
             return Response({'detail': detail}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:  # noqa: BLE001 — erreur inattendue : tracée, expliquée, nettoyée
+            # Une 500 muette laissait l'opérateur sans raison (photos « non ajoutées ») et
+            # des fichiers orphelins sur le disque. Trace complète dans les journaux.
+            logger.exception("Ajout d'images impossible (pièce %s, fichiers %s)",
+                             piece.pk, [f.name for f in files])
+            self._effacer_fichiers(ecrits)
+            return Response({
+                'code': 'ERREUR_ENREGISTREMENT_IMAGE',
+                'detail': (f"Enregistrement de {', '.join(f.name for f in files)} impossible "
+                           f"(erreur serveur : {type(e).__name__}). Rien n'a été enregistré ; "
+                           f"réessayez l'envoi de ce fichier."),
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         piece.refresh_from_db()
         return Response(self.get_serializer(piece).data, status=status.HTTP_201_CREATED)
+
+    @staticmethod
+    def _effacer_fichiers(noms):
+        """Efface du stockage les fichiers d'un lot annulé (la transaction ne les retire pas)."""
+        from django.core.files.storage import default_storage
+        for nom in noms:
+            try:
+                default_storage.delete(nom)
+            except Exception:  # noqa: BLE001 — un nettoyage raté ne doit pas masquer l'erreur
+                logger.warning("Fichier orphelin non effacé : %s", nom)
 
     # NB : id numérique explicite — sinon le regex générique capterait aussi
     # « images/reorder » (ordre alphabétique des actions DRF) et le POST de

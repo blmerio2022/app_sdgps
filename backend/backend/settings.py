@@ -276,6 +276,26 @@ else:
         'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
     }
 
+# --- Journalisation -------------------------------------------------------------
+# Sans configuration, Django n'écrit les erreurs serveur (500) NULLE PART quand
+# DEBUG=False : elles partent vers `mail_admins`, inopérant ici. Sur Railway, une 500
+# était donc invisible — photos refusées par l'import en masse sans aucune trace. Les
+# erreurs (traceback compris) vont désormais sur la sortie d'erreur, lue par l'hébergeur.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'simple': {'format': '[{asctime}] {levelname} {name} : {message}', 'style': '{'},
+    },
+    'handlers': {
+        'console': {'class': 'logging.StreamHandler', 'formatter': 'simple'},
+    },
+    'loggers': {
+        'django.request': {'handlers': ['console'], 'level': 'ERROR', 'propagate': False},
+        'pieces': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+    },
+}
+
 # Pièces (Phase 6.5) — limites d'upload et d'import
 PIECE_MAX_FILE_SIZE_MB = 20
 PIECE_IMPORT_MAX_ROWS = 5000
