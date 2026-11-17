@@ -12,5 +12,9 @@ echo "📦 Application des migrations + amorçage des données d'initialisation�
 # migrate renvoie un code non nul et `set -e` interrompt le démarrage.
 python manage.py migrate --noinput
 
+# Séquences d'identifiants recalées sur les tables (idempotent) : une séquence en retard
+# faisait échouer les insertions (« duplicate key … _pkey »), p. ex. les photos importées.
+python manage.py reinitialiser_sequences
+
 echo "🚀 Démarrage du serveur…"
 exec "$@"

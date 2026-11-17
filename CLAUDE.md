@@ -967,6 +967,16 @@ Les modules sont importés en eager dans `app.module.ts` (`LayoutModule`, `AuthM
   front peut s'en servir pour l'affichage, **jamais** comme contrôle d'accès — le backend
   relit toujours la base.
 
+- **Séquences PostgreSQL en retard.** Des lignes chargées AVEC leur identifiant (migration de
+  données, sauvegarde) peuvent laisser une séquence derrière sa table : chaque insertion
+  reçoit alors un identifiant déjà pris (`IntegrityError … _pkey`), par séries — c'est ce
+  qui faisait perdre des photos à l'import en masse sur Railway. `python manage.py
+  reinitialiser_sequences` les recale (idempotent, rien sur SQLite) ; il est lancé à
+  chaque démarrage du conteneur (`docker-entrypoint.sh`) et après une restauration.
+- **Erreurs serveur visibles en production.** `settings.LOGGING` envoie `django.request`
+  (500, traceback) et `pieces` sur la sortie d'erreur : `railway logs --service app`.
+  Sans cela, une 500 avec `DEBUG=False` ne laissait aucune trace.
+
 Entrées **corrigées** depuis (conservées pour mémoire, le piège n'existe plus) :
 `auth.service.ts` importe bien `environment.apiUrl` ; le défaut DRF est passé à
 `IsAuthenticated` ; `Pillow` figure dans `requirements.txt` ; le claim `org_id` est posé

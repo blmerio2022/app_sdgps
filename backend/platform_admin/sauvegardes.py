@@ -153,6 +153,9 @@ def restaurer(nom, confirmation):
         try:
             management.call_command('flush', interactive=False, verbosity=0)
             management.call_command('loaddata', chemin_tmp, verbosity=0)
+            # Les lignes sont chargées AVEC leur identifiant : séquences recalées, sinon
+            # les insertions suivantes heurtent des identifiants déjà pris.
+            management.call_command('reinitialiser_sequences', verbosity=0)
         finally:
             os.unlink(chemin_tmp)
         medias = [n for n in zf.namelist() if n.startswith('medias/') and not n.endswith('/')]
