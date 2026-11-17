@@ -81,17 +81,11 @@ export class ImportMasseComponent {
     this.ajouterDepots(Array.from(liste).map(f => ({ fichier: f, chemin: (f as any).webkitRelativePath || f.name })));
   }
 
-  /** « Choisir des fichiers » : sélecteur natif quand il existe (il fournit de quoi ouvrir
-   * ensuite le dossier des rapports HTML au bon endroit), sinon le champ fichier classique. */
-  async choisirFichiers(champ: HTMLInputElement): Promise<void> {
-    const w = window as any;
-    if (!w.showOpenFilePicker) { champ.click(); return; }
-    try {
-      const poignees: any[] = await w.showOpenFilePicker({ multiple: true });
-      const fichiers = await Promise.all(poignees.map(p => p.getFile()));
-      poignees.forEach((p, i) => { if (/\.html?$/i.test(fichiers[i].name)) this.poigneeHtml = p; });
-      this.ajouter(fichiers);
-    } catch { /* choix annulé */ }
+  /** « Choisir des fichiers » : le dialogue CLASSIQUE du navigateur (champ fichier), le même
+   * mécanisme que « Choisir un dossier ». Le sélecteur natif `showOpenFilePicker`, essayé
+   * pour retrouver le dossier des rapports HTML, laissait la liste vide chez l'utilisateur. */
+  choisirFichiers(champ: HTMLInputElement): void {
+    champ.click();
   }
 
   async onDrop(ev: DragEvent): Promise<void> {
@@ -279,14 +273,40 @@ export class ImportMasseComponent {
       const propose = (l as any)._propose ?? l.action;
       if (l.doublon || propose === 'ignorer') continue;
       if (l.type_piece === 'RDN') l.action = this.modeDeterminations === 'separees' ? propose : 'ignorer';
-      if (l.type_piece === 'RDIA') l.action = this.modeDeterminations === 'assemblees' ? propose : 'ignorer';
+      // Assemblées : on assemble les déterminations n°k du lot (rapports HTML d'abord) ; le
+      // fichier RDIA fourni ne sert que s'il n'y a aucune détermination à assembler.
+      if (l.type_piece === 'RDIA') {
+        l.action = this.modeDeterminations === 'assemblees' && this.nbDeterminations === 0 ? propose : 'ignorer';
+      }
     }
   }
 
   /** Assemblée sans fichier RDIA fourni : l'application assemble la libre + les n°k. */
   get assemblerDepuisDeterminations(): boolean {
-    return this.modeDeterminations === 'assemblees' && !this.fichierRdia && this.nbDeterminations > 0;
+    return this.modeDeterminations === 'assemblees' && this.nbDeterminations > 0;
   }
+
+  // ---- quota de stockage ----
+  /** Octets que l'import va stocker : fichiers des pièces retenues + images. */
+  get octetsAStocker(): number {
+    // Chaque pièce importée stocke son fichier (un classeur à plusieurs feuilles est stocké
+    // une fois par feuille importée) ; chaque image retenue est stockée.
+    const pieces = this.plan.filter(l => l.action !== 'ignorer').map(l => this.depots[l.index]?.fichier?.size || 0);
+    const images = this.imagesRetenues.map(i => this.depots[i.index]?.fichier?.size || 0);
+    return [...pieces, ...images].reduce((a, b) => a + b, 0);
+  }
+
+  get depasseQuota(): boolean {
+    const q = this.reponse?.quota;
+    return !!q && !q.is_unlimited && q.remaining_bytes !== null && this.octetsAStocker > q.remaining_bytes;
+  }
+
+  mo(octets: number | null | undefined): string {
+    return `${((octets || 0) / (1024 * 1024)).toFixed(1).replace('.', ',')} Mo`;
+  }
+
+  /** Refus pour quota, regroupés dans le bilan (un message au lieu d'un par photo). */
+  get refusQuota(): number { return this.resultats.filter(r => !r.ok && /quota/i.test(r.detail)).length; }
 
   sourcesAssemblage(): { label: string; rows: any[] }[] {
     const libre = this.plan.find(l => l.type_piece === 'RDL' && !l.doublon && l.donnees?.length);
@@ -317,7 +337,7 @@ export class ImportMasseComponent {
   }
   get aImporter(): number { return this.plan.filter(l => l.action !== 'ignorer').length; }
   get pret(): boolean {
-    return (this.aImporter > 0 || this.imagesRetenues.length > 0 || this.genererRc)
+    return (this.aImporter > 0 || this.imagesRetenues.length > 0 || this.genererRc || this.assemblerDepuisDeterminations)
       && this.plan.every((l, i) => !this.blocage(l, i));
   }
   pourcent(c?: CandidatImport | null): number { return Math.round(Math.min(1, c?.score || 0) * 100); }

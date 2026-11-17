@@ -227,5 +227,44 @@ describe('ImportMasseComponent', () => {
     expect(cmp.sessionCommune).toBe('unique');
     expect(cmp.piecesSansSession).toBe(0);
   });
+
+  it('« Choisir des fichiers » ouvre le dialogue classique du navigateur', () => {
+    const champ = { click: jasmine.createSpy('click') } as any;
+    cmp.choisirFichiers(champ);
+    expect(champ.click).toHaveBeenCalled();
+  });
+
+  it('assemblées : les déterminations n°k sont regroupées même si un fichier RDIA est fourni', () => {
+    deposer();
+    svc.assemblerRdia = jasmine.createSpy('assembler').and.returnValue(of({ id: 'rdia1' }));
+    svc.plan.and.returnValue(of({ plan: [
+        L({ index: 1, mode: 'html', type_piece: 'RDN', numero: 1, candidats: [C('RDN', { repetable: true })], mapping: {}, donnees: [{ nom_point: 'A' }] }),
+        L({ index: 0, type_piece: 'RDIA', candidats: [C('RDIA')], action: 'creer' })],
+      images: [], ecartes: [], points: { PPA: [], PPN: [] }, rc_possible: false, rc_existant: false, pieces_existantes: {} }));
+    cmp.analyser();
+    expect(cmp.plan[1].action).toBe('ignorer');          // séparées : le fichier RDIA n'est pas importé en plus
+    cmp.modeDeterminations = 'assemblees';
+    cmp.appliquerModeDeterminations();
+    expect(cmp.plan.map(l => l.action)).toEqual(['ignorer', 'ignorer']);
+    expect(cmp.assemblerDepuisDeterminations).toBeTrue();
+    cmp.importer();
+    expect(svc.assemblerRdia).toHaveBeenCalled();
+    expect(svc.importer).not.toHaveBeenCalled();
+  });
+
+  it('quota : prévient avant l’import, résume les refus après', () => {
+    deposer();
+    svc.plan.and.returnValue(of({ plan: [L()], images: [IMG(2, 'PPA', 'GPS1')], ecartes: [], points: { PPA: [], PPN: [] },
+      rc_possible: false, rc_existant: false, pieces_existantes: {},
+      quota: { effective_quota_bytes: 1000, used_bytes: 999, remaining_bytes: 1, is_unlimited: false, is_exceeded: false,
+               organization_name: 'Org' } }));
+    cmp.analyser();
+    expect(cmp.octetsAStocker).toBeGreaterThan(1);
+    expect(cmp.depasseQuota).toBeTrue();
+    expect(cmp.mo(1572864)).toBe('1,5 Mo');
+    pieces.addImages.and.returnValue(throwError(() => ({ error: { detail: 'Quota de stockage dépassé pour l’organisation' } })));
+    cmp.importer();
+    expect(cmp.refusQuota).toBe(1);
+  });
 });
 

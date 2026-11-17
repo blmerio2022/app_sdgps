@@ -746,9 +746,15 @@ figé ; NE PERSISTE RIEN) — `pieces/import_masse.py::analyser_lot`, détermini
   (`piece-photo-points.pointKey`) : l'ID de la ligne s'il existe, sinon le nom
   (`import_masse.cle_point`). La colonne ID est donc importée (hors score). ⚠ Un nom en
   guise d'ID rattachait la photo à une autre ligne ou à aucune ;
+- **quota de stockage** : le plan renvoie `quota` (organisation imputée = créateur du
+  projet) ; l'écran prévient AVANT l'import si les fichiers n'y tiennent pas, et résume
+  les refus après (un quota plein faisait refuser les photos une à une : points sans photo) ;
+- « Choisir des fichiers » utilise le champ fichier CLASSIQUE (le sélecteur natif
+  `showOpenFilePicker` laissait la liste vide chez l'utilisateur) ;
 - **déterminations intermédiaires** : choix « séparées » (une RDN par détermination) ou
-  « assemblées » (une seule RDIA) dans le plan. Assemblées sans fichier RDIA fourni : le
-  plan transmet les lignes de la libre et des n°k (`donnees`) et `assemble-rdi` accepte
+  « assemblées » (une seule RDIA) dans le plan. Assemblées : les déterminations n°k du lot
+  (rapports HTML d'abord) sont regroupées ; un fichier RDIA fourni ne sert que s'il n'y a
+  aucune détermination à assembler. Le plan transmet les lignes de la libre et des n°k (`donnees`) et `assemble-rdi` accepte
   `sources` [{label, rows}] — aucune RDN n'est créée ; RDIA existante réassemblée
   (`piece_id`, verrou du dossier figé appliqué) ;
 - réponse : `plan`, `images`, `ecartes`, `points` (PPA / PPN), `rc_possible`,

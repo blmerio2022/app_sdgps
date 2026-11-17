@@ -71,6 +71,9 @@ export interface PlanImport {
   rc_possible: boolean;
   rc_existant: boolean;
   pieces_existantes: Record<string, string>;
+  /** Quota de stockage de l'organisation imputée (null : aucune organisation). */
+  quota?: { effective_quota_bytes: number; used_bytes: number; remaining_bytes: number | null;
+            is_unlimited: boolean; is_exceeded: boolean; organization_name: string } | null;
 }
 
 /** Fichier déposé et son chemin relatif (dossier déposé : « levé/Rapport 1_files/x.html »). */

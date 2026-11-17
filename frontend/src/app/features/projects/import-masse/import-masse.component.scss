@@ -78,3 +78,14 @@
   label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; input { accent-color: var(--accent-color); } } }
 .im-det select { padding: 5px 8px; border-radius: 7px; border: 1px solid var(--border-color); background: var(--secondary-color);
   color: var(--text-color); font-size: 12.5px; }
+.im-quota { display: flex; align-items: flex-start; gap: 11px; margin: 0 0 14px; padding: 11px 13px; border-radius: 10px;
+  background: rgba(231, 76, 60, .08); border: 1px solid rgba(231, 76, 60, .4); font-size: 12.5px; color: var(--text-color);
+  > i { font-size: 18px; color: #e74c3c; margin-top: 2px; }
+  div { display: flex; flex-direction: column; gap: 3px; } span { line-height: 1.5; color: var(--text-muted); } strong { color: var(--text-color); } }
+.im-choix-det { margin: 0 0 14px; padding: 10px 14px 12px; border-radius: 12px; border: 2px solid var(--accent-color);
+  background: rgba(204, 88, 88, .05);
+  legend { padding: 0 6px; font-size: 13.5px; font-weight: 700; color: var(--text-color); i { color: var(--accent-color); margin-right: 6px; } }
+  label { display: flex; align-items: flex-start; gap: 9px; margin-top: 6px; padding: 8px 10px; border-radius: 9px; cursor: pointer;
+    font-size: 12.5px; color: var(--text-color); border: 1px solid var(--border-color); background: var(--secondary-color);
+    input { margin-top: 3px; accent-color: var(--accent-color); }
+    &.on { border-color: var(--accent-color); } } }

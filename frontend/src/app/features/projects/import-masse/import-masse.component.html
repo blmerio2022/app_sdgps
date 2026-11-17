@@ -62,15 +62,26 @@
       <p class="im-note" *ngIf="pagesPdf || pdfIllisibles.length">
         <i class="fas fa-file-pdf"></i> {{ pagesPdf }} page(s) de PDF converties en images<span *ngIf="pdfIllisibles.length"> ·
         illisible(s) : {{ pdfIllisibles.join(', ') }}</span>.</p>
-      <div class="im-det" *ngIf="choixDeterminations">
-        <span class="titre"><i class="fas fa-layer-group"></i> Déterminations intermédiaires</span>
-        <label><input type="radio" name="modeDet" value="separees" [(ngModel)]="modeDeterminations" (ngModelChange)="appliquerModeDeterminations()"
-                      [disabled]="!nbDeterminations">
-          <span><strong>Séparées</strong> — une pièce par détermination (RDN n°1…{{ nbDeterminations || 'n' }})</span></label>
-        <label><input type="radio" name="modeDet" value="assemblees" [(ngModel)]="modeDeterminations" (ngModelChange)="appliquerModeDeterminations()">
-          <span><strong>Assemblées</strong> — une seule pièce (RDIA)<ng-container *ngIf="fichierRdia"> depuis le fichier fourni</ng-container><ng-container
-            *ngIf="!fichierRdia && nbDeterminations"> construite à partir des {{ nbDeterminations }} déterminations (+ la libre)</ng-container></span></label>
+      <div class="im-quota" *ngIf="depasseQuota">
+        <i class="fas fa-hard-drive"></i>
+        <div><strong>Espace de stockage insuffisant</strong>
+          <span>L'import va stocker {{ mo(octetsAStocker) }}, mais il ne reste que {{ mo(reponse.quota?.remaining_bytes) }}
+            sur {{ mo(reponse.quota?.effective_quota_bytes) }} pour « {{ reponse.quota?.organization_name }} ». Les fichiers au-delà
+            seront refusés — notamment des photos, et des points resteront sans photo. Libérez de l'espace ou demandez au
+            super administrateur de relever le quota avant d'importer.</span></div>
       </div>
+      <fieldset class="im-choix-det" *ngIf="choixDeterminations">
+        <legend><i class="fas fa-layer-group"></i> Déterminations intermédiaires : comment les importer ?</legend>
+        <label [class.on]="modeDeterminations === 'separees'"><input type="radio" name="modeDet" value="separees" [(ngModel)]="modeDeterminations"
+                      (ngModelChange)="appliquerModeDeterminations()" [disabled]="!nbDeterminations">
+          <span><strong>Séparées</strong> — une pièce « Rapport de la détermination N°k » par détermination
+            (RDN n°1…{{ nbDeterminations || 'n' }})</span></label>
+        <label [class.on]="modeDeterminations === 'assemblees'"><input type="radio" name="modeDet" value="assemblees" [(ngModel)]="modeDeterminations"
+                      (ngModelChange)="appliquerModeDeterminations()">
+          <span><strong>Assemblées</strong> — une seule pièce « Rapport des déterminations intermédiaires » (RDIA)
+            <ng-container *ngIf="nbDeterminations"> regroupant les {{ nbDeterminations }} déterminations (+ la libre)</ng-container>
+            <ng-container *ngIf="!nbDeterminations && fichierRdia"> depuis le fichier fourni</ng-container></span></label>
+      </fieldset>
       <div class="im-det" *ngIf="multiSession && demandeSession">
         <span class="titre"><i class="fas fa-clock"></i> Session des pièces de session</span>
         <select [(ngModel)]="sessionCommune" (ngModelChange)="appliquerSessionCommune()" aria-label="Session pour toutes les pièces">
@@ -168,6 +179,11 @@
         <i class="fas" [ngClass]="reussis === resultats.length ? 'fa-circle-check ok' : 'fa-triangle-exclamation avert'"></i>
         {{ reussis }} opération(s) réussie(s) sur {{ resultats.length }}.
         <span *ngIf="reussis">Les pièces sont en brouillon : vérifiez-les puis validez-les.</span>
+      </p>
+      <p class="im-quota" *ngIf="etape === 'fin' && refusQuota">
+        <i class="fas fa-hard-drive"></i>
+        <span><strong>{{ refusQuota }} envoi(s) refusé(s) : quota de stockage dépassé.</strong> Les fichiers concernés — souvent des
+          photos de points — n'ont pas été enregistrés. Relevez le quota ou libérez de l'espace, puis relancez l'import des images.</span>
       </p>
       <ul class="im-resultats">
         <li *ngFor="let r of resultats" [class.ko]="!r.ok">

@@ -1734,6 +1734,12 @@ class PieceViewSet(viewsets.ModelViewSet):
         if not isinstance(chemins, list):
             chemins = []
         resultat = analyser_lot(fichiers, [str(c or '') for c in chemins], ssdgps, _custom_fields_map())
+        # Quota de stockage de l'organisation imputée (créateur du projet) : l'écran prévient
+        # AVANT l'import si les fichiers n'y tiennent pas — sinon les photos sont refusées une à
+        # une et des points restent sans photo.
+        from analytics.quotas import quota_state
+        organisation = organization_of_user(projet.created_by)
+        resultat['quota'] = quota_state(organisation) if organisation is not None else None
         return Response({'ssdgps': str(ssdgps.id), 'nature': ssdgps.nature_ssdgps, **resultat})
 
     @action(detail=False, methods=['post'], url_path='import', parser_classes=[parsers.MultiPartParser])

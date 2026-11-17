@@ -232,6 +232,15 @@ class PlanApiTests(WorkflowBaseTest):
         self.assertTrue(d['rc_existant'])
         self.assertEqual(d['pieces_existantes']['RC'], str(rc.id))
 
+    def test_quota_annonce(self):
+        # Quota de l'organisation imputée (créateur du projet) renvoyé avec le plan.
+        self.org.storage_quota_bytes = 5000
+        self.org.save(update_fields=['storage_quota_bytes'])
+        d = self.plan(csv_de('LPA', 'LPA.csv'))
+        self.assertEqual(d['quota']['effective_quota_bytes'], 5000)
+        self.assertLessEqual(d['quota']['remaining_bytes'], 5000)
+        self.assertFalse(d['quota']['is_unlimited'])
+
     def test_sans_fichier_400(self):
         self.assertEqual(self.client.post('/api/v1/pieces/import-plan/', {'ssdgps': str(self.ssdgps.id)},
                                           format='multipart').status_code, 400)
