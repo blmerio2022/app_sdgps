@@ -71,6 +71,14 @@
           <span><strong>Assemblées</strong> — une seule pièce (RDIA)<ng-container *ngIf="fichierRdia"> depuis le fichier fourni</ng-container><ng-container
             *ngIf="!fichierRdia && nbDeterminations"> construite à partir des {{ nbDeterminations }} déterminations (+ la libre)</ng-container></span></label>
       </div>
+      <div class="im-det" *ngIf="multiSession && demandeSession">
+        <span class="titre"><i class="fas fa-clock"></i> Session des pièces de session</span>
+        <select [(ngModel)]="sessionCommune" (ngModelChange)="appliquerSessionCommune()" aria-label="Session pour toutes les pièces">
+          <option [ngValue]="null">— Choisir —</option>
+          <option *ngFor="let s of sessionsTriees" [ngValue]="s.id">Session {{ s.numero_session }}</option>
+        </select>
+        <span class="ctx avert" *ngIf="piecesSansSession">{{ piecesSansSession }} pièce(s) attendent une session</span>
+      </div>
       <h4><i class="fas fa-file-lines"></i> Pièces ({{ aImporter }} à importer sur {{ plan.length }})</h4>
       <table *ngIf="plan.length">
         <thead><tr><th>Fichier</th><th>Type</th><th>N°</th><th *ngIf="multiSession">Session</th><th>Action</th><th>État</th></tr></thead>
@@ -95,7 +103,7 @@
             <td *ngIf="multiSession">
               <select *ngIf="sessionRequise(l)" [(ngModel)]="sessionParLigne[i]">
                 <option [ngValue]="null">— Session —</option>
-                <option *ngFor="let s of sessions" [ngValue]="s.id">Session {{ s.numero_session }}</option>
+                <option *ngFor="let s of sessionsTriees" [ngValue]="s.id">Session {{ s.numero_session }}</option>
               </select>
             </td>
             <td>

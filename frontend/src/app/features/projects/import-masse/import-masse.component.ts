@@ -205,6 +205,9 @@ export class ImportMasseComponent {
         this.modeDeterminations = this.plan.some(l => l.type_piece === 'RDN' && l.action !== 'ignorer') ? 'separees'
           : (this.plan.some(l => l.type_piece === 'RDIA') ? 'assemblees' : 'separees');
         this.appliquerModeDeterminations();
+        // Une seule session : elle s'impose à toutes les pièces de niveau session.
+        this.sessionCommune = this.multiSession && this.sessions.length === 1 ? this.sessions[0].id : null;
+        if (this.sessionCommune) this.appliquerSessionCommune();
         this.analyse = false; this.etape = 'plan';
       },
       error: e => { this.analyse = false; this.erreur = e?.error?.detail || 'Analyse des fichiers impossible.'; },
@@ -230,6 +233,19 @@ export class ImportMasseComponent {
     l.numero = c?.repetable ? (l.numero || c.numero_nom || 1) : null;
     l.piece_existante = null;   // l'existant n'est connu que pour le type proposé
     l.action = type ? 'creer' : 'ignorer';
+  }
+
+  /** Session appliquée d'un coup à toutes les pièces de niveau session (multi-session). */
+  sessionCommune: string | null = null;
+
+  get piecesSansSession(): number {
+    return this.plan.filter((l, i) => this.sessionRequise(l) && !this.sessionParLigne[i]).length;
+  }
+  get demandeSession(): boolean { return this.plan.some(l => this.sessionRequise(l)); }
+  get sessionsTriees(): SessionChoix[] { return [...this.sessions].sort((a, b) => a.numero_session - b.numero_session); }
+
+  appliquerSessionCommune(): void {
+    this.plan.forEach((l, i) => { if (this.sessionRequise(l)) this.sessionParLigne[i] = this.sessionCommune; });
   }
 
   sessionRequise(l: LignePlan): boolean {

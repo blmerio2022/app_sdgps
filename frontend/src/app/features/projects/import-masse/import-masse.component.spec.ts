@@ -205,4 +205,27 @@ describe('ImportMasseComponent', () => {
     const lus = await lireDossiersFiles(racine, new Set(['Rapport 1']), 'levé/');
     expect(lus.map(d => d.chemin)).toEqual(['levé/Rapport 1_files/abc.html']);
   });
+
+  it('multi-session : une session choisie une fois s’applique à toutes les pièces de session', () => {
+    deposer();
+    cmp.multiSession = true;
+    cmp.sessions = [{ id: 's2', numero_session: 2 }, { id: 's1', numero_session: 1 }];
+    cmp.analyser();
+    expect(cmp.sessionsTriees.map(s => s.numero_session)).toEqual([1, 2]);
+    expect(cmp.piecesSansSession).toBe(1);
+    cmp.sessionCommune = 's1';
+    cmp.appliquerSessionCommune();
+    expect(cmp.piecesSansSession).toBe(0);
+    expect(cmp.sessionParLigne[1]).toBe('s1');
+  });
+
+  it('une seule session : appliquée d’office', () => {
+    deposer();
+    cmp.multiSession = true;
+    cmp.sessions = [{ id: 'unique', numero_session: 1 }];
+    cmp.analyser();
+    expect(cmp.sessionCommune).toBe('unique');
+    expect(cmp.piecesSansSession).toBe(0);
+  });
 });
+

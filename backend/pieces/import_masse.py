@@ -85,7 +85,9 @@ def _mots(texte):
 def _contexte(chemin):
     """Nom du fichier + dossier parent (pas au-delà : le dossier racine n'informe pas)."""
     parties = [p for p in re.split(r'[\\/]', chemin or '') if p]
-    return ' '.join(parties[-2:])
+    # Séparateur « / » : le NOM du fichier reste isolable (`basename`) — joint par une
+    # espace, le dossier « 02-format-n2 » se lisait comme une détermination « n2 ».
+    return '/'.join(parties[-2:])
 
 
 def mots_cles_trouves(texte):

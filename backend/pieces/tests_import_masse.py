@@ -168,6 +168,15 @@ class PlanApiTests(WorkflowBaseTest):
         self.assertEqual(t[('RDN', 1, 'html')], 'creer')
         self.assertEqual(t[('RDN', 1, 'tableau')], 'ignorer')   # même n° déjà fourni par le rapport HTML
 
+    def test_le_nom_du_dossier_ne_donne_pas_de_numero(self):
+        # « 02-format-n2 » est un dossier : il ne fait pas du CSV une détermination n°2.
+        d = self.plan(csv_de('LPA', 'data-liste-points-anciens.csv'), csv_de('RDN', 'data-rapport-determination-n3.csv'),
+                      chemins=['02-format-n2/data-liste-points-anciens.csv', '02-format-n2/data-rapport-determination-n3.csv'])
+        lpa = next(i for i in d['plan'] if i['type_piece'] == 'LPA')
+        self.assertTrue(all(c['numero_nom'] is None for c in lpa['candidats']))
+        rdn = next(i for i in d['plan'] if i['type_piece'] == 'RDN')
+        self.assertEqual(rdn['numero'], 3)
+
     def test_dossier_files_seul(self):
         d = self.plan(html_ajustement(['A', 'B'], ['A']), chemins=['Rapport 7_files/x.html'])
         self.assertEqual((d['plan'][0]['type_piece'], d['plan'][0]['numero'], d['plan'][0]['action']), ('RDN', 7, 'creer'))
