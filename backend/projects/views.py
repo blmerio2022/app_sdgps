@@ -615,7 +615,8 @@ class SsdgpsViewSet(BaseOrgScopedViewSet):
         session_id = request.query_params.get('session')
         if session_id:
             qs = qs.filter(Q(session_id=session_id) | Q(session__isnull=True))
-        return Response(analyser_controle_croise(qs.prefetch_related('images')))
+        return Response(analyser_controle_croise(
+            qs.prefetch_related('images'), getattr(request.user, 'tolerances_config', None)))
 
     @action(detail=True, methods=['get', 'post'], url_path='remarques')
     def remarques(self, request, pk=None):

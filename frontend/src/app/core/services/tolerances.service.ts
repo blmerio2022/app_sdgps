@@ -17,7 +17,12 @@ export interface TolerancesConfig {
   ecarts_determinations: RegleEcart;
   rc_ecarts: RegleEcart;
   modes: { statique: string[]; stopgo: string[] };
+  /** Règles du contrôle croisé (`cc_*`) : seuils numériques décrits par `parametres`. */
+  [regle: string]: any;
 }
+
+/** Paramètre numérique d'une règle : [champ, libellé, unité affichée, facteur base → affichage, pas]. */
+export type ParametreTolerance = [string, string, string, number, number];
 
 export interface TolerancesPayload {
   /** Ce que l'opérateur a modifié (le reste = valeurs par défaut). */
@@ -26,6 +31,8 @@ export interface TolerancesPayload {
   effectives: TolerancesConfig;
   defauts: TolerancesConfig;
   libelles: Record<string, string>;
+  /** Description des seuils réglables des règles du contrôle croisé (écran générique). */
+  parametres?: Record<string, ParametreTolerance[]>;
 }
 
 /** Tolérances de l'opérateur (cf. backend `pieces/tolerances.py`). */

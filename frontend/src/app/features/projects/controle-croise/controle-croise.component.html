@@ -4,7 +4,7 @@
       <span class="cc-ico"><i class="fas fa-code-compare"></i></span>
       <div>
         <h3 id="cc-titre">Contrôle croisé des points</h3>
-        <p>Concordance des noms de points entre les pièces du dossier — rien n'est modifié.</p>
+        <p>Concordance des points entre les pièces, puis contrôle des valeurs (points fixes, rapport de contrôle, vecteurs, boucles, observations) — rien n'est modifié.</p>
       </div>
       <button type="button" class="cc-close" (click)="fermer()" aria-label="Fermer"><i class="fas fa-times"></i></button>
     </header>
@@ -55,7 +55,7 @@
     </div>
 
     <footer class="cc-foot">
-      <span class="cc-note"><i class="fas fa-circle-info"></i> Noms rapprochés sans tenir compte de la casse ni des espaces.</span>
+      <span class="cc-note"><i class="fas fa-circle-info"></i> Noms rapprochés sans casse ni espaces · seuils réglables dans <em>Paramètres › Tolérances</em>.</span>
       <span class="spacer"></span>
       <button type="button" class="cc-btn" (click)="lancer()" [disabled]="chargement"><i class="fas fa-rotate"></i> Relancer</button>
       <button type="button" class="cc-btn primaire" (click)="fermer()">Fermer</button>

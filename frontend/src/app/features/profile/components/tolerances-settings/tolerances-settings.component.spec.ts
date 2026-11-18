@@ -125,3 +125,37 @@ describe('TolerancesSettingsComponent', () => {
     expect(cmp.aucuneActive).toBeFalse();
   });
 });
+
+describe('TolerancesSettingsComponent — seuils du contrôle croisé (affichage générique)', () => {
+  const DEF: any = { ...DEFAUTS, cc_vecteurs: { actif: true, prec_h_max_m: 0.05, longueur_max_km: 15 }, cc_rc_rdd: { actif: true } };
+  const PARAMS: any = { cc_vecteurs: [['prec_h_max_m', 'Précision horizontale maximale', 'cm', 100, 0.5],
+                                      ['longueur_max_km', 'Longueur maximale (N5)', 'km', 1, 0.5]],
+                        cc_rc_rdd: [] };
+  let cmp: TolerancesSettingsComponent;
+  let svc: jasmine.SpyObj<any>;
+
+  beforeEach(() => {
+    svc = jasmine.createSpyObj('TolerancesService', ['get', 'save', 'reset']);
+    svc.get.and.returnValue(of({ config: {}, effectives: JSON.parse(JSON.stringify(DEF)), defauts: DEF, libelles: {}, parametres: PARAMS }));
+    svc.save.and.returnValue(of({}));
+    cmp = new TolerancesSettingsComponent(svc, jasmine.createSpyObj('Toast', ['success', 'error']));
+    cmp.ngOnInit();
+  });
+
+  it('affiche chaque seuil dans son unité et enregistre l’écart en unité de base', fakeAsync(() => {
+    expect(cmp.reglesControle).toEqual(['cc_vecteurs', 'cc_rc_rdd']);
+    const prec = PARAMS.cc_vecteurs[0];
+    expect(cmp.valeur('cc_vecteurs', prec)).toBe(5);              // 0,05 m → 5 cm
+    expect(cmp.defautParametre('cc_vecteurs', PARAMS.cc_vecteurs[1])).toBe('15 km');
+    cmp.setValeur('cc_vecteurs', prec, 2);
+    tick(700);
+    expect(svc.save).toHaveBeenCalledWith({ cc_vecteurs: { prec_h_max_m: 0.02 } });
+    flush();
+  }));
+
+  it('les nouvelles règles entrent dans « Tout activer / Tout désactiver »', () => {
+    expect(cmp.regles).toContain('cc_rc_rdd');
+    cmp.basculerTout(false);
+    expect(cmp.cfg!['cc_vecteurs'].actif).toBeFalse();
+  });
+});

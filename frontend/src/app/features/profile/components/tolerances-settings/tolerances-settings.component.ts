@@ -1,6 +1,6 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import {
-  differences, RegleDuree, TolerancesConfig, TolerancesPayload, TolerancesService,
+  differences, ParametreTolerance, RegleDuree, TolerancesConfig, TolerancesPayload, TolerancesService,
 } from '../../../../core/services/tolerances.service';
 import { ToastService } from '../../../../core/services/toast.service';
 
@@ -33,6 +33,8 @@ export class TolerancesSettingsComponent implements OnInit, OnDestroy {
   cfg: TolerancesConfig | null = null;
   defauts: TolerancesConfig | null = null;
   libelles: Record<string, string> = {};
+  /** Seuils des règles du contrôle croisé, décrits par le serveur (affichage générique). */
+  parametres: Record<string, ParametreTolerance[]> = {};
   loading = true;
   saving = false;
   savedFlash = false;
@@ -60,6 +62,7 @@ export class TolerancesSettingsComponent implements OnInit, OnDestroy {
     this.cfg = JSON.parse(JSON.stringify(p.effectives));
     this.defauts = p.defauts;
     this.libelles = p.libelles;
+    this.parametres = p.parametres || {};
     this.reglesDuree.forEach(r => {
       const regle = this.cfg![r] as RegleDuree;
       this.durees[r] = { statique: versEdition(regle.statique_min_s), stopgo: versEdition(regle.stopgo_min_s) };
@@ -83,6 +86,24 @@ export class TolerancesSettingsComponent implements OnInit, OnDestroy {
   cm(regle: 'ecarts_determinations' | 'rc_ecarts'): number { return Math.round((this.cfg?.[regle].max_m || 0) * 1000) / 10; }
   setCm(regle: 'ecarts_determinations' | 'rc_ecarts', v: any): void {
     if (this.cfg) { this.cfg[regle].max_m = Math.max(0, Number(v) || 0) / 100; this.changed(); }
+  }
+
+  /** Règles du contrôle croisé, dans l'ordre du serveur. */
+  get reglesControle(): string[] { return Object.keys(this.parametres).filter(k => !!this.cfg?.[k]); }
+
+  /** Valeur d'un seuil dans l'unité affichée (cm, km, ppm…). */
+  valeur(regle: string, p: ParametreTolerance): number {
+    const brut = Number(this.cfg?.[regle]?.[p[0]] ?? 0) * p[3];
+    return Math.round(brut * 1000) / 1000;
+  }
+  setValeur(regle: string, p: ParametreTolerance, v: any): void {
+    if (!this.cfg?.[regle]) return;
+    this.cfg[regle][p[0]] = Math.max(0, Number(v) || 0) / p[3];
+    this.changed();
+  }
+  defautParametre(regle: string, p: ParametreTolerance): string {
+    const d = Number(this.defauts?.[regle]?.[p[0]] ?? 0) * p[3];
+    return `${Math.round(d * 1000) / 1000} ${p[2]}`.replace('.', ',');
   }
 
   /**

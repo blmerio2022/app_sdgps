@@ -102,6 +102,31 @@
       </div>
     </section>
 
+    <!-- Contrôle croisé du dossier : seuils décrits par le serveur (affichage générique) -->
+    <h3 class="tol-section" *ngIf="reglesControle.length">
+      <i class="fas fa-code-compare"></i> Contrôle croisé du dossier
+      <span>Seuils des contrôles lancés depuis la page des pièces (bouton « Contrôle croisé »).</span>
+    </h3>
+    <section class="tol-card" *ngFor="let r of reglesControle" [class.off]="!cfg[r].actif">
+      <div class="tol-card-head">
+        <span class="tol-icon"><i class="fas fa-list-check"></i></span>
+        <div class="tol-title"><h2>{{ libelles[r] }}</h2></div>
+        <span class="tol-badge" *ngIf="modifie($any(r))">Personnalisé</span>
+        <label class="tol-switch"><input type="checkbox" [(ngModel)]="cfg[r].actif" (ngModelChange)="changed()" [attr.aria-label]="libelles[r]"><span></span></label>
+      </div>
+      <div class="tol-rows" *ngIf="parametres[r].length">
+        <div class="tol-row" *ngFor="let p of parametres[r]">
+          <span class="tol-lbl">{{ p[1] }}</span>
+          <div class="tol-input">
+            <input type="number" min="0" [step]="p[4]" [ngModel]="valeur(r, p)" (ngModelChange)="setValeur(r, p, $event)"
+                   [disabled]="!cfg[r].actif" [attr.aria-label]="p[1]">
+            <span class="tol-unit">{{ p[2] }}</span>
+          </div>
+          <span class="tol-def">défaut {{ defautParametre(r, p) }}</span>
+        </div>
+      </div>
+    </section>
+
     <!-- Reconnaissance des modes -->
     <section class="tol-card tol-wide">
       <div class="tol-card-head">

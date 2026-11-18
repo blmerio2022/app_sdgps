@@ -89,8 +89,9 @@ def _pieces(sources, types):
     return [_ref(p) for t in types if t in sources for p in sources[t].pieces]
 
 
-def analyser_controle_croise(pieces):
-    """`pieces` : pièces VIVANTES de la portée (SDGPS, ou une session + pièces communes)."""
+def analyser_controle_croise(pieces, tolerances_config=None):
+    """`pieces` : pièces VIVANTES de la portée (SDGPS, ou une session + pièces communes).
+    `tolerances_config` : tolérances de l'appelant (seuils des contrôles de valeurs)."""
     pieces = list(pieces)
     sources = _charger(pieces)
     controles = []
@@ -195,6 +196,11 @@ def analyser_controle_croise(pieces):
     ajouter('orthographe', AVERTISSEMENT, 'Même point écrit de plusieurs façons',
             'Le rapprochement les associe, mais la graphie diffère d’une pièce à l’autre.',
             [' / '.join(sorted(g)) for g in graphies.values() if len(g) > 1], tuple(sources))
+
+    # Contrôles des VALEURS (coordonnées, vecteurs, boucles, observations, RC) : même format.
+    from .controle_valeurs import controler_valeurs
+    from .tolerances import effectives
+    controles += controler_valeurs(pieces, effectives(tolerances_config))
 
     erreurs = sum(1 for c in controles if c['gravite'] == ERREUR)
     controles.sort(key=lambda c: (c['gravite'] != ERREUR, c['titre']))

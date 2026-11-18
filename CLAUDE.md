@@ -833,7 +833,19 @@ si les pièces comparées existent ; un écart = UNE entrée avec ses points et 
 doublons (erreur), LPA / PPN absents du RDD (erreur), PPN non observés (erreur), RDD
 inconnus, LPA sans fiche PPA / PPA hors LPA, LPA non observés, points observés ou des
 déterminations non répertoriés, lignes sans photo / photos orphelines, même point écrit de
-plusieurs façons (avertissements). Distinct de `coherence.py` (présence des pièces). Front :
+plusieurs façons (avertissements). Distinct de `coherence.py` (présence des pièces).
+**Contrôles de VALEURS** (`pieces/controle_valeurs.py`, fusionnés dans la même réponse, seuils
+de l'appelant — règles `cc_*` de `tolerances.DEFAUTS`, décrites par `tolerances.PARAMETRES`
+pour l'écran *Tolérances*, qui les affiche génériquement) : points tenus fixes (σ « FIXE »)
+présents dans la LPA et aux mêmes coordonnées, aucun fixe en RDL ; σ maximal ; RC PÉRIMÉ
+(recalcul `compute_rapport_controle` comparé au RC enregistré, source RDIA ou RDN) et points
+fixes du RDD homogènes selon `reseaux.ecarts.analyser_ecarts` (N12, ≥ 3) ; vecteurs (solution
+fixée, précisions H/V, RMS, longueur N5, ≥ 2 liaisons N4, SIMULTANÉITÉ calculée sur les
+fenêtres du ROB — les heures des vecteurs TBC ne sont pas fiables) ; boucles (chaque `id_vec`
+cité dans un `id_boucle` — N3 —, vecteur inconnu, ppm) ; ROB (fin > début, durée = fin −
+début, complétude époques × cadence, hauteur d'antenne, fichier partagé). Ajouter un
+contrôle de valeur = une fonction dans `controle_valeurs.py` + sa règle `cc_*` (DEFAUTS,
+LIBELLES, PARAMETRES). Tests : `pieces/tests_controle_valeurs.py`. Front :
 bouton « Contrôle croisé » de la barre d'outils des pièces → `<app-controle-croise>`
 (liens vers les pièces fautives). Tests : `pieces/tests_controle_croise.py`.
 

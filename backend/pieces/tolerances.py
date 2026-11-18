@@ -41,6 +41,15 @@ DEFAUTS = {
     'rfb_fermeture': {'actif': True},
     'ecarts_determinations': {'actif': True, 'max_m': 0.15},
     'rc_ecarts': {'actif': True, 'max_m': 0.15},
+    # --- Contrôle croisé du dossier (`controle_croise.py`) : seuils réglables. ---
+    'cc_points_fixes': {'actif': True, 'max_m': 0.01},
+    'cc_rc_rdd': {'actif': True},
+    'cc_sigmas': {'actif': True, 'sigma_max_m': 0.05},
+    'cc_vecteurs': {'actif': True, 'prec_h_max_m': 0.05, 'prec_v_max_m': 0.10, 'rms_max_m': 0.03,
+                    'longueur_max_km': 15.0, 'marge_simultaneite_s': 60},
+    'cc_boucles': {'actif': True, 'max_ppm': 20.0},
+    'cc_observations': {'actif': True, 'hauteur_min_m': 0.2, 'hauteur_max_m': 3.0,
+                        'completude_min_pct': 80.0, 'ecart_duree_s': 60},
     # Mots-clés reconnaissant le mode d'observation dans les colonnes « Type » / « Méthode
     # terrain » (comparaison sans casse ni accents, par inclusion).
     'modes': {
@@ -58,6 +67,35 @@ LIBELLES = {
     'rfb_fermeture': "Fermeture des boucles (Δ3D ≤ tolérance)",
     'ecarts_determinations': "Écarts des déterminations par rapport à la définitive (ΔD)",
     'rc_ecarts': "Écarts du rapport de contrôle (ΔD)",
+    'cc_points_fixes': "Points fixes des déterminations = coordonnées de la LPA",
+    'cc_rc_rdd': "Rapport de contrôle à jour et points fixes du RDD homogènes (N12)",
+    'cc_sigmas': "Précision (σ) des points déterminés",
+    'cc_vecteurs': "Vecteurs (lignes de base) : solution, précisions, longueur, simultanéité",
+    'cc_boucles': "Boucles : chaque vecteur en boucle (N3), ppm",
+    'cc_observations': "Observations brutes : antenne, complétude, durées, fichiers",
+}
+
+#: Paramètres numériques des règles du contrôle croisé, décrits pour l'écran des
+#: paramètres (qui les affiche génériquement) : (règle, champ, libellé, unité d'affichage,
+#: facteur base → affichage, pas de saisie).
+PARAMETRES = {
+    'cc_points_fixes': [('max_m', 'Écart maximal point fixe / LPA', 'cm', 100, 0.1)],
+    'cc_rc_rdd': [],
+    'cc_sigmas': [('sigma_max_m', 'σx / σy maximal', 'cm', 100, 0.5)],
+    'cc_vecteurs': [
+        ('prec_h_max_m', 'Précision horizontale maximale', 'cm', 100, 0.5),
+        ('prec_v_max_m', 'Précision verticale maximale', 'cm', 100, 0.5),
+        ('rms_max_m', 'RMS maximal', 'cm', 100, 0.5),
+        ('longueur_max_km', 'Longueur maximale (N5)', 'km', 1, 0.5),
+        ('marge_simultaneite_s', 'Marge de simultanéité des observations', 's', 1, 10),
+    ],
+    'cc_boucles': [('max_ppm', 'Erreur de fermeture maximale', 'ppm', 1, 1)],
+    'cc_observations': [
+        ('hauteur_min_m', "Hauteur d'antenne minimale", 'm', 1, 0.05),
+        ('hauteur_max_m', "Hauteur d'antenne maximale", 'm', 1, 0.05),
+        ('completude_min_pct', 'Complétude minimale (époques reçues / attendues)', '%', 1, 1),
+        ('ecart_duree_s', 'Écart toléré durée / (fin − début)', 's', 1, 10),
+    ],
 }
 
 DUREE_MAX_S = 7 * 24 * 3600
@@ -124,8 +162,16 @@ def normaliser(config):
                     regle[champ] = _bool(v, nom)
                 elif champ.endswith('_min_s'):
                     regle[champ] = int(round(_nombre(v, nom, 0, DUREE_MAX_S)))
-                elif champ == 'max_m':
+                elif champ == 'max_m' or champ.endswith('_m'):
                     regle[champ] = _nombre(v, nom, 0, ECART_MAX_M)
+                elif champ.endswith('_km'):
+                    regle[champ] = _nombre(v, nom, 0, 500)
+                elif champ.endswith('_ppm'):
+                    regle[champ] = _nombre(v, nom, 0, 10000)
+                elif champ.endswith('_pct'):
+                    regle[champ] = _nombre(v, nom, 0, 100)
+                elif champ.endswith('_s'):
+                    regle[champ] = int(round(_nombre(v, nom, 0, DUREE_MAX_S)))
         propre[cle] = regle
     return propre
 

@@ -654,7 +654,8 @@ class TolerancesConfigView(APIView):
         from pieces import tolerances
         config = user.tolerances_config or {}
         return {'config': config, 'effectives': tolerances.effectives(config),
-                'defauts': tolerances.DEFAUTS, 'libelles': tolerances.LIBELLES}
+                'defauts': tolerances.DEFAUTS, 'libelles': tolerances.LIBELLES,
+                'parametres': tolerances.PARAMETRES}
 
     def get(self, request):
         return Response(self.payload(request.user))
