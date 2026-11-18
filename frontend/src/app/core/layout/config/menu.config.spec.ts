@@ -79,3 +79,12 @@ describe('menu.config — Mon espace de stockage (tous les rôles)', () => {
     expect(sous(ADMIN_MENU)?.roles).toBeFalsy();
   });
 });
+
+describe('menu.config — carte des dossiers et corbeille (tous rôles)', () => {
+  it('entrées opérateur et admin', () => {
+    expect(USER_MENU.find(i => i.id === 'carte-dossiers')?.route).toBe('/carte');
+    expect(USER_MENU.find(i => i.id === 'corbeille')?.route).toBe('/corbeille');
+    expect(ADMIN_MENU.find(i => i.id === 'carte-dossiers')?.route).toBe('/admin/carte');
+    expect(ADMIN_MENU.find(i => i.id === 'corbeille')?.roles).toEqual(['ROLE_SUPER_ADMIN', 'ROLE_ADMIN_SYSTEME', 'ROLE_ORGANISATION_ADMIN']);
+  });
+});

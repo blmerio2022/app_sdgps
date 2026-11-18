@@ -1,6 +1,6 @@
 import { formatDateTime, formatFieldDate } from '../../../shared/utils/date-format.util';
 import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from '../../../shared/components/table-pagination/table-pagination.component';
-import { Component, HostListener, OnInit, ViewChild } from '@angular/core';
+import { Component, Optional, HostListener, OnInit, ViewChild } from '@angular/core';
 import { CachetRapportOptions } from '../../../core/models/cachet-signature.model';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
@@ -20,6 +20,8 @@ import { ColumnConfigComponent } from '../../../shared/components/column-config/
 import { applyColumnsConfig, toColumnPrefs, ManagedColumn } from '../../../shared/components/column-config/column-config.util';
 import { ColumnFilterMap, withColumnFilter, rowMatchesColumnFilters, activeFilterCount } from '../../../shared/components/column-filter/column-filter.util';
 import { TableColumnsConfigService } from '../../../core/services/table-columns-config.service';
+import { EtatRemarques, QualiteDossierService } from '../../../core/services/qualite-dossier.service';
+import { PieceChoix } from '../remarques-validation/remarques-validation.component';
 
 interface ColumnConfig {
   field: string;
@@ -177,6 +179,8 @@ export class PieceManagementPageComponent implements OnInit {
     private sortConfigService: TableSortConfigService,
     private columnsConfigService: TableColumnsConfigService,
     private sanitizer: DomSanitizer,
+    // Facultatif : contrôle croisé et remarques de validation (absent des anciens tests).
+    @Optional() private qualite?: QualiteDossierService,
   ) {}
 
   private projet: Projet | null = null;
@@ -205,6 +209,7 @@ export class PieceManagementPageComponent implements OnInit {
         this.catalog = catalog;
         this.updateTopbarBreadcrumb();
         this.loadPieces();
+        this.chargerRemarques();
         // Arrivée depuis l'assistant IA (« Générer le rapport ») : la modale s'ouvre seule.
         if (this.route.snapshot.queryParamMap.get('rapport') === '1') this.ouvrirRapportDemande();
       },
@@ -1318,6 +1323,40 @@ export class PieceManagementPageComponent implements OnInit {
     this.coverPreviewUrl = null;
   }
 
+
+  // ============================================
+  // Contrôle croisé + remarques de validation
+  // ============================================
+  controleCroiseOuvert = false;
+  remarquesOuvertes = false;
+  /** Pièce présélectionnée à l'ouverture du panneau des remarques (depuis sa ligne). */
+  remarquesPiece: string | null = null;
+  etatRemarques: EtatRemarques | null = null;
+
+  get projetId(): string { return this.projectId; }
+
+  chargerRemarques(): void {
+    if (!this.qualite || !this.ssdgps) return;
+    this.qualite.remarques(this.ssdgps.id).subscribe({ next: e => this.etatRemarques = e, error: () => {} });
+  }
+
+  /** Remarques encore à corriger sur une pièce (pastille de la ligne). */
+  remarquesOuvertesDe(p: Piece): number {
+    return (this.etatRemarques?.remarques || []).filter(r => r.piece === p.id && r.statut === 'ouverte').length;
+  }
+
+  get piecesChoix(): PieceChoix[] {
+    return this.items.filter(p => !p.is_deleted).map(p => ({
+      id: p.id,
+      libelle: (p.type_piece_display || p.type_piece) + (p.numero ? ` n°${p.numero}` : ''),
+    }));
+  }
+
+  ouvrirRemarques(p?: Piece, event?: Event): void {
+    event?.stopPropagation();
+    this.remarquesPiece = p ? p.id : null;
+    this.remarquesOuvertes = true;
+  }
 
   // ============================================
   // Rapport d'une pièce (générer + visualiser)

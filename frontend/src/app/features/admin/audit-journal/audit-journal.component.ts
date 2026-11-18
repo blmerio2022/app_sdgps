@@ -19,6 +19,7 @@ const FAMILLES: Record<string, FamilleAction> = {
   BACKUP_CREATED: 'securite', BACKUP_DOWNLOADED: 'securite', BACKUP_RESTORED: 'alerte',
   REPORT_GENERATED: 'donnees', SSDGPS_STATUS_CHANGED: 'donnees',
   DOSSIER_EXPORTED: 'donnees', DOSSIER_IMPORTED: 'donnees',
+  ITEM_TRASHED: 'donnees', ITEM_RESTORED: 'donnees',
   AI_CALL: 'ia',
 };
 

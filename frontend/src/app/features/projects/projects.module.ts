@@ -26,12 +26,16 @@ import { IaRedactionComponent } from './ia-redaction/ia-redaction.component';
 
 import { PieceVersionsComponent } from './piece-versions/piece-versions.component';
 import { ImportMasseComponent } from './import-masse/import-masse.component';
+import { ControleCroiseComponent } from './controle-croise/controle-croise.component';
+import { RemarquesValidationComponent } from './remarques-validation/remarques-validation.component';
 
 @NgModule({
   declarations: [
     IaRedactionComponent,
     PieceVersionsComponent,
     ImportMasseComponent,
+    ControleCroiseComponent,
+    RemarquesValidationComponent,
     ProjectListComponent, ProjectExplorerComponent, ProjectSsdgpsListComponent,
     PieceColumnMapperComponent, PieceManagementPageComponent, PieceAddWizardComponent,
     PieceDetailModalComponent, PieceImageGalleryComponent,

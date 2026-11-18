@@ -1,0 +1,64 @@
+<div class="cc-overlay" (click)="fermer()">
+  <div class="cc" role="dialog" aria-labelledby="cc-titre" (click)="$event.stopPropagation()">
+    <header class="cc-head">
+      <span class="cc-ico"><i class="fas fa-code-compare"></i></span>
+      <div>
+        <h3 id="cc-titre">Contrôle croisé des points</h3>
+        <p>Concordance des noms de points entre les pièces du dossier — rien n'est modifié.</p>
+      </div>
+      <button type="button" class="cc-close" (click)="fermer()" aria-label="Fermer"><i class="fas fa-times"></i></button>
+    </header>
+
+    <div class="cc-body">
+      <p class="cc-etat" *ngIf="chargement"><i class="fas fa-spinner fa-spin"></i> Comparaison des pièces…</p>
+      <p class="cc-erreur" *ngIf="erreur"><i class="fas fa-triangle-exclamation"></i> {{ erreur }}</p>
+
+      <ng-container *ngIf="resultat && !chargement">
+        <!-- Synthèse -->
+        <div class="cc-synthese" [class.ok]="resultat.ok">
+          <i class="fas" [ngClass]="resultat.ok ? 'fa-circle-check' : 'fa-clipboard-list'"></i>
+          <div>
+            <strong *ngIf="resultat.ok">Tout concorde.</strong>
+            <strong *ngIf="!resultat.ok">
+              <span class="n-err" *ngIf="resultat.erreurs">{{ resultat.erreurs }} erreur{{ resultat.erreurs > 1 ? 's' : '' }}</span>
+              <span *ngIf="resultat.erreurs && resultat.avertissements"> · </span>
+              <span class="n-avert" *ngIf="resultat.avertissements">{{ resultat.avertissements }} point{{ resultat.avertissements > 1 ? 's' : '' }} à vérifier</span>
+            </strong>
+            <span class="cc-sources" *ngIf="typesControles.length">
+              Pièces comparées :
+              <span class="cc-source" *ngFor="let t of typesControles">{{ t }} <em>{{ resultat.sources[t].points }} pts</em></span>
+            </span>
+            <span class="cc-sources" *ngIf="!typesControles.length">Aucune pièce portant des noms de points.</span>
+          </div>
+        </div>
+
+        <!-- Contrôles en écart -->
+        <article class="cc-controle" *ngFor="let c of resultat.controles" [ngClass]="c.gravite">
+          <div class="cc-c-head">
+            <span class="cc-grav">{{ c.gravite === 'erreur' ? 'Erreur' : 'À vérifier' }}</span>
+            <h4>{{ c.titre }}</h4>
+            <span class="cc-nb">{{ c.nombre }}</span>
+          </div>
+          <p class="cc-msg">{{ c.message }}</p>
+          <div class="cc-points">
+            <span class="cc-point" *ngFor="let p of points(c)">{{ p }}</span>
+            <button type="button" class="cc-plus" *ngIf="restants(c)" (click)="deplier(c)">+{{ restants(c) }}</button>
+          </div>
+          <div class="cc-pieces" *ngIf="c.pieces.length">
+            <span>Pièces :</span>
+            <button type="button" class="cc-piece" *ngFor="let p of c.pieces" (click)="ouvrirPiece(p)" [title]="'Ouvrir ' + p.libelle">
+              <i class="fas fa-file-lines"></i> {{ p.libelle }}
+            </button>
+          </div>
+        </article>
+      </ng-container>
+    </div>
+
+    <footer class="cc-foot">
+      <span class="cc-note"><i class="fas fa-circle-info"></i> Noms rapprochés sans tenir compte de la casse ni des espaces.</span>
+      <span class="spacer"></span>
+      <button type="button" class="cc-btn" (click)="lancer()" [disabled]="chargement"><i class="fas fa-rotate"></i> Relancer</button>
+      <button type="button" class="cc-btn primaire" (click)="fermer()">Fermer</button>
+    </footer>
+  </div>
+</div>

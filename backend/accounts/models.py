@@ -703,6 +703,8 @@ class AuditEvent(models.Model):
     ACTION_SAUVEGARDE = 'BACKUP_CREATED'
     ACTION_SAUVEGARDE_TELECHARGEE = 'BACKUP_DOWNLOADED'
     ACTION_SAUVEGARDE_RESTAUREE = 'BACKUP_RESTORED'
+    ACTION_ELEMENT_SUPPRIME = 'ITEM_TRASHED'
+    ACTION_ELEMENT_RESTAURE = 'ITEM_RESTORED'
 
     ACTIONS = [
         (ACTION_CONNEXION, 'Connexion réussie'),
@@ -730,6 +732,8 @@ class AuditEvent(models.Model):
         (ACTION_SAUVEGARDE, 'Sauvegarde créée'),
         (ACTION_SAUVEGARDE_TELECHARGEE, 'Sauvegarde téléchargée'),
         (ACTION_SAUVEGARDE_RESTAUREE, 'Sauvegarde restaurée'),
+        (ACTION_ELEMENT_SUPPRIME, 'Élément mis en corbeille'),
+        (ACTION_ELEMENT_RESTAURE, 'Élément restauré de la corbeille'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

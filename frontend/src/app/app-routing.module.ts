@@ -163,6 +163,18 @@ export const routes: Routes = [
         data: { title: 'Réseau GPS' }
       },
       {
+        // Carte des dossiers (tous rôles) : chaque SDGPS au centre de ses points anciens.
+        path: 'carte',
+        loadChildren: () => import('./features/carte-dossiers/carte-dossiers.module').then(m => m.CarteDossiersModule),
+        data: { title: 'Carte des dossiers' }
+      },
+      {
+        // Corbeille générale (tous rôles) : restauration / suppression définitive, journalisées.
+        path: 'corbeille',
+        loadChildren: () => import('./features/corbeille/corbeille.module').then(m => m.CorbeilleModule),
+        data: { title: 'Corbeille' }
+      },
+      {
         // Profil accessible à TOUT opérateur authentifié (hors AdminGuard).
         path: 'profile',
         loadChildren: () => import('./features/profile/profile.module').then(m => m.ProfileModule),
@@ -221,6 +233,18 @@ export const routes: Routes = [
         path: 'reseau-gps',
         loadChildren: () => import('./features/reseau-gps/reseau-gps.module').then(m => m.ReseauGpsModule),
         data: { title: 'Réseau GPS' }
+      },
+      {
+        // Carte des dossiers (tous rôles) : chaque SDGPS au centre de ses points anciens.
+        path: 'carte',
+        loadChildren: () => import('./features/carte-dossiers/carte-dossiers.module').then(m => m.CarteDossiersModule),
+        data: { title: 'Carte des dossiers' }
+      },
+      {
+        // Corbeille générale (tous rôles) : restauration / suppression définitive, journalisées.
+        path: 'corbeille',
+        loadChildren: () => import('./features/corbeille/corbeille.module').then(m => m.CorbeilleModule),
+        data: { title: 'Corbeille' }
       },
       {
         // Paramètres (tri + champs des pièces) — URL /parametres/… (sans « profile/ »).

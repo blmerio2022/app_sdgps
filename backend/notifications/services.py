@@ -147,6 +147,12 @@ def notifier_transition(ssdgps, nom, acteur, organization_id, motif='', soumis_p
     else:
         destinataires = [ssdgps.created_by, soumis_par]
         message = dossier + (f". Motif : {motif.strip()}" if motif and motif.strip() else '.')
+        if nom == 'rejeter':
+            # Les remarques par pièce sont la consigne de correction : le rédacteur doit
+            # savoir combien l'attendent.
+            ouvertes = ssdgps.remarques.filter(statut='ouverte').count()
+            if ouvertes:
+                message += f" {ouvertes} remarque{'s' if ouvertes > 1 else ''} à corriger sur les pièces."
     return notifier(destinataires, type_, titre, message, lien=lien_ssdgps(ssdgps),
                     cible=ssdgps, acteur=acteur)
 

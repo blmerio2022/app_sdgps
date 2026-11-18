@@ -42,6 +42,7 @@ from .rc import (compute_rapport_controle, compute_ecarts_vs_definitive,
 from .serializers import PieceSerializer, RapportGenerationSerializer
 from .tasks import generer_rapport
 
+from projects.suppressions import tracer_corbeille, tracer_definitive, tracer_restauration
 logger = logging.getLogger(__name__)
 
 
@@ -141,6 +142,7 @@ class PieceViewSet(viewsets.ModelViewSet):
         instance.deleted_at = timezone.now()
         instance.deleted_by = self.request.user
         instance.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
+        tracer_corbeille(self.request, instance)
 
     @action(detail=True, methods=['post'])
     def restore(self, request, pk=None):
@@ -153,6 +155,7 @@ class PieceViewSet(viewsets.ModelViewSet):
         instance.deleted_at = None
         instance.deleted_by = None
         instance.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
+        tracer_restauration(request, instance)
         return Response(self.get_serializer(instance).data)
 
     @action(detail=False, methods=['post'], url_path='bulk-restore')
@@ -165,8 +168,11 @@ class PieceViewSet(viewsets.ModelViewSet):
         # l'ensemble : une restauration en masse porte souvent sur plusieurs dossiers.
         verrouilles = [p.pk for p in qs if p.ssdgps.est_verrouille()]
         qs = qs.exclude(pk__in=verrouilles)
-        restored_count = qs.count()
+        objets = list(qs)
+        restored_count = len(objets)
         qs.update(is_deleted=False, deleted_at=None, deleted_by=None)
+        for obj in objets:
+            tracer_restauration(request, obj)
         return Response({'restored_count': restored_count,
                          'verrouillees_count': len(verrouilles)})
 
@@ -180,6 +186,7 @@ class PieceViewSet(viewsets.ModelViewSet):
         if instance is None:
             return Response({'detail': 'Pièce non trouvée ou non supprimée.'}, status=status.HTTP_404_NOT_FOUND)
         self._check_modifiable(instance.ssdgps)
+        tracer_definitive(request, instance)
         instance.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -195,6 +202,7 @@ class PieceViewSet(viewsets.ModelViewSet):
             if instance.ssdgps.est_verrouille():
                 verrouillees += 1
                 continue
+            tracer_definitive(request, instance)
             instance.delete()
             deleted_count += 1
         return Response({'deleted_count': deleted_count, 'errors': [],

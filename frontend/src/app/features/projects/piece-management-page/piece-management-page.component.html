@@ -80,6 +80,17 @@
                 title="Télécharger tout le dossier en ZIP : fiche récapitulative, données CSV, fichiers sources, photos, dernier rapport">
           <i class="fas" [ngClass]="exportZip ? 'fa-spinner fa-spin' : 'fa-file-zipper'"></i><span class="lbl">Exporter</span>
         </button>
+        <!-- Concordance des noms de points entre les pièces (lecture seule) -->
+        <button type="button" class="hdr-tool" (click)="controleCroiseOuvert = true"
+                title="Contrôle croisé : les points concordent-ils entre la LPA, les photos, les observations et les déterminations ?">
+          <i class="fas fa-code-compare"></i><span class="lbl">Contrôle croisé</span>
+        </button>
+        <!-- Remarques de l'encadrement, pièce par pièce -->
+        <button type="button" class="hdr-tool" (click)="ouvrirRemarques()"
+                [title]="etatRemarques?.ouvertes ? etatRemarques!.ouvertes + ' remarque(s) à corriger' : 'Remarques de validation par pièce'">
+          <i class="fas fa-comments"></i><span class="lbl">Remarques</span>
+          <span class="hdr-badge" *ngIf="etatRemarques?.ouvertes">{{ etatRemarques!.ouvertes }}</span>
+        </button>
         <!-- N°6 : brouillons rédigés par l'IA (observations des pièces, note de synthèse) -->
         <app-ia-redaction [ssdgpsId]="ssdgps.id" [verrouille]="isLocked"
                           (enregistre)="onObservationsIa($event)"></app-ia-redaction>
@@ -265,6 +276,7 @@
       <div class="item-actions" (click)="$event.stopPropagation()">
         <button class="icon-btn" *ngIf="!p.is_deleted" title="Voir" (click)="openDetail(p, $event, 'view')"><i class="fas fa-eye"></i></button>
         <button class="icon-btn" *ngIf="!p.is_deleted && peutRapportPiece(p)" title="Rapport de la pièce (PDF)" (click)="openPieceReport(p, $event)"><i class="fas fa-file-pdf"></i></button>
+        <button class="icon-btn remarque-btn" *ngIf="!p.is_deleted && remarquesOuvertesDe(p)" [title]="remarquesOuvertesDe(p) + ' remarque(s) à corriger'" (click)="ouvrirRemarques(p, $event)"><i class="fas fa-comment-dots"></i><span>{{ remarquesOuvertesDe(p) }}</span></button>
         <button class="icon-btn" *ngIf="!p.is_deleted" title="Modifier" (click)="openDetail(p, $event, 'edit')"><i class="fas fa-edit"></i></button>
         <a class="icon-btn" *ngIf="p.fichier_url" [href]="p.fichier_url" target="_blank" title="Voir le fichier"><i class="fas fa-external-link-alt"></i></a>
         <button class="icon-btn danger" *ngIf="!p.is_deleted" title="Supprimer" (click)="openDeleteModal(p, $event)"><i class="fas fa-trash-alt"></i></button>
@@ -367,6 +379,7 @@
             <td class="actions-col" (click)="$event.stopPropagation()">
               <button class="btn-icon" *ngIf="!p.is_deleted" title="Voir" (click)="openDetail(p, $event, 'view')"><i class="fas fa-eye"></i></button>
               <button class="btn-icon" *ngIf="!p.is_deleted && peutRapportPiece(p)" title="Rapport de la pièce (PDF)" (click)="openPieceReport(p, $event)"><i class="fas fa-file-pdf"></i></button>
+              <button class="btn-icon remarque-btn" *ngIf="!p.is_deleted && remarquesOuvertesDe(p)" [title]="remarquesOuvertesDe(p) + ' remarque(s) à corriger'" (click)="ouvrirRemarques(p, $event)"><i class="fas fa-comment-dots"></i><span>{{ remarquesOuvertesDe(p) }}</span></button>
               <button class="btn-icon" *ngIf="!p.is_deleted" title="Modifier" (click)="openDetail(p, $event, 'edit')"><i class="fas fa-edit"></i></button>
               <a class="btn-icon" *ngIf="p.fichier_url" [href]="p.fichier_url" target="_blank" title="Voir le fichier"><i class="fas fa-external-link-alt"></i></a>
               <button class="btn-icon btn-icon-danger" *ngIf="!p.is_deleted" title="Supprimer" (click)="openDeleteModal(p, $event)"><i class="fas fa-trash"></i></button>
@@ -735,6 +748,15 @@
         <i class="fas fa-circle-info"></i>
         Le dossier sera figé pendant le contrôle : ses pièces ne seront plus modifiables.
       </p>
+      <!-- Soumettre avec des remarques non traitées : à savoir avant, pas après un nouveau rejet. -->
+      <p class="confirm-note alerte" *ngIf="pendingTransition === 'soumettre' && etatRemarques?.ouvertes">
+        <i class="fas fa-comments"></i>
+        {{ etatRemarques!.ouvertes }} remarque(s) de l'encadrement ne sont pas encore marquées corrigées.
+      </p>
+      <p class="confirm-note" *ngIf="pendingTransition === 'rejeter' && etatRemarques?.ouvertes">
+        <i class="fas fa-comments"></i>
+        {{ etatRemarques!.ouvertes }} remarque(s) par pièce accompagneront ce rejet.
+      </p>
       <label class="motif-field" *ngIf="transitionMeta(pendingTransition).motif === 'obligatoire'">
         <span class="motif-label">Motif <em>(obligatoire)</em></span>
         <textarea rows="3" [(ngModel)]="transitionMotif"
@@ -788,6 +810,14 @@
     </div>
   </div>
 </div>
+
+<app-controle-croise *ngIf="controleCroiseOuvert && ssdgps" [ssdgpsId]="ssdgps.id" [projetId]="projetId"
+                     [sessionId]="ssdgps.type_ssdgps === 'multi-session' ? currentSessionId : null"
+                     (fermee)="controleCroiseOuvert = false"></app-controle-croise>
+
+<app-remarques-validation *ngIf="remarquesOuvertes && ssdgps" [ssdgpsId]="ssdgps.id" [projetId]="projetId"
+                          [pieces]="piecesChoix" [pieceInitiale]="remarquesPiece"
+                          (changement)="etatRemarques = $event" (fermee)="remarquesOuvertes = false"></app-remarques-validation>
 
 <!-- ========== Modale rapport d'une pièce ========== -->
 <div class="modal-overlay cover-preview-overlay" *ngIf="pieceReport" (click)="closePieceReport()">

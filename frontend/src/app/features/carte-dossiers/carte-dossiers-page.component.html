@@ -1,0 +1,42 @@
+<div class="cd-page">
+  <header class="cd-head">
+    <div>
+      <h1><i class="fas fa-map-location-dot"></i> Carte des dossiers</h1>
+      <p *ngIf="donnees">
+        {{ donnees.dossiers.length }} dossier(s) placé(s) au centre de leurs points anciens
+        <ng-container *ngIf="donnees.sans_position"> · {{ donnees.sans_position }} sans position (aucune liste de points anciens ni détermination définitive exploitable)</ng-container>.
+      </p>
+    </div>
+    <div class="cd-fonds" role="group" aria-label="Fond de carte">
+      <button type="button" [class.on]="fond === 'plan'" (click)="changerFond('plan')"><i class="fas fa-map"></i> Plan</button>
+      <button type="button" [class.on]="fond === 'satellite'" (click)="changerFond('satellite')"><i class="fas fa-satellite"></i> Satellite</button>
+    </div>
+  </header>
+
+  <div class="cd-corps">
+    <aside class="cd-panneau">
+      <label class="cd-recherche"><i class="fas fa-magnifying-glass"></i>
+        <input [(ngModel)]="recherche" (ngModelChange)="filtrer()" placeholder="Dossier, projet, propriété…" aria-label="Rechercher un dossier"></label>
+      <div class="cd-statuts">
+        <button type="button" *ngFor="let s of statuts" class="cd-statut-btn" [class.off]="!statutsActifs.has(s.cle)"
+                (click)="basculerStatut(s.cle)" [attr.aria-pressed]="statutsActifs.has(s.cle)">
+          <span class="pastille" [style.background]="couleurs[s.cle]"></span> {{ s.libelle }} <em>{{ compte(s.cle) }}</em>
+        </button>
+      </div>
+      <ul class="cd-liste">
+        <li *ngFor="let d of visibles" (click)="centrerSur(d)" tabindex="0" (keyup.enter)="centrerSur(d)">
+          <span class="pastille" [style.background]="couleurs[d.statut]"></span>
+          <span class="cd-txt"><strong>{{ d.titre }}</strong><span>{{ d.contexte }}</span></span>
+          <button type="button" class="cd-ouvrir" (click)="ouvrir(d); $event.stopPropagation()" title="Ouvrir le dossier">
+            <i class="fas fa-arrow-right"></i></button>
+        </li>
+        <li class="cd-vide" *ngIf="!chargement && !visibles.length">Aucun dossier à afficher.</li>
+      </ul>
+    </aside>
+    <div class="cd-carte-wrap">
+      <div #carte class="cd-carte" role="region" aria-label="Carte des dossiers"></div>
+      <div class="cd-voile" *ngIf="chargement"><i class="fas fa-spinner fa-spin"></i> Placement des dossiers…</div>
+      <div class="cd-voile erreur" *ngIf="erreur"><i class="fas fa-triangle-exclamation"></i> {{ erreur }}</div>
+    </div>
+  </div>
+</div>

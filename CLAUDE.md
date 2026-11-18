@@ -825,6 +825,50 @@ levé d'exemple réel, formats « une pièce par dossier » et « à plat », sa
 - tests : `analytics/tests_quota_message.py`, specs `stockage.service`, `toast.service`,
   `stockage-settings`, `storage-quotas`, `import-masse`, `menu.config`.
 
+**Contrôle croisé des points (concordance du CONTENU des pièces).** `GET /api/v1/ssdgps/<id>/controle-croise/[?session=]`
+(`pieces/controle_croise.py`, lecture seule, ouvert sur un dossier figé) : noms de points
+rapprochés sans casse ni espaces (`rc._cle`) entre LPA, PPA/PPN (+ photos par `point_ref`),
+ROB/RTLB (`point`, `de`/`vers`), RDL/RDN/RDIA et RDD. Contrôles (chacun ne s'applique que
+si les pièces comparées existent ; un écart = UNE entrée avec ses points et ses pièces) :
+doublons (erreur), LPA / PPN absents du RDD (erreur), PPN non observés (erreur), RDD
+inconnus, LPA sans fiche PPA / PPA hors LPA, LPA non observés, points observés ou des
+déterminations non répertoriés, lignes sans photo / photos orphelines, même point écrit de
+plusieurs façons (avertissements). Distinct de `coherence.py` (présence des pièces). Front :
+bouton « Contrôle croisé » de la barre d'outils des pièces → `<app-controle-croise>`
+(liens vers les pièces fautives). Tests : `pieces/tests_controle_croise.py`.
+
+**Remarques de validation par pièce.** Modèle `pieces.RemarqueValidation` (dossier, pièce
+facultative en `SET_NULL` + libellé figé, ligne / point, texte, statut `ouverte` →
+`corrigee` → `levee`, réponse du rédacteur). Règles `pieces/remarques.py` : écrire / lever /
+rouvrir = encadrement du dossier (`workflow.est_encadrement`), refusé sur un dossier
+validé / clos ; marquer corrigée = tout utilisateur du dossier, hors dossier figé ;
+retirer = l'auteur tant qu'ouverte. API : `GET|POST ssdgps/<id>/remarques/`,
+`POST …/remarques/<rid>/corriger|lever|rouvrir/`, `DELETE …/remarques/<rid>/` (réponse =
+état complet + compteurs + droits). La notification de rejet annonce le nombre de
+remarques à corriger. Front : bouton « Remarques » (pastille = ouvertes) + pastille par
+pièce → panneau `<app-remarques-validation>` ; la confirmation de soumission prévient
+s'il reste des remarques ouvertes. Tests : `pieces/tests_remarques.py`.
+
+**Suppressions journalisées + corbeille générale.** Mise en corbeille, restauration (unitaire
+et en masse) et suppression définitive (unitaire et en masse) des projets → pièces
+journalisées (`projects/suppressions.py` : `ACTION_ELEMENT_SUPPRIME`,
+`ACTION_ELEMENT_RESTAURE`, `ACTION_SUPPRESSION_DEFINITIVE` avec `contexte` hiérarchique et,
+pour la définitive, `emporte` = descendants supprimés en cascade). Tout nouveau chemin de
+suppression doit appeler `tracer_corbeille` / `tracer_restauration` / `tracer_definitive`
+(cette dernière AVANT `delete()`). Corbeille générale : `GET /api/v1/corbeille/`,
+`POST corbeille/restaurer/` et `corbeille/purger/` `{elements: [{type, id}]}` (portée
+RBAC ; purge des feuilles vers les parents, parent encore garni refusé ; pièce d'un dossier
+figé intouchable). Front : `/corbeille` + `/admin/corbeille` (module lazy
+`features/corbeille`). ⚠ Exception assumée aux règles de tableaux : liste hétérogène
+ordonnée par date de suppression. Tests : `projects/tests_corbeille.py`.
+
+**Carte des dossiers.** `GET /api/v1/carte-dossiers/` (`projects/carte.py`) : chaque SDGPS
+visible au centre de ses points anciens (LPA, à défaut RDD), Lambert → WGS84 par
+`reseaux.projection` ; zone d'après « Zone Projection » des PPA/PPN, sinon Nord supposée
+(`zone_supposee`) ; position hors du Maroc écartée (`sans_position`). Front : `/carte` +
+`/admin/carte` (module lazy `features/carte-dossiers`, Leaflet, fonds Plan OSM / Satellite
+Esri, filtres par statut et texte, clic → dossier). Tests : `projects/tests_carte.py`.
+
 **Reprendre mon travail (tableau de bord, tous rôles).** `GET /api/v1/reprise/?limite=`
 (`projects/reprise.py`, ≤ 50) : travaux commencés et non terminés de l'appelant, **du plus
 récent au plus ancien** (date de SA dernière intervention, pas celle d'un collègue) —

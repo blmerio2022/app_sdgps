@@ -1,0 +1,52 @@
+.cc-overlay { position: fixed; inset: 0; z-index: 1100; display: grid; place-items: center; padding: 20px;
+  background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(2px); }
+.cc { width: min(860px, 100%); max-height: 90vh; display: flex; flex-direction: column; border-radius: 16px; overflow: hidden;
+  background: var(--secondary-color); border: 1px solid var(--border-color); box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4); }
+.cc-head { display: flex; align-items: center; gap: 14px; padding: 16px 20px; border-bottom: 1px solid var(--border-color);
+  h3 { margin: 0; font-size: 16.5px; color: var(--text-color); } p { margin: 2px 0 0; font-size: 12.5px; color: var(--text-muted); }
+  > div { flex: 1; } }
+.cc-ico { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; color: var(--accent-color);
+  background: rgba(204, 88, 88, 0.13); border: 1px solid rgba(204, 88, 88, 0.3); }
+.cc-close { width: 32px; height: 32px; border-radius: 8px; border: none; background: transparent; color: var(--text-muted);
+  cursor: pointer; &:hover { background: var(--hover-bg); color: var(--text-color); } }
+.cc-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+.cc-etat, .cc-erreur { margin: 0; font-size: 13px; color: var(--text-muted); i { margin-right: 6px; } }
+.cc-erreur { color: #e74c3c; }
+
+.cc-synthese { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 12px;
+  background: var(--hover-bg); border: 1px solid var(--border-color);
+  > i { font-size: 20px; color: #f39c12; margin-top: 2px; }
+  &.ok > i { color: #2ecc71; }
+  > div { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; color: var(--text-color); } }
+.n-err { color: #e74c3c; } .n-avert { color: #f39c12; }
+.cc-sources { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+.cc-source { padding: 2px 8px; border-radius: 12px; border: 1px solid var(--border-color); color: var(--text-color);
+  font-weight: 600; em { font-style: normal; font-weight: 400; color: var(--text-muted); } }
+
+.cc-controle { padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border-color); border-left: 3px solid #f39c12;
+  &.erreur { border-left-color: #e74c3c; } }
+.cc-c-head { display: flex; align-items: center; gap: 10px;
+  h4 { flex: 1; margin: 0; font-size: 14px; color: var(--text-color); } }
+.cc-grav { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; padding: 2px 8px;
+  border-radius: 10px; color: #f39c12; background: rgba(243, 156, 18, 0.12);
+  .erreur & { color: #e74c3c; background: rgba(231, 76, 60, 0.12); } }
+.cc-nb { min-width: 26px; height: 22px; padding: 0 7px; border-radius: 11px; display: grid; place-items: center;
+  font-size: 12px; font-weight: 700; color: var(--text-color); background: var(--hover-bg); }
+.cc-msg { margin: 6px 0 8px; font-size: 12.5px; color: var(--text-muted); }
+.cc-points { display: flex; flex-wrap: wrap; gap: 5px; }
+.cc-point { padding: 2px 8px; border-radius: 6px; font-size: 12px; font-family: ui-monospace, 'Cascadia Mono', monospace;
+  color: var(--text-color); background: var(--hover-bg); border: 1px solid var(--border-color); }
+.cc-plus { padding: 2px 8px; border-radius: 6px; font-size: 12px; cursor: pointer; border: 1px dashed var(--border-color);
+  background: transparent; color: var(--accent-color); }
+.cc-pieces { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; font-size: 12px; color: var(--text-muted); }
+.cc-piece { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 8px; cursor: pointer;
+  font-size: 12px; color: var(--text-color); background: transparent; border: 1px solid var(--border-color);
+  i { color: var(--text-muted); } &:hover { border-color: var(--accent-color); i { color: var(--accent-color); } } }
+
+.cc-foot { display: flex; align-items: center; gap: 10px; padding: 12px 20px; border-top: 1px solid var(--border-color); }
+.cc-note { font-size: 12px; color: var(--text-muted); i { margin-right: 5px; } }
+.spacer { flex: 1; }
+.cc-btn { height: 36px; padding: 0 14px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer;
+  color: var(--text-color); background: transparent; border: 1px solid var(--border-color);
+  i { margin-right: 6px; } &:hover:not(:disabled) { border-color: var(--accent-color); } &:disabled { opacity: 0.5; }
+  &.primaire { color: #fff; border: none; background: linear-gradient(135deg, #d46a6a 0%, var(--accent-color) 100%); } }

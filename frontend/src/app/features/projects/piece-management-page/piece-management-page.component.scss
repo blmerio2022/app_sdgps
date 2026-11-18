@@ -789,3 +789,10 @@ $hdr-h: 36px;
   max-width: 1100px; width: 94vw;
   .cover-preview-frame { height: 70vh; }
 }
+
+/* Pastille du nombre de remarques ouvertes (bouton d'outil et ligne de pièce). */
+.hdr-badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; display: inline-grid; place-items: center;
+  font-size: 11px; font-weight: 700; color: #fff; background: #e74c3c; }
+.remarque-btn { color: #e74c3c !important; display: inline-flex; align-items: center; gap: 3px;
+  span { font-size: 11px; font-weight: 700; } }
+.modal-body .confirm-note.alerte { margin-top: 8px; color: #e74c3c; background: rgba(231, 76, 60, 0.1); i { color: #e74c3c; } }

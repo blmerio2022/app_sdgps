@@ -1,0 +1,85 @@
+<div class="cb-page">
+  <header class="cb-head">
+    <div>
+      <h1><i class="fas fa-trash-can"></i> Corbeille</h1>
+      <p>Tout ce qui a été mis en corbeille — projets, propriétés, affaires, SDGPS, sessions et pièces —, du plus
+        récent au plus ancien. Chaque restauration et chaque suppression définitive est consignée au journal d'audit.</p>
+    </div>
+    <button type="button" class="cb-btn" (click)="charger()" [disabled]="chargement">
+      <i class="fas fa-rotate" [class.fa-spin]="chargement"></i> Actualiser</button>
+  </header>
+
+  <div class="cb-barre">
+    <div class="cb-puces" role="tablist" aria-label="Filtrer par type">
+      <button type="button" [class.on]="filtreType === 'tous'" (click)="filtreType = 'tous'">
+        Tout <span>{{ elements.length }}</span></button>
+      <button type="button" *ngFor="let t of types" [class.on]="filtreType === t.type" (click)="filtreType = t.type"
+              [disabled]="!compte(t.type)">
+        <i class="fas" [ngClass]="t.icone"></i> {{ t.libelle }} <span>{{ compte(t.type) }}</span></button>
+    </div>
+    <label class="cb-recherche"><i class="fas fa-magnifying-glass"></i>
+      <input [(ngModel)]="recherche" placeholder="Rechercher (nom, emplacement, auteur)…" aria-label="Rechercher"></label>
+  </div>
+
+  <div class="cb-lot" *ngIf="selection.size">
+    <strong>{{ selection.size }} sélectionné(s)</strong>
+    <span class="spacer"></span>
+    <button type="button" class="cb-btn" (click)="restaurer(selectionnes)" [disabled]="occupe">
+      <i class="fas fa-rotate-left"></i> Restaurer</button>
+    <button type="button" class="cb-btn danger" (click)="demanderPurge()" [disabled]="occupe">
+      <i class="fas fa-trash"></i> Supprimer définitivement</button>
+  </div>
+
+  <p class="cb-erreur" *ngIf="erreur"><i class="fas fa-triangle-exclamation"></i> {{ erreur }}</p>
+
+  <div class="cb-table-wrap">
+    <table class="cb-table" *ngIf="!chargement || elements.length">
+      <thead>
+        <tr>
+          <th class="col-check"><input type="checkbox" [checked]="toutCoche" (change)="basculerTout()" aria-label="Tout sélectionner"></th>
+          <th>Élément</th>
+          <th>Supprimé le</th>
+          <th>Supprimé par</th>
+          <th>État</th>
+          <th class="col-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let e of visibles" [class.sel]="selection.has(cle(e))">
+          <td class="col-check"><input type="checkbox" [checked]="selection.has(cle(e))" (change)="basculer(e)" [attr.aria-label]="'Sélectionner ' + e.titre"></td>
+          <td>
+            <div class="cb-el">
+              <span class="cb-ico" [ngClass]="'t-' + e.type"><i class="fas" [ngClass]="icone(e.type)"></i></span>
+              <span class="cb-el-txt">
+                <span class="cb-titre"><span class="cb-type">{{ e.libelle_type }}</span> {{ e.titre }}</span>
+                <span class="cb-ctx" *ngIf="e.contexte">{{ e.contexte }}</span>
+              </span>
+            </div>
+          </td>
+          <td class="nowrap">{{ date(e.deleted_at) }}</td>
+          <td>{{ e.deleted_by || '—' }}</td>
+          <td>
+            <span class="cb-etat bloque" *ngIf="blocage(e)"><i class="fas fa-lock"></i> {{ blocage(e) }}</span>
+            <span class="cb-etat parent" *ngIf="e.parent_en_corbeille"><i class="fas fa-level-up-alt"></i> Parent en corbeille</span>
+            <span class="cb-etat ok" *ngIf="!blocage(e) && !e.parent_en_corbeille">—</span>
+          </td>
+          <td class="col-actions">
+            <button type="button" class="cb-ico-btn" title="Restaurer" [disabled]="occupe || e.verrouille" (click)="restaurer([e])">
+              <i class="fas fa-rotate-left"></i></button>
+            <button type="button" class="cb-ico-btn danger" title="Supprimer définitivement" [disabled]="occupe" (click)="demanderPurge([e])">
+              <i class="fas fa-trash"></i></button>
+          </td>
+        </tr>
+        <tr *ngIf="!visibles.length && !chargement">
+          <td colspan="6" class="cb-vide"><i class="fas fa-trash-can"></i>
+            {{ elements.length ? 'Aucun élément pour ce filtre.' : 'La corbeille est vide.' }}</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="cb-chargement" *ngIf="chargement && !elements.length"><i class="fas fa-spinner fa-spin"></i> Chargement…</p>
+  </div>
+</div>
+
+<app-permanent-delete-confirm [open]="confirmerPurge" [bulk]="selection.size > 1" [count]="selection.size"
+                              [label]="libellePurge" entitySingular="élément" entityPlural="éléments"
+                              [busy]="occupe" (confirm)="purger()" (cancel)="confirmerPurge = false"></app-permanent-delete-confirm>

@@ -1,0 +1,94 @@
+<div class="rv-overlay" (click)="fermee.emit()">
+  <aside class="rv" role="dialog" aria-labelledby="rv-titre" (click)="$event.stopPropagation()">
+    <header class="rv-head">
+      <span class="rv-ico"><i class="fas fa-comments"></i></span>
+      <div>
+        <h3 id="rv-titre">Remarques de validation</h3>
+        <div class="rv-compteurs" *ngIf="etat">
+          <span class="c ouverte">{{ etat.ouvertes }} à corriger</span>
+          <span class="c corrigee">{{ etat.corrigees }} corrigée{{ etat.corrigees > 1 ? 's' : '' }}</span>
+          <span class="c levee">{{ etat.levees }} levée{{ etat.levees > 1 ? 's' : '' }}</span>
+        </div>
+      </div>
+      <button type="button" class="rv-close" (click)="fermee.emit()" aria-label="Fermer"><i class="fas fa-times"></i></button>
+    </header>
+
+    <!-- Nouvelle remarque (encadrement) -->
+    <form class="rv-form" *ngIf="etat?.peut_remarquer" (ngSubmit)="ajouter()">
+      <div class="rv-form-ligne">
+        <select name="piece" [(ngModel)]="pieceChoisie" aria-label="Pièce concernée">
+          <option [ngValue]="null">Dossier entier</option>
+          <option *ngFor="let p of pieces" [ngValue]="p.id">{{ p.libelle }}</option>
+        </select>
+        <input name="ligne" [(ngModel)]="ligne" maxlength="120" placeholder="Point / ligne (facultatif)" aria-label="Point ou ligne concerné">
+      </div>
+      <textarea name="texte" [(ngModel)]="texte" rows="2" maxlength="2000"
+                placeholder="Remarque à corriger (ex. « σ incohérent sur BT11 »)" aria-label="Remarque"></textarea>
+      <button type="submit" class="rv-btn primaire" [disabled]="!texte.trim() || envoi">
+        <i class="fas" [ngClass]="envoi ? 'fa-spinner fa-spin' : 'fa-plus'"></i> Ajouter la remarque
+      </button>
+    </form>
+
+    <div class="rv-filtres" *ngIf="etat?.remarques?.length">
+      <div class="rv-onglets" role="tablist">
+        <button type="button" *ngFor="let f of [['toutes','Toutes'],['ouverte','À corriger'],['corrigee','Corrigées'],['levee','Levées']]"
+                [class.on]="filtreStatut === f[0]" (click)="filtreStatut = $any(f[0])">{{ f[1] }}</button>
+      </div>
+      <select [(ngModel)]="filtrePiece" aria-label="Filtrer par pièce">
+        <option value="toutes">Toutes les pièces</option>
+        <option value="dossier">Dossier entier</option>
+        <option *ngFor="let p of pieces" [value]="p.id">{{ p.libelle }}</option>
+      </select>
+    </div>
+
+    <p class="rv-erreur" *ngIf="erreur"><i class="fas fa-triangle-exclamation"></i> {{ erreur }}</p>
+    <p class="rv-etat" *ngIf="chargement"><i class="fas fa-spinner fa-spin"></i> Chargement…</p>
+
+    <div class="rv-liste">
+      <p class="rv-vide" *ngIf="!chargement && etat && !visibles.length">
+        <i class="fas fa-circle-check"></i>
+        {{ etat.remarques.length ? 'Aucune remarque pour ce filtre.' : 'Aucune remarque sur ce dossier.' }}
+      </p>
+      <article class="rv-item" *ngFor="let r of visibles" [ngClass]="r.statut">
+        <div class="rv-item-head">
+          <button type="button" class="rv-piece" [disabled]="!r.piece" (click)="ouvrirPiece(r)"
+                  [title]="r.piece ? 'Ouvrir la pièce' : ''">
+            <i class="fas" [ngClass]="r.piece ? 'fa-file-lines' : 'fa-folder-open'"></i>
+            {{ r.piece_libelle || 'Dossier entier' }}
+          </button>
+          <span class="rv-ligne" *ngIf="r.ligne">{{ r.ligne }}</span>
+          <span class="spacer"></span>
+          <span class="rv-statut" [ngClass]="r.statut">{{ r.statut_display }}</span>
+        </div>
+        <p class="rv-texte">{{ r.texte }}</p>
+        <p class="rv-meta">{{ r.auteur }} · {{ date(r.created_at) }}</p>
+        <div class="rv-reponse" *ngIf="r.statut !== 'ouverte' && (r.reponse || r.corrigee_par)">
+          <i class="fas fa-reply"></i>
+          <span><strong>{{ r.corrigee_par }}</strong> <ng-container *ngIf="r.corrigee_at">· {{ date(r.corrigee_at) }}</ng-container>
+            <ng-container *ngIf="r.reponse"> — {{ r.reponse }}</ng-container></span>
+        </div>
+        <p class="rv-meta" *ngIf="r.statut === 'levee' && r.levee_par">Levée par {{ r.levee_par }} · {{ date(r.levee_at) }}</p>
+
+        <div class="rv-correction" *ngIf="enCorrection === r.id">
+          <textarea [(ngModel)]="reponse" rows="2" maxlength="2000" placeholder="Ce qui a été corrigé (facultatif)" aria-label="Réponse"></textarea>
+          <div class="rv-actions">
+            <button type="button" class="rv-btn" (click)="enCorrection = null">Annuler</button>
+            <button type="button" class="rv-btn succes" (click)="operation(r, 'corriger')" [disabled]="envoi">
+              <i class="fas fa-check"></i> Confirmer la correction</button>
+          </div>
+        </div>
+
+        <div class="rv-actions" *ngIf="enCorrection !== r.id">
+          <button type="button" class="rv-btn succes" *ngIf="r.statut === 'ouverte' && etat?.peut_corriger" (click)="ouvrirCorrection(r)">
+            <i class="fas fa-check"></i> Marquer corrigée</button>
+          <button type="button" class="rv-btn" *ngIf="r.statut !== 'levee' && etat?.peut_lever" (click)="operation(r, 'lever')" [disabled]="envoi">
+            <i class="fas fa-check-double"></i> Lever</button>
+          <button type="button" class="rv-btn" *ngIf="r.statut !== 'ouverte' && etat?.peut_lever" (click)="operation(r, 'rouvrir')" [disabled]="envoi">
+            <i class="fas fa-rotate-left"></i> Rouvrir</button>
+          <button type="button" class="rv-btn danger" *ngIf="r.peut_supprimer" (click)="retirer(r)" [disabled]="envoi">
+            <i class="fas fa-trash"></i> Retirer</button>
+        </div>
+      </article>
+    </div>
+  </aside>
+</div>

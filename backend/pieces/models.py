@@ -447,3 +447,48 @@ class PieceVersion(models.Model):
 
     def __str__(self):
         return f"{self.piece_id} v{self.numero}"
+
+
+class RemarqueValidation(models.Model):
+    """Remarque de l'encadrement sur un dossier, une pièce, voire une ligne de pièce.
+
+    Un rejet ne portait qu'un motif global, que le rédacteur devait interpréter. Le
+    validateur annote désormais chaque pièce (« σ incohérent sur BT11 ») ; le rédacteur
+    marque chaque remarque corrigée (réponse facultative) et le validateur la lève — ou la
+    rouvre. Règles : `pieces/remarques.py`."""
+
+    class Statut(models.TextChoices):
+        OUVERTE = 'ouverte', 'À corriger'
+        CORRIGEE = 'corrigee', 'Corrigée'
+        LEVEE = 'levee', 'Levée'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    ssdgps = models.ForeignKey(Ssdgps, on_delete=models.CASCADE, related_name='remarques',
+                               verbose_name="SDGPS")
+    # SET_NULL : la remarque survit à la suppression de sa pièce (libellé figé ci-dessous).
+    piece = models.ForeignKey(Piece, on_delete=models.SET_NULL, null=True, blank=True,
+                              related_name='remarques', verbose_name="Pièce")
+    piece_libelle = models.CharField(max_length=255, blank=True, verbose_name="Pièce (libellé figé)")
+    ligne = models.CharField(max_length=120, blank=True, verbose_name="Ligne / point concerné")
+    texte = models.TextField(verbose_name="Remarque")
+    statut = models.CharField(max_length=16, choices=Statut.choices, default=Statut.OUVERTE,
+                              db_index=True, verbose_name="Statut")
+    reponse = models.TextField(blank=True, verbose_name="Réponse du rédacteur")
+
+    auteur = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+                               related_name='+', verbose_name="Auteur")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Créée le")
+    corrigee_par = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+                                     blank=True, related_name='+', verbose_name="Corrigée par")
+    corrigee_at = models.DateTimeField(null=True, blank=True, verbose_name="Corrigée le")
+    levee_par = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+                                  blank=True, related_name='+', verbose_name="Levée par")
+    levee_at = models.DateTimeField(null=True, blank=True, verbose_name="Levée le")
+
+    class Meta:
+        ordering = ['created_at']
+        verbose_name = "Remarque de validation"
+        verbose_name_plural = "Remarques de validation"
+
+    def __str__(self):
+        return f"Remarque {self.get_statut_display()} — {self.piece_libelle or 'dossier'}"

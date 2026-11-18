@@ -39,5 +39,42 @@ def reprendre(request):
     return Response(travaux_a_reprendre(request.user, limite))
 
 
+@api_view(['GET'])
+def corbeille(request):
+    """GET /api/v1/corbeille/ — tout ce qui est en corbeille (projets → pièces), visible de
+    l'appelant (portée RBAC), du plus récemment supprimé au plus ancien."""
+    from .suppressions import lister
+    elements = lister(request.user)
+    return Response({'total': len(elements), 'resultats': elements})
+
+
+@api_view(['POST'])
+def corbeille_restaurer(request):
+    """POST /api/v1/corbeille/restaurer/ — {"elements": [{"type", "id"}]}. Journalisé."""
+    from .suppressions import restaurer
+    return Response(restaurer(request, request.data.get('elements')))
+
+
+@api_view(['POST'])
+def corbeille_purger(request):
+    """POST /api/v1/corbeille/purger/ — {"elements": [{"type", "id"}]} : suppression
+    DÉFINITIVE (feuilles d'abord ; un parent encore garni est refusé). Journalisé avec
+    l'instantané de ce qui est emporté."""
+    from .suppressions import purger
+    return Response(purger(request, request.data.get('elements')))
+
+
+@api_view(['GET'])
+def carte_dossiers(request):
+    """GET /api/v1/carte-dossiers/ — position (WGS84) de chaque SDGPS visible, d'après le
+    centre de ses points anciens ; portée RBAC, corbeille exclue."""
+    from .carte import dossiers
+    return Response(dossiers(request.user))
+
+
 urlpatterns = [path('recherche/', recherche_globale, name='recherche-globale'),
-               path('reprise/', reprendre, name='reprise')] + router.urls
+               path('carte-dossiers/', carte_dossiers, name='carte-dossiers'),
+               path('reprise/', reprendre, name='reprise'),
+               path('corbeille/', corbeille, name='corbeille'),
+               path('corbeille/restaurer/', corbeille_restaurer, name='corbeille-restaurer'),
+               path('corbeille/purger/', corbeille_purger, name='corbeille-purger')] + router.urls

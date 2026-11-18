@@ -15,6 +15,7 @@ from rest_framework.response import Response
 
 from accounts.audit import journaliser
 from accounts.models import AuditEvent
+from .suppressions import tracer_corbeille, tracer_definitive, tracer_restauration
 from .models import Projet, Propriete, Affaire, Ssdgps, Session, ModeleSsdgps
 from .workflow import appliquer_transition, transitions_possibles
 from .serializers import (
@@ -183,6 +184,7 @@ class BaseOrgScopedViewSet(viewsets.ModelViewSet):
         instance.deleted_at = timezone.now()
         instance.deleted_by = self.request.user
         instance.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
+        tracer_corbeille(self.request, instance)
 
     @action(detail=True, methods=['post'])
     def restore(self, request, pk=None):
@@ -194,6 +196,7 @@ class BaseOrgScopedViewSet(viewsets.ModelViewSet):
         instance.deleted_at = None
         instance.deleted_by = None
         instance.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
+        tracer_restauration(request, instance)
         serializer = self.get_serializer(instance)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -204,8 +207,11 @@ class BaseOrgScopedViewSet(viewsets.ModelViewSet):
         if not isinstance(ids, list) or not ids:
             return Response({'detail': 'La liste ids est requise.'}, status=status.HTTP_400_BAD_REQUEST)
         qs = self._org_scoped_queryset().filter(pk__in=ids, is_deleted=True)
-        restored_count = qs.count()
+        objets = list(qs)
+        restored_count = len(objets)
         qs.update(is_deleted=False, deleted_at=None, deleted_by=None)
+        for obj in objets:
+            tracer_restauration(request, obj)
         return Response({'restored_count': restored_count}, status=status.HTTP_200_OK)
 
     def _child_count(self, instance):
@@ -232,6 +238,7 @@ class BaseOrgScopedViewSet(viewsets.ModelViewSet):
                 {'detail': f"Suppression définitive impossible : {blocking} sous-élément(s) "
                            f"rattaché(s). Supprimez-les d'abord."},
                 status=status.HTTP_400_BAD_REQUEST)
+        tracer_definitive(request, instance)
         instance.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -249,6 +256,7 @@ class BaseOrgScopedViewSet(viewsets.ModelViewSet):
             if blocking:
                 errors.append({'id': str(instance.pk), 'detail': f"{blocking} sous-élément(s) rattaché(s)."})
                 continue
+            tracer_definitive(request, instance)
             instance.delete()
             deleted_count += 1
         return Response({'deleted_count': deleted_count, 'errors': errors}, status=status.HTTP_200_OK)
@@ -592,6 +600,61 @@ class SsdgpsViewSet(BaseOrgScopedViewSet):
         """GET /api/v1/ssdgps/<id>/plan/ — état de la liste de contrôle des pièces."""
         from .modeles import plan_du_ssdgps
         return Response(plan_du_ssdgps(self.get_object()))
+
+    @action(detail=True, methods=['get'], url_path='controle-croise')
+    def controle_croise(self, request, pk=None):
+        """GET /api/v1/ssdgps/<id>/controle-croise/[?session=<uuid>] — concordance des
+        points entre les pièces (LPA, PPA/PPN, ROB/RTLB, déterminations, RDD). Lecture
+        seule ; ouvert même sur un dossier figé. `session` : pièces de cette session +
+        pièces communes."""
+        from pieces.controle_croise import analyser_controle_croise
+        from pieces.models import Piece
+        ssdgps = self.get_object()
+        qs = Piece.objects.filter(ssdgps=ssdgps, is_deleted=False).exclude(
+            session__is_deleted=True)
+        session_id = request.query_params.get('session')
+        if session_id:
+            qs = qs.filter(Q(session_id=session_id) | Q(session__isnull=True))
+        return Response(analyser_controle_croise(qs.prefetch_related('images')))
+
+    @action(detail=True, methods=['get', 'post'], url_path='remarques')
+    def remarques(self, request, pk=None):
+        """GET /api/v1/ssdgps/<id>/remarques/ — remarques de validation + compteurs + droits.
+        POST — `{"texte", "piece"?, "ligne"?}` (encadrement du dossier)."""
+        from pieces import remarques as regles
+        ssdgps = self.get_object()
+        if request.method == 'POST':
+            try:
+                regles.creer(ssdgps, request.user, request.data.get('texte'),
+                             request.data.get('piece') or None, request.data.get('ligne') or '')
+            except regles.RemarqueRefusee as exc:
+                return Response({'detail': str(exc)}, status=exc.statut)
+            return Response(regles.etat(ssdgps, request.user), status=status.HTTP_201_CREATED)
+        return Response(regles.etat(ssdgps, request.user))
+
+    @action(detail=True, methods=['post', 'delete'],
+            url_path=r'remarques/(?P<remarque_id>[0-9a-f-]+)(?:/(?P<op>corriger|lever|rouvrir))?')
+    def remarque(self, request, pk=None, remarque_id=None, op=None):
+        """POST …/remarques/<rid>/corriger|lever|rouvrir/ ; DELETE …/remarques/<rid>/."""
+        from pieces import remarques as regles
+        ssdgps = self.get_object()
+        r = ssdgps.remarques.filter(pk=remarque_id).first()
+        if r is None:
+            return Response({'detail': 'Remarque introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            if request.method == 'DELETE':
+                regles.supprimer(r, request.user)
+            elif op == 'corriger':
+                regles.corriger(r, request.user, request.data.get('reponse') or '')
+            elif op == 'lever':
+                regles.lever(r, request.user)
+            elif op == 'rouvrir':
+                regles.rouvrir(r, request.user)
+            else:
+                return Response({'detail': 'Opération inconnue.'}, status=status.HTTP_400_BAD_REQUEST)
+        except regles.RemarqueRefusee as exc:
+            return Response({'detail': str(exc)}, status=exc.statut)
+        return Response(regles.etat(ssdgps, request.user))
 
     @action(detail=True, methods=['post'], url_path='appliquer-modele')
     def appliquer_modele(self, request, pk=None):

@@ -31,6 +31,22 @@ export const USER_MENU: MenuItem[] = [
     description: 'Conception de réseaux de triangulation GPS (variantes, carte, normes)'
   },
   {
+    id: 'carte-dossiers',
+    title: 'Carte des dossiers',
+    icon: 'fas fa-map-location-dot',
+    route: '/carte',
+    type: 'link',
+    description: 'Tous vos SDGPS sur une carte, colorés selon leur statut'
+  },
+  {
+    id: 'corbeille',
+    title: 'Corbeille',
+    icon: 'fas fa-trash-can',
+    route: '/corbeille',
+    type: 'link',
+    description: 'Éléments supprimés : restaurer ou supprimer définitivement'
+  },
+  {
     // Regroupement « Paramètres » (route hors AdminGuard, accessible à l'agent).
     id: 'parametres',
     title: 'Paramètres',
@@ -213,6 +229,24 @@ export const ADMIN_MENU: MenuItem[] = [
     route: '/admin/reseau-gps',
     type: 'link',
     description: 'Conception de réseaux de triangulation GPS (variantes, carte, normes)',
+    roles: ALL_ADMIN_ROLES,
+  },
+  {
+    id: 'carte-dossiers',
+    title: 'Carte des dossiers',
+    icon: 'fas fa-map-location-dot',
+    route: '/admin/carte',
+    type: 'link',
+    description: 'Tous les SDGPS visibles sur une carte, colorés selon leur statut',
+    roles: ALL_ADMIN_ROLES,
+  },
+  {
+    id: 'corbeille',
+    title: 'Corbeille',
+    icon: 'fas fa-trash-can',
+    route: '/admin/corbeille',
+    type: 'link',
+    description: 'Éléments supprimés : restaurer ou supprimer définitivement',
     roles: ALL_ADMIN_ROLES,
   },
   {
