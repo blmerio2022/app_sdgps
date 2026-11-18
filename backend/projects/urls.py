@@ -27,4 +27,17 @@ def recherche_globale(request):
     return Response(rechercher(request.user, request.query_params.get('q')))
 
 
-urlpatterns = [path('recherche/', recherche_globale, name='recherche-globale')] + router.urls
+@api_view(['GET'])
+def reprendre(request):
+    """GET /api/v1/reprise/?limite= — travaux commencés et non terminés de l'appelant, du plus
+    récent au plus ancien (tableau de bord « Reprendre mon travail »)."""
+    from .reprise import LIMITE_DEFAUT, travaux_a_reprendre
+    try:
+        limite = min(50, int(request.query_params.get('limite') or LIMITE_DEFAUT))
+    except ValueError:
+        limite = LIMITE_DEFAUT
+    return Response(travaux_a_reprendre(request.user, limite))
+
+
+urlpatterns = [path('recherche/', recherche_globale, name='recherche-globale'),
+               path('reprise/', reprendre, name='reprise')] + router.urls

@@ -1,0 +1,97 @@
+<section class="rt" aria-labelledby="rt-titre">
+  <div class="rt-head">
+    <h2 id="rt-titre"><i class="fas fa-play-circle"></i> Reprendre mon travail</h2>
+    <span class="rt-total" *ngIf="!chargement && total">{{ total }} en cours</span>
+    <span class="rt-spacer"></span>
+    <button type="button" class="rt-lien" *ngIf="nbMasques" (click)="voirMasques = !voirMasques">
+      <i class="fas" [ngClass]="voirMasques ? 'fa-eye-slash' : 'fa-eye'"></i>
+      {{ voirMasques ? 'Cacher les éléments masqués' : 'Afficher les masqués (' + nbMasques + ')' }}
+    </button>
+  </div>
+
+  <!-- Chargement -->
+  <div class="rt-squelette" *ngIf="chargement">
+    <div class="rt-vedette is-skeleton"><span class="sk sk-ico"></span><span class="sk-col"><span class="sk lg"></span><span class="sk sm"></span></span></div>
+    <div class="rt-ligne is-skeleton" *ngFor="let s of [0, 1, 2]"><span class="sk sk-ico sm"></span><span class="sk-col"><span class="sk md"></span></span></div>
+  </div>
+
+  <p class="rt-erreur" *ngIf="!chargement && erreur">
+    <i class="fas fa-triangle-exclamation"></i> {{ erreur }}
+    <button type="button" class="rt-lien" (click)="charger()">Réessayer</button>
+  </p>
+
+  <!-- Rien en cours -->
+  <div class="rt-vide" *ngIf="!chargement && !erreur && !vedette">
+    <i class="fas fa-circle-check"></i>
+    <div>
+      <strong>Tout est à jour.</strong>
+      <span>Aucun travail commencé en attente : les dossiers que vous ouvrirez apparaîtront ici à votre retour.</span>
+    </div>
+  </div>
+
+  <ng-container *ngIf="!chargement && vedette as t">
+    <!-- Dernier travail : en vedette -->
+    <article class="rt-vedette" [class.masque]="estMasque(t)" (click)="continuer(t)" tabindex="0" (keyup.enter)="continuer(t)">
+      <span class="rt-ico lg" [ngClass]="'t-' + t.type"><i class="fas" [ngClass]="icone(t)"></i></span>
+      <div class="rt-corps">
+        <span class="rt-sur">Reprendre là où vous en étiez · <span [title]="dateComplete(t)">{{ quand(t) }}</span></span>
+        <h3>{{ t.titre }}</h3>
+        <span class="rt-ctx"><span class="rt-type" *ngIf="libelleType(t)">{{ libelleType(t) }}</span> {{ t.contexte }}</span>
+        <div class="rt-infos">
+          <span class="rt-etape" *ngIf="t.a_faire" [ngClass]="ton(t)"><i class="fas fa-arrow-right"></i> {{ t.a_faire }}</span>
+          <span class="rt-prog" *ngIf="t.type === 'ssdgps' && t.progression?.total || t.type === 'rapport'">
+            <span class="rt-barre"><span [style.width.%]="pourcent(t)"></span></span>
+            <ng-container *ngIf="t.type === 'ssdgps'">{{ t.progression?.validees }}/{{ t.progression?.total }} validées</ng-container>
+            <ng-container *ngIf="t.type === 'rapport'">{{ pourcent(t) }} %</ng-container>
+          </span>
+        </div>
+        <p class="rt-motif" *ngIf="t.renvoye && t.motif"><i class="fas fa-rotate-left"></i> Renvoyé en saisie : « {{ t.motif }} »</p>
+        <p class="rt-motif" *ngIf="t.statut === 'echec' && t.erreur"><i class="fas fa-circle-exclamation"></i> {{ t.erreur }}</p>
+        <button type="button" class="rt-piece" *ngIf="t.derniere_piece" (click)="ouvrirPiece(t, $event)">
+          <i class="fas fa-file-lines"></i> Dernière pièce : {{ t.derniere_piece.libelle }}
+          <span class="rt-statut" [ngClass]="'s-' + t.derniere_piece.statut">{{ t.derniere_piece.statut_display }}</span>
+        </button>
+      </div>
+      <div class="rt-actions">
+        <button type="button" class="rt-continuer" (click)="continuer(t); $event.stopPropagation()">
+          Continuer <i class="fas fa-arrow-right"></i>
+        </button>
+        <button type="button" class="rt-masquer" *ngIf="!estMasque(t)" (click)="masquer(t, $event)" title="Masquer jusqu'à la prochaine activité">
+          <i class="fas fa-eye-slash"></i>
+        </button>
+        <button type="button" class="rt-masquer" *ngIf="estMasque(t)" (click)="afficher(t, $event)" title="Ne plus masquer">
+          <i class="fas fa-eye"></i>
+        </button>
+      </div>
+    </article>
+
+    <!-- Les autres, du plus récent au plus ancien -->
+    <ul class="rt-liste" *ngIf="autres.length">
+      <li *ngFor="let a of autres" class="rt-ligne" [class.masque]="estMasque(a)" (click)="continuer(a)" tabindex="0" (keyup.enter)="continuer(a)">
+        <span class="rt-ico" [ngClass]="'t-' + a.type"><i class="fas" [ngClass]="icone(a)"></i></span>
+        <span class="rt-ligne-corps">
+          <span class="rt-ligne-titre">{{ a.titre }}</span>
+          <span class="rt-ctx"><span class="rt-type" *ngIf="libelleType(a)">{{ libelleType(a) }}</span> {{ a.contexte }}</span>
+        </span>
+        <span class="rt-etape sm" *ngIf="a.a_faire" [ngClass]="ton(a)">{{ a.a_faire }}</span>
+        <span class="rt-prog sm" *ngIf="a.type === 'ssdgps' && a.progression?.total || a.type === 'rapport'" [title]="pourcent(a) + ' %'">
+          <span class="rt-barre"><span [style.width.%]="pourcent(a)"></span></span>
+        </span>
+        <span class="rt-quand" [title]="dateComplete(a)">{{ quand(a) }}</span>
+        <button type="button" class="rt-masquer sm" *ngIf="!estMasque(a)" (click)="masquer(a, $event)" title="Masquer jusqu'à la prochaine activité"><i class="fas fa-eye-slash"></i></button>
+        <button type="button" class="rt-masquer sm" *ngIf="estMasque(a)" (click)="afficher(a, $event)" title="Ne plus masquer"><i class="fas fa-eye"></i></button>
+        <i class="fas fa-chevron-right rt-chevron"></i>
+      </li>
+    </ul>
+    <button type="button" class="rt-plus" *ngIf="restants" (click)="tousAffiches = true">
+      Afficher {{ restants }} {{ restants > 1 ? 'travaux' : 'travail' }} de plus <i class="fas fa-chevron-down"></i>
+    </button>
+    <button type="button" class="rt-plus" *ngIf="tousAffiches && visibles.length > 6" (click)="tousAffiches = false">
+      Réduire <i class="fas fa-chevron-up"></i>
+    </button>
+    <p class="rt-note" *ngIf="tousAffiches && total > travaux.length">
+      <i class="fas fa-circle-info"></i> Les {{ travaux.length }} plus récents sont affichés ;
+      {{ total - travaux.length }} plus anciens restent accessibles depuis l'explorateur de projets.
+    </p>
+  </ng-container>
+</section>

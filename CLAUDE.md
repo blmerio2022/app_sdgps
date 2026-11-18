@@ -816,6 +816,20 @@ levé d'exemple réel, formats « une pièce par dossier » et « à plat », sa
 - tests : `analytics/tests_quota_message.py`, specs `stockage.service`, `toast.service`,
   `stockage-settings`, `storage-quotas`, `import-masse`, `menu.config`.
 
+**Reprendre mon travail (tableau de bord, tous rôles).** `GET /api/v1/reprise/?limite=`
+(`projects/reprise.py`, ≤ 50) : travaux commencés et non terminés de l'appelant, **du plus
+récent au plus ancien** (date de SA dernière intervention, pas celle d'un collègue) —
+SDGPS `en_cours` touché par lui (dossier, session ou pièce créée / modifiée : progression,
+dernière pièce + lien direct, session en multi-session, motif de renvoi, prochaine étape
+`a_faire`), rapport en attente / en cours ou en échec < 7 jours non rattrapé, niveau
+incomplet (projet sans propriété hors clôturé / archivé, propriété sans affaire, affaire
+sans SDGPS). `scope_queryset` partout, corbeille exclue, liens RELATIFS. Front :
+`<app-reprendre-travail>` (features/home, sous le bandeau d'accueil — même composant pour
+`/dashboard` et `/admin/dashboard`) : dernier travail en vedette « Reprendre là où vous en
+étiez », puis la liste, « Continuer », « Masquer » jusqu'à la prochaine activité
+(navigateur, `sdgps.reprise.masques`). Tests : `projects/tests_reprise.py`, specs
+`reprise.service`, `reprendre-travail`.
+
 **Recherche globale (Ctrl+K).** `GET /api/v1/recherche/?q=` (`projects/recherche.py`, ≥ 2
 caractères, 6 résultats par groupe) : SDGPS (n°, nature), projets (code, nom), propriétés
 (nom, n° de titre, réquisition), affaires (n° SD), points (noms dans les LPA / PPA / PPN —
