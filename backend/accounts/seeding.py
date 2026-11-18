@@ -235,7 +235,7 @@ def _copy_seed_media(media_files, log):
     return copied
 
 
-def _seed_business_data(data, summary, log):
+def _seed_business_data(data, summary, log, avec_metier=False):
     """Rejoue la cascade métier (Projet → … → PieceImage) + les métadonnées de champs.
 
     Idempotent : chaque entité est upsertée par sa PK (UUID conservée au dump ; PK entière
@@ -287,17 +287,25 @@ def _seed_business_data(data, summary, log):
     # Le signal `autocreate_mono_session` crée une session n°1 à la création d'un SSDGPS
     # mono-session : on le neutralise le temps du seed pour rejouer À L'IDENTIQUE les sessions
     # du snapshot (avec leurs PK d'origine, indispensables aux FK Piece.session_id).
-    from django.db.models.signals import post_save
-    from projects.signals import autocreate_mono_session
-    post_save.disconnect(autocreate_mono_session, sender=Ssdgps)
-    try:
-        _seed_business_rows(data, upsert, audit_fields, o1_by_code, o2_by_code, org_by_code, log)
-    finally:
-        post_save.connect(autocreate_mono_session, sender=Ssdgps)
+    # ⚠ Cascade métier (projets → images) : UNIQUEMENT sur demande explicite (`reset_db`,
+    # `seed_initial_data --donnees-metier`). Rejouée à chaque `migrate` — donc à chaque
+    # démarrage du conteneur, à chaque déploiement —, elle recréait les éléments supprimés
+    # définitivement, sortait de la corbeille ceux qui y étaient (`is_deleted` du snapshot)
+    # et écrasait les modifications par l'état du snapshot.
+    if avec_metier:
+        from django.db.models.signals import post_save
+        from projects.signals import autocreate_mono_session
+        post_save.disconnect(autocreate_mono_session, sender=Ssdgps)
+        try:
+            _seed_business_rows(data, upsert, audit_fields, o1_by_code, o2_by_code, org_by_code, log)
+        finally:
+            post_save.connect(autocreate_mono_session, sender=Ssdgps)
 
     # --- Métadonnées de champs (clé naturelle type_piece + field_name) ---
     for row in data.get('piece_field_meta', []):
-        _, created = PieceFieldMeta.objects.update_or_create(
+        # Création SEULE : une description ou une infobulle modifiée par l'administration
+        # n'est jamais écrasée par le snapshot (le seed tourne à chaque démarrage).
+        _, created = PieceFieldMeta.objects.get_or_create(
             type_piece=row['type_piece'], field_name=row['field_name'],
             defaults={
                 'description': row.get('description', ''), 'tooltip': row.get('tooltip', ''),
@@ -307,6 +315,8 @@ def _seed_business_data(data, summary, log):
             summary['piece_field_meta_created'] = summary.get('piece_field_meta_created', 0) + 1
 
     # --- Binaires médias ---
+    if not avec_metier:
+        return
     summary['media_copied'] = _copy_seed_media(data.get('media_files', []), log)
 
     log(
@@ -467,11 +477,16 @@ def _seed_business_rows(data, upsert, audit_fields, o1_by_code, o2_by_code, org_
 
 
 @transaction.atomic
-def run_seed(stdout=None, data=None, business_data=None):
+def run_seed(stdout=None, data=None, business_data=None, avec_metier=False):
     """Injecte l'ensemble des données d'initialisation (idempotent).
 
     `data` (optionnel) : dict de référence déjà chargé ; sinon lu via load_seed_data().
     `business_data` (optionnel) : dict métier déjà chargé ; sinon lu via load_business_data().
+    `avec_metier` : rejoue aussi la cascade MÉTIER du snapshot (projets, propriétés,
+    affaires, SDGPS, sessions, pièces, images, médias). Faux par défaut — c'est le cas de
+    l'amorçage automatique à chaque `migrate` : rejouée à chaque démarrage, elle faisait
+    réapparaître les éléments supprimés. Seuls `reset_db` (base vidée au préalable) et
+    `seed_initial_data --donnees-metier` la demandent.
     Retourne le dict `summary` des compteurs de création (référence + métier).
     """
     if data is None:
@@ -492,7 +507,7 @@ def run_seed(stdout=None, data=None, business_data=None):
     _seed_organismes(
         data.get('organismes_niveau1', []), data.get('organismes_niveau2', []), summary, log)
     # Les données métier référencent utilisateurs, organisations et organismes déjà seedés.
-    _seed_business_data(business_data, summary, log)
+    _seed_business_data(business_data, summary, log, avec_metier=avec_metier)
     # Modèles de SDGPS de l'application (PDC, DDC, PLC, DLC) : données de RÉFÉRENCE,
     # dérivées du catalogue des pièces — jamais réécrits s'ils existent déjà.
     from projects.modeles import assurer_modeles_systeme

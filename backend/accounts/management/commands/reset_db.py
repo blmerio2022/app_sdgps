@@ -74,7 +74,8 @@ class Command(BaseCommand):
 
         # Reconstruit les données de référence exactement depuis les fichiers de seed.
         from accounts.seeding import run_seed
-        summary = run_seed(stdout=self.stdout)
+        # Base vidée juste avant : la cascade métier du snapshot est rejouée explicitement.
+        summary = run_seed(stdout=self.stdout, avec_metier=True)
 
         self.stdout.write(self.style.SUCCESS(
             f"✅ Base « {env} » réinitialisée : "

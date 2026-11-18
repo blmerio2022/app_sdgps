@@ -10,6 +10,7 @@ Le signal post_migrate est neutralisé pendant les tests (settings.TESTING) ; `r
 donc appelé explicitement.
 """
 import tempfile
+from unittest import mock
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
@@ -102,7 +103,7 @@ BUSINESS = {
 
 class SeedBusinessDataTests(TestCase):
     def test_cree_la_cascade_complete(self):
-        run_seed(data=REFERENCE, business_data=BUSINESS)
+        run_seed(data=REFERENCE, business_data=BUSINESS, avec_metier=True)
         self.assertTrue(Projet.objects.filter(pk=PROJ_ID).exists())
         self.assertTrue(Propriete.objects.filter(pk=PROP_ID).exists())
         self.assertTrue(Affaire.objects.filter(pk=AFF_ID).exists())
@@ -114,7 +115,7 @@ class SeedBusinessDataTests(TestCase):
             PieceFieldMeta.objects.filter(type_piece='RDC', field_name='champ_test').exists())
 
     def test_resout_les_fk_naturelles(self):
-        run_seed(data=REFERENCE, business_data=BUSINESS)
+        run_seed(data=REFERENCE, business_data=BUSINESS, avec_metier=True)
         projet = Projet.objects.get(pk=PROJ_ID)
         self.assertEqual(projet.organization.code, 'BIZ-ORG')
         self.assertEqual(projet.created_by.email, 'creator@sdgps.ma')
@@ -124,7 +125,7 @@ class SeedBusinessDataTests(TestCase):
         self.assertEqual(prop.projet_id, projet.id)
 
     def test_preserve_payload_et_horodatages(self):
-        run_seed(data=REFERENCE, business_data=BUSINESS)
+        run_seed(data=REFERENCE, business_data=BUSINESS, avec_metier=True)
         piece = Piece.objects.get(pk=PIECE_ID)
         self.assertEqual(piece.payload, {'rows': [{'a': 1}]})
         projet = Projet.objects.get(pk=PROJ_ID)
@@ -133,7 +134,7 @@ class SeedBusinessDataTests(TestCase):
         self.assertEqual(projet.updated_at.isoformat(), '2025-01-02T10:00:00+00:00')
 
     def test_compteurs_dans_le_summary(self):
-        summary = run_seed(data=REFERENCE, business_data=BUSINESS)
+        summary = run_seed(data=REFERENCE, business_data=BUSINESS, avec_metier=True)
         self.assertEqual(summary['projets_created'], 1)
         self.assertEqual(summary['proprietes_created'], 1)
         self.assertEqual(summary['affaires_created'], 1)
@@ -144,8 +145,8 @@ class SeedBusinessDataTests(TestCase):
         self.assertEqual(summary['piece_field_meta_created'], 1)
 
     def test_idempotent(self):
-        run_seed(data=REFERENCE, business_data=BUSINESS)
-        second = run_seed(data=REFERENCE, business_data=BUSINESS)
+        run_seed(data=REFERENCE, business_data=BUSINESS, avec_metier=True)
+        second = run_seed(data=REFERENCE, business_data=BUSINESS, avec_metier=True)
         for key in ('projets_created', 'proprietes_created', 'affaires_created',
                     'ssdgps_created', 'sessions_created', 'pieces_created',
                     'piece_images_created', 'piece_field_meta_created'):
@@ -162,7 +163,7 @@ class SeedBusinessDataTests(TestCase):
             'organization_code': 'CODE-INEXISTANT',
         }], 'proprietes': [], 'affaires': [], 'ssdgps': [], 'sessions': [],
             'pieces': [], 'piece_images': [], 'piece_field_meta': []}
-        summary = run_seed(data=REFERENCE, business_data=biz)
+        summary = run_seed(data=REFERENCE, business_data=biz, avec_metier=True)
         self.assertEqual(summary.get('projets_created', 0), 0)
         self.assertFalse(Projet.objects.filter(pk=PROJ_ID).exists())
 
@@ -171,11 +172,11 @@ class SeedBusinessDataTests(TestCase):
         # ligne du snapshot (et ses pièces) au lieu de planter sur la contrainte d'unicité,
         # et ne touche pas à la donnée de l'opérateur.
         import uuid
-        run_seed(data=REFERENCE, business_data=BUSINESS)
+        run_seed(data=REFERENCE, business_data=BUSINESS, avec_metier=True)
         Ssdgps.objects.filter(pk=SS_ID).delete()
         local = Ssdgps.objects.create(affaire_id=AFF_ID, nature_ssdgps='DDC/GPS', numero_ssdgps=1,
                                       type_ssdgps='mono-session', id=uuid.uuid4())
-        run_seed(data=REFERENCE, business_data=BUSINESS)   # ne lève pas
+        run_seed(data=REFERENCE, business_data=BUSINESS, avec_metier=True)   # ne lève pas
         self.assertFalse(Ssdgps.objects.filter(pk=SS_ID).exists())
         local.refresh_from_db()
         self.assertEqual(local.nature_ssdgps, 'DDC/GPS')
@@ -224,7 +225,7 @@ class EmbeddedBusinessFileTests(TestCase):
         # NB : on vérifie l'EXISTENCE des entités du snapshot (par PK/code) et l'idempotence,
         # sans compteurs absolus (la base de test porte déjà des données de démo).
         with tempfile.TemporaryDirectory() as media_dir, override_settings(MEDIA_ROOT=media_dir):
-            run_seed()  # charge initial_data.json + business_data.json
+            run_seed(avec_metier=True)  # charge initial_data.json + business_data.json
             for row in embedded['projets']:
                 self.assertTrue(Projet.objects.filter(pk=row['id'],
                                                       code_projet=row['code_projet']).exists(),
@@ -237,7 +238,52 @@ class EmbeddedBusinessFileTests(TestCase):
             for row in embedded['projets']:
                 self.assertEqual(Projet.objects.filter(code_projet=row['code_projet']).count(), 1)
 
-            second = run_seed()
+            second = run_seed(avec_metier=True)
             self.assertEqual(second.get('projets_created', 0), 0)
             self.assertEqual(second.get('pieces_created', 0), 0)
             self.assertEqual(second.get('sessions_created', 0), 0)
+
+
+class SeedAuDemarrageNeRessusciteRienTests(TestCase):
+    """Régression : à chaque déploiement, `migrate` relançait le seed, qui rejouait le
+    snapshot métier par `update_or_create` — les éléments supprimés définitivement
+    réapparaissaient, ceux de la corbeille en sortaient, les modifications étaient
+    écrasées. Le seed AUTOMATIQUE (sans `avec_metier`) ne touche plus aux données métier."""
+
+    def setUp(self):
+        run_seed(data=REFERENCE, business_data=BUSINESS, avec_metier=True)   # base « en service »
+
+    def test_supprime_definitivement_reste_supprime(self):
+        Projet.objects.filter(pk=PROJ_ID).delete()                # suppression définitive (cascade)
+        run_seed(data=REFERENCE, business_data=BUSINESS)        # = démarrage du conteneur
+        self.assertFalse(Projet.objects.filter(pk=PROJ_ID).exists())
+        self.assertFalse(Ssdgps.objects.filter(pk=SS_ID).exists())
+        self.assertFalse(Piece.objects.filter(pk=PIECE_ID).exists())
+
+    def test_corbeille_et_modifications_conservees(self):
+        Affaire.objects.filter(pk=AFF_ID).update(is_deleted=True)
+        Piece.objects.filter(pk=PIECE_ID).update(payload={'rows': [{'a': 2}]}, statut='brouillon')
+        PieceFieldMeta.objects.filter(field_name='champ_test').update(description='Modifiée par l’admin')
+        run_seed(data=REFERENCE, business_data=BUSINESS)
+        self.assertTrue(Affaire.objects.get(pk=AFF_ID).is_deleted)
+        piece = Piece.objects.get(pk=PIECE_ID)
+        self.assertEqual((piece.payload, piece.statut), ({'rows': [{'a': 2}]}, 'brouillon'))
+        self.assertEqual(PieceFieldMeta.objects.get(field_name='champ_test').description, 'Modifiée par l’admin')
+
+    def test_recepteur_post_migrate_ne_demande_pas_les_donnees_metier(self):
+        from accounts.apps import seed_reference_data
+        with mock.patch('accounts.seeding.run_seed', return_value={
+                'users_created': 0, 'organizations_created': 0, 'organismes_created': 0}) as seed, \
+                self.settings(TESTING=False):
+            seed_reference_data(sender=None)
+        seed.assert_called_once_with()
+        self.assertFalse(seed.call_args.kwargs.get('avec_metier', False))
+
+
+class SeedMetaChampsBaseNeuveTests(TestCase):
+    def test_meta_champs_crees_meme_sans_donnees_metier(self):
+        """Base neuve : les métadonnées de champs (référence) sont créées par le seed
+        automatique ; la cascade métier, elle, ne l'est pas."""
+        run_seed(data=REFERENCE, business_data=BUSINESS)
+        self.assertTrue(PieceFieldMeta.objects.filter(field_name='champ_test').exists())
+        self.assertFalse(Projet.objects.filter(pk=PROJ_ID).exists())

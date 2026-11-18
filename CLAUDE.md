@@ -27,6 +27,15 @@ textes d'interface). Respecter cette convention lors de l'ajout de code.
   `python manage.py seed_initial_data`. Aucune donnée de démo/test n'est générée dans aucun
   environnement (les commandes `seed_test_users` / `generate_test_data` / `seed_demo_orgs` ont
   été **supprimées**).
+- ⚠️ **Le seed automatique (`migrate` → post_migrate, donc CHAQUE démarrage / déploiement) ne
+  touche JAMAIS aux données métier (règle stricte).** Il n'amorce que la référence
+  (organisations, comptes, organismes, modèles de SDGPS, métadonnées de champs en **création
+  seule**). Le snapshot métier `accounts/seed_data/business_data.json` (projets → images) n'est
+  rejoué que sur demande explicite : `reset_db` (base vidée avant) ou
+  `seed_initial_data --donnees-metier` (base neuve). Pourquoi : rejoué par `update_or_create`
+  à chaque déploiement, il recréait les éléments supprimés définitivement, sortait de la
+  corbeille ceux qui y étaient et écrasait les modifications par l'état de juillet 2026.
+  Tests : `accounts/tests_business_seed.py` (`SeedAuDemarrageNeRessusciteRienTests`).
 - Réinitialiser la base à la demande (vide TOUT puis re-seed depuis les fichiers) :
   `python manage.py reset_db`. **Destructif, confirmation graduée** : `--yes` en dev/staging ;
   `--confirm-environment <nom exact>` en preprod/production (ex.
