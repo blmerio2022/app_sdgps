@@ -92,6 +92,7 @@ INSTALLED_APPS = [
     'analytics',  # ← AJOUT: Analytique de stockage (dashboard admin)
     'reseaux',  # Conception de réseaux de triangulation GPS (module indépendant, sans modèle)
     'notifications',  # Notifications personnelles (dossiers, rapports, sécurité) + e-mails
+    'ressources',  # Ressources TBC à télécharger : étude modèle, personnalisation du ruban
     'ia',  # Intelligence artificielle : mapping d'import, rédaction, assistant (inerte par défaut)
 ]
 

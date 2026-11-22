@@ -11,6 +11,7 @@ import { IaSettingsComponent } from './ia-settings/ia-settings.component';
 import { NotificationsSettingsComponent } from './notifications-settings/notifications-settings.component';
 import { SecuriteSettingsComponent } from './securite-settings/securite-settings.component';
 import { StockageSettingsComponent } from './stockage-settings/stockage-settings.component';
+import { RessourcesTbcSettingsComponent } from './ressources-tbc-settings/ressources-tbc-settings.component';
 import { SharedModule } from '../../shared/shared.module';
 
 /**
@@ -31,12 +32,13 @@ const routes: Routes = [
   { path: 'notifications', component: NotificationsSettingsComponent },
   { path: 'securite', component: SecuriteSettingsComponent },
   { path: 'stockage', component: StockageSettingsComponent },
+  { path: 'ressources-tbc', component: RessourcesTbcSettingsComponent },
 ];
 
 @NgModule({
   declarations: [PieceSortSettingsComponent, PieceFieldsSettingsComponent, TolerancesSettingsComponent,
                  CachetsSettingsComponent, IaSettingsComponent, NotificationsSettingsComponent,
-                 SecuriteSettingsComponent, StockageSettingsComponent],
+                 SecuriteSettingsComponent, StockageSettingsComponent, RessourcesTbcSettingsComponent],
   imports: [
     CommonModule,
     FormsModule,

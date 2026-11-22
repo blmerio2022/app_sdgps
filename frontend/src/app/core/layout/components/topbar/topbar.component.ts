@@ -223,6 +223,7 @@ export class TopBarComponent implements OnInit, OnDestroy {
       'profile': 'Mon profil',
       'parametres': 'Paramètres',
       'reseau-gps': 'Réseau GPS',
+      'ressources-tbc': 'Ressources TBC',
     };
     // Segments à ne jamais afficher (déjà couverts par « Accueil » ou non signifiants).
     const skip = new Set(['dashboard', 'home']);

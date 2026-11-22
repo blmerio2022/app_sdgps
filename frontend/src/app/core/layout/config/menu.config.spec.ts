@@ -88,3 +88,12 @@ describe('menu.config — carte des dossiers et corbeille (tous rôles)', () => 
     expect(ADMIN_MENU.find(i => i.id === 'corbeille')?.roles).toEqual(['ROLE_SUPER_ADMIN', 'ROLE_ADMIN_SYSTEME', 'ROLE_ORGANISATION_ADMIN']);
   });
 });
+
+describe('menu.config — Ressources TBC (tous les rôles)', () => {
+  const sous = (menu: any[]) => menu.find(i => i.id === 'parametres')?.children?.find((c: any) => c.id === 'ressources-tbc');
+  it('opérateur et administrateurs : Paramètres › Ressources TBC', () => {
+    expect(sous(USER_MENU)?.route).toBe('/parametres/ressources-tbc');
+    expect(sous(ADMIN_MENU)?.route).toBe('/admin/parametres/ressources-tbc');
+    expect(sous(ADMIN_MENU)?.roles).toBeUndefined();
+  });
+});

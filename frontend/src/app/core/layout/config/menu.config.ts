@@ -112,6 +112,14 @@ export const USER_MENU: MenuItem[] = [
         description: 'Double authentification et sessions ouvertes'
       },
       {
+        id: 'ressources-tbc',
+        title: 'Ressources TBC',
+        icon: 'fas fa-toolbox',
+        route: '/parametres/ressources-tbc',
+        type: 'link',
+        description: 'Étude modèle et personnalisation du ruban à télécharger pour Trimble Business Center'
+      },
+      {
         id: 'mon-stockage',
         title: 'Mon espace de stockage',
         icon: 'fas fa-hard-drive',
@@ -315,6 +323,14 @@ export const ADMIN_MENU: MenuItem[] = [
         route: '/admin/parametres/securite',
         type: 'link',
         description: 'Double authentification et sessions ouvertes'
+      },
+      {
+        id: 'ressources-tbc',
+        title: 'Ressources TBC',
+        icon: 'fas fa-toolbox',
+        route: '/admin/parametres/ressources-tbc',
+        type: 'link',
+        description: 'Étude modèle et personnalisation du ruban à télécharger pour Trimble Business Center'
       },
       {
         id: 'mon-stockage',

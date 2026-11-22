@@ -705,6 +705,7 @@ class AuditEvent(models.Model):
     ACTION_SAUVEGARDE_RESTAUREE = 'BACKUP_RESTORED'
     ACTION_ELEMENT_SUPPRIME = 'ITEM_TRASHED'
     ACTION_ELEMENT_RESTAURE = 'ITEM_RESTORED'
+    ACTION_RESSOURCE_TBC = 'TBC_RESOURCE_CHANGED'
 
     ACTIONS = [
         (ACTION_CONNEXION, 'Connexion réussie'),
@@ -734,6 +735,7 @@ class AuditEvent(models.Model):
         (ACTION_SAUVEGARDE_RESTAUREE, 'Sauvegarde restaurée'),
         (ACTION_ELEMENT_SUPPRIME, 'Élément mis en corbeille'),
         (ACTION_ELEMENT_RESTAURE, 'Élément restauré de la corbeille'),
+        (ACTION_RESSOURCE_TBC, 'Ressource TBC déposée ou retirée'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

@@ -57,6 +57,10 @@ describe('TopBarComponent (logique)', () => {
       expect(items.map((i: any) => i.label)).toEqual(['Accueil', 'Administration', 'Utilisateurs']);
       expect(items[items.length - 1].isActive).toBeTrue();
     });
+    it('libellé des Ressources TBC', () => {
+      router.url = '/parametres/ressources-tbc';
+      expect(build().map((i: any) => i.label)).toEqual(['Accueil', 'Paramètres', 'Ressources TBC']);
+    });
     it('ignore les segments UUID', () => {
       router.url = '/projets/123e4567-e89b-12d3-a456-426614174000';
       const items = build();

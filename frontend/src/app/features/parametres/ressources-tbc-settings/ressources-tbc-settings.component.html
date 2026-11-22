@@ -1,0 +1,92 @@
+<div class="rt-page">
+  <header class="page-header">
+    <h1><i class="fas fa-toolbox"></i> Ressources TBC</h1>
+    <p class="subtitle">Fichiers à utiliser dans <strong>Trimble Business Center</strong> : l'étude modèle (modèle de
+      projet) et la personnalisation du ruban. Vous recevez ceux de <strong>votre organisation</strong> ; à défaut, ceux
+      de l'administration de l'application.</p>
+    <button type="button" class="rt-actualiser" (click)="charger()" [disabled]="chargement">
+      <i class="fas fa-rotate" [class.fa-spin]="chargement"></i> Actualiser</button>
+  </header>
+
+  <div class="rt-erreur" *ngIf="erreur"><i class="fas fa-triangle-exclamation"></i> {{ erreur }}</div>
+  <div class="rt-chargement" *ngIf="chargement && !disponibles.length"><i class="fas fa-spinner fa-spin"></i> Chargement…</div>
+
+  <!-- À télécharger -->
+  <section class="rt-grille" *ngIf="disponibles.length">
+    <article class="rt-carte" *ngFor="let d of disponibles" [class.vide]="!d.ressource">
+      <div class="rt-tete">
+        <span class="rt-icone"><i class="fas" [ngClass]="icone(d.type_ressource)"></i></span>
+        <div class="rt-titres">
+          <h2>{{ d.libelle }}</h2>
+          <span *ngIf="d.ressource" class="rt-source" [class.org]="d.ressource.source === 'organisation'">
+            <i class="fas" [ngClass]="d.ressource.source === 'organisation' ? 'fa-building' : 'fa-globe'"></i>
+            {{ provenance(d.ressource) }}
+          </span>
+        </div>
+      </div>
+
+      <ng-container *ngIf="d.ressource as r; else aucune">
+        <div class="rt-fichier">
+          <i class="fas fa-file"></i>
+          <span class="nom" [title]="r.nom_fichier">{{ r.nom_fichier }}</span>
+          <span class="meta">{{ taille(r.taille) }} · {{ r.updated_at | date:'dd/MM/yyyy' }}</span>
+        </div>
+        <p class="rt-description" *ngIf="r.description">{{ r.description }}</p>
+        <p class="rt-conseil"><i class="fas fa-lightbulb"></i> {{ d.conseil }}</p>
+        <button type="button" class="rt-telecharger" (click)="telecharger(r)" [disabled]="enCours['dl:' + r.id]">
+          <i class="fas" [ngClass]="enCours['dl:' + r.id] ? 'fa-spinner fa-spin' : 'fa-download'"></i> Télécharger
+        </button>
+      </ng-container>
+      <ng-template #aucune>
+        <p class="rt-aucune"><i class="fas fa-circle-info"></i> Aucun fichier n'a encore été déposé.
+          <ng-container *ngIf="!peutGerer">Adressez-vous à l'administrateur de votre organisation.</ng-container></p>
+      </ng-template>
+    </article>
+  </section>
+
+  <!-- Gestion (administrateurs) -->
+  <section class="rt-gestion" *ngIf="peutGerer && gestion">
+    <h2 class="rt-section"><i class="fas fa-upload"></i> Déposer les fichiers</h2>
+    <p class="rt-aide">Un fichier déposé pour une organisation est celui que téléchargent ses membres ; sans fichier
+      propre, ils reçoivent celui de l'application. Déposer un nouveau fichier remplace le précédent.</p>
+
+    <div class="rt-niveau" *ngFor="let n of gestion.niveaux">
+      <h3>
+        <i class="fas" [ngClass]="n.organisation ? 'fa-building' : 'fa-globe'"></i>
+        {{ n.organisation ? n.organisation.nom : "Application — toutes les organisations" }}
+      </h3>
+      <div class="rt-ligne" *ngFor="let t of types">
+        <span class="rt-type"><i class="fas" [ngClass]="t.icone"></i> {{ t.libelle }}</span>
+
+        <div class="rt-actuel">
+          <ng-container *ngIf="n.ressources[t.type] as r; else rien">
+            <span class="nom" [title]="r.nom_fichier">{{ r.nom_fichier }}</span>
+            <span class="meta">{{ taille(r.taille) }} · {{ r.updated_at | date:'dd/MM/yyyy HH:mm' }}
+              <ng-container *ngIf="r.updated_by_email"> · {{ r.updated_by_email }}</ng-container></span>
+            <div class="rt-desc">
+              <input type="text" [(ngModel)]="descriptions[r.id]" maxlength="500"
+                     placeholder="Description (version, consignes…)" [attr.aria-label]="'Description — ' + t.libelle">
+              <button type="button" class="rt-btn" *ngIf="descriptionModifiee(r)" (click)="enregistrerDescription(r)">
+                <i class="fas fa-check"></i> Enregistrer</button>
+            </div>
+          </ng-container>
+          <ng-template #rien>
+            <span class="rt-rien">{{ n.organisation ? "Aucun — ses membres reçoivent celui de l'application" : 'Aucun fichier' }}</span>
+          </ng-template>
+        </div>
+
+        <div class="rt-actions">
+          <input #champ type="file" hidden [accept]="extensions(t.type)" (change)="deposer(n, t.type, champ)">
+          <button type="button" class="rt-btn primaire" (click)="champ.click()" [disabled]="enCours[cle(n, t.type)]">
+            <i class="fas" [ngClass]="enCours[cle(n, t.type)] ? 'fa-spinner fa-spin' : 'fa-upload'"></i>
+            {{ n.ressources[t.type] ? 'Remplacer' : 'Déposer' }}</button>
+          <button type="button" class="rt-btn danger" *ngIf="n.ressources[t.type]" (click)="retirer(n, t.type)"
+                  [disabled]="enCours[cle(n, t.type)]" title="Retirer ce fichier">
+            <i class="fas fa-trash"></i></button>
+        </div>
+      </div>
+    </div>
+    <p class="rt-formats">Formats acceptés — étude modèle : {{ gestion.extensions.etude_modele.join(', ') }} ;
+      ruban : {{ gestion.extensions.ruban.join(', ') }} ({{ taille(gestion.taille_max) }} au plus).</p>
+  </section>
+</div>

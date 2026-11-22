@@ -160,6 +160,7 @@ change-password/logout.
   - `/api/v1/platform-admin/` → profil super-admin
   - `/api/v1/reseau-gps/` → réseau de triangulation GPS (tous rôles)
   - `/api/v1/notifications/` → notifications personnelles
+  - `/api/v1/ressources-tbc/` → étude modèle et ruban TBC à télécharger (tous rôles)
 
 **Contrôle d'accès :** le défaut DRF est **`IsAuthenticated`** — toute vue est fermée tant
 qu'elle ne déclare pas le contraire. Les seules vues publiques sont les quatre flux
@@ -941,6 +942,30 @@ sans SDGPS). `scope_queryset` partout, corbeille exclue, liens RELATIFS. Front :
 étiez », puis la liste, « Continuer », « Masquer » jusqu'à la prochaine activité
 (navigateur, `sdgps.reprise.masques`). Tests : `projects/tests_reprise.py`, specs
 `reprise.service`, `reprendre-travail`.
+
+**Ressources TBC : étude modèle + personnalisation du ruban (app `ressources/`).** Fichiers à
+utiliser dans Trimble Business Center, déposés par l'administration et téléchargés par les
+opérateurs. Modèle `RessourceTbc` (`type_ressource` `etude_modele`|`ruban`, `organization`
+VIDE = ressource de l'APPLICATION, fichier, description, 7 colonnes d'audit, suppression
+logique) ; une seule ressource active par (type, niveau) — un dépôt REMPLACE la précédente.
+- résolution (`services.ressource_effective`) : organisation principale de l'utilisateur, puis
+  ses autres organisations actives, puis l'application. Retirer celle d'une organisation fait
+  revenir ses membres sur celle de l'application ;
+- droits (`services.peut_gerer`) : niveau application = Super Admin / Admin Système ; niveau
+  organisation = ces derniers ou un Admin Organisation ACTIF de cette organisation. Un fichier
+  d'une autre organisation répond 404 ;
+- API `/api/v1/ressources-tbc/` : `GET` (une entrée par type, provenance, conseil d'usage),
+  `gestion/` (niveaux administrés, extensions, taille max — 403 pour un Agent), `POST`
+  multipart (`type_ressource`, `fichier`, `organisation`, `description`), `PATCH|DELETE <id>/`,
+  `GET <id>/fichier/`. Extensions : étude `.vct .vce .vcv .zip`, ruban `.bin .xml .zip` ; 200 Mo
+  au plus ; non imputé au quota. Dépôt / remplacement / retrait journalisés
+  (`ACTION_RESSOURCE_TBC`) ;
+- front : *Paramètres › Ressources TBC* (`/parametres/ressources-tbc` et
+  `/admin/parametres/ressources-tbc`, `RessourcesTbcSettingsComponent`) — cartes de
+  téléchargement pour tous, section « Déposer les fichiers » par niveau pour les
+  administrateurs. ⚠ Exception assumée aux règles de tableaux : deux fichiers par niveau ;
+- tests : `ressources/tests.py`, specs `ressources-tbc.service`, `ressources-tbc-settings`,
+  `menu.config`.
 
 **Fiche au survol du fil d'Ariane.** `GET /api/v1/fiche/<type>/<uuid>/` (`projects/fiche.py`,
 types `projet|propriete|affaire|ssdgps|session|piece`, portée `scope_queryset`, corbeille et

@@ -36,6 +36,7 @@ urlpatterns = [
     path('api/v1/analytics/', include('analytics.urls')),
     path('api/v1/reseau-gps/', include('reseaux.urls')),  # Réseau de triangulation GPS (tous rôles)
     path('api/v1/ia/', include('ia.urls')),
+    path('api/v1/ressources-tbc/', include('ressources.urls')),  # Étude modèle + ruban TBC
     path('api/v1/notifications/', include('notifications.urls')),  # Notifications personnelles (cloche + e-mails)  # Intelligence artificielle (inerte sans IA_ACTIVE)
 ]
 
