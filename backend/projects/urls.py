@@ -72,7 +72,16 @@ def carte_dossiers(request):
     return Response(dossiers(request.user))
 
 
+@api_view(['GET'])
+def fiche_element(request, type_, pk):
+    """GET /api/v1/fiche/<type>/<uuid>/ — fiche d'un élément de la hiérarchie (survol du fil
+    d'Ariane) ; portée RBAC, corbeille exclue (404)."""
+    from .fiche import fiche
+    return Response(fiche(type_, pk, request.user))
+
+
 urlpatterns = [path('recherche/', recherche_globale, name='recherche-globale'),
+               path('fiche/<str:type_>/<uuid:pk>/', fiche_element, name='fiche-element'),
                path('carte-dossiers/', carte_dossiers, name='carte-dossiers'),
                path('reprise/', reprendre, name='reprise'),
                path('corbeille/', corbeille, name='corbeille'),

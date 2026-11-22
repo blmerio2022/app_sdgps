@@ -1,5 +1,5 @@
 import { of } from 'rxjs';
-import { TopBarComponent } from './topbar.component';
+import { DELAI_FERMETURE_FICHE, DELAI_OUVERTURE_FICHE, TopBarComponent } from './topbar.component';
 
 describe('TopBarComponent (logique)', () => {
   let cmp: TopBarComponent;
@@ -116,5 +116,61 @@ describe('TopBarComponent (logique)', () => {
     cmp.toggleSidebarVisibility();
     expect(layoutService.toggleTheme).toHaveBeenCalled();
     expect(layoutService.toggleSidebarVisibility).toHaveBeenCalled();
+  });
+
+  describe('fiche au survol du fil d\'Ariane', () => {
+    const crumb = { label: 'SSDGPS 1', fiche: { type: 'ssdgps' as const, id: 's1' } };
+    const autre = { label: 'SD 1', fiche: { type: 'affaire' as const, id: 'a1' } };
+    const evt = () => ({ currentTarget: { getBoundingClientRect: () => ({ left: 40, bottom: 52, width: 90 }) } } as any);
+
+    beforeEach(() => jasmine.clock().install());
+    afterEach(() => jasmine.clock().uninstall());
+
+    it('s\'ouvre après un court délai, sous le crumb', () => {
+      cmp.survolCrumb(crumb, evt());
+      expect(cmp.ficheCible).toBeNull();
+      jasmine.clock().tick(DELAI_OUVERTURE_FICHE);
+      expect(cmp.ficheCible).toEqual({ type: 'ssdgps', id: 's1', rect: { left: 40, bottom: 52, width: 90 } });
+    });
+
+    it('un simple passage de la souris n\'ouvre rien', () => {
+      cmp.survolCrumb(crumb, evt());
+      cmp.quitterCrumb();
+      jasmine.clock().tick(DELAI_OUVERTURE_FICHE + DELAI_FERMETURE_FICHE);
+      expect(cmp.ficheCible).toBeNull();
+    });
+
+    it('reste ouverte quand la souris passe sur la fiche, se ferme en la quittant', () => {
+      cmp.survolCrumb(crumb, evt());
+      jasmine.clock().tick(DELAI_OUVERTURE_FICHE);
+      cmp.quitterCrumb();
+      cmp.survolFiche(true);
+      jasmine.clock().tick(DELAI_FERMETURE_FICHE * 2);
+      expect(cmp.ficheCible).not.toBeNull();
+      cmp.survolFiche(false);
+      jasmine.clock().tick(DELAI_FERMETURE_FICHE);
+      expect(cmp.ficheCible).toBeNull();
+    });
+
+    it('passe d\'un crumb à l\'autre sans délai ; un crumb sans fiche la ferme ; Échap aussi', () => {
+      cmp.survolCrumb(crumb, evt());
+      jasmine.clock().tick(DELAI_OUVERTURE_FICHE);
+      cmp.survolCrumb(autre, evt());
+      expect(cmp.ficheCible?.id).toBe('a1');
+      cmp.survolCrumb({ label: 'Pièces' }, evt());
+      expect(cmp.ficheCible).toBeNull();
+      cmp.survolCrumb(crumb, evt());
+      jasmine.clock().tick(DELAI_OUVERTURE_FICHE);
+      cmp.fermerFiche();
+      expect(cmp.ficheCible).toBeNull();
+    });
+
+    it('un nouveau fil (navigation) ferme la fiche', () => {
+      cmp.survolCrumb(crumb, evt());
+      jasmine.clock().tick(DELAI_OUVERTURE_FICHE);
+      (cmp as any).domainTrail = [{ label: 'Projets' }];
+      (cmp as any).renderBreadcrumb();
+      expect(cmp.ficheCible).toBeNull();
+    });
   });
 });

@@ -31,7 +31,11 @@ export interface BreadcrumbItem {
   icon?: string;
   /** Query params à propager dans le routerLink (ex. restauration d'un niveau de l'explorateur). */
   queryParams?: Record<string, any>;
+  /** Élément métier représenté : sa fiche s'affiche au survol du crumb (`GET fiche/<type>/<id>/`). */
+  fiche?: { type: TypeFiche; id: string };
 }
+
+export type TypeFiche = 'projet' | 'propriete' | 'affaire' | 'ssdgps' | 'session' | 'piece';
 
 /**
  * Interface pour l'utilisateur connecté

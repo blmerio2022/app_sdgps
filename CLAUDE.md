@@ -936,6 +936,18 @@ sans SDGPS). `scope_queryset` partout, corbeille exclue, liens RELATIFS. Front :
 (navigateur, `sdgps.reprise.masques`). Tests : `projects/tests_reprise.py`, specs
 `reprise.service`, `reprendre-travail`.
 
+**Fiche au survol du fil d'Ariane.** `GET /api/v1/fiche/<type>/<uuid>/` (`projects/fiche.py`,
+types `projet|propriete|affaire|ssdgps|session|piece`, portée `scope_queryset`, corbeille et
+type inconnu → 404) renvoie une fiche DÉJÀ mise en mots : `titre`, `sous_titre`, statut,
+`champs` [{label, valeur}], `compteurs`, `audit` (noms complets). Front : un crumb porte
+`fiche: {type, id}` (`BreadcrumbItem`) — posé par la page des pièces, le détail / l'ajout
+d'une pièce, l'explorateur, les vues à plat et la liste des SSDGPS ; `<app-fiche-survol>`
+(core/layout) s'affiche en `position: fixed` SOUS le crumb (les crumbs sont découpés en
+flèche par `clip-path` : une bulle placée dedans serait rognée), après 320 ms de survol ou au
+focus clavier, reste ouverte tant que la souris est sur elle, se ferme sur Échap ou au
+changement de fil. `FicheService` garde chaque fiche 60 s en cache (erreurs exclues). Tests :
+`projects/tests_fiche.py`, specs `fiche.service`, `fiche-survol`, `topbar`.
+
 **Recherche globale (Ctrl+K).** `GET /api/v1/recherche/?q=` (`projects/recherche.py`, ≥ 2
 caractères, 6 résultats par groupe) : SDGPS (n°, nature), projets (code, nom), propriétés
 (nom, n° de titre, réquisition), affaires (n° SD), points (noms dans les LPA / PPA / PPN —

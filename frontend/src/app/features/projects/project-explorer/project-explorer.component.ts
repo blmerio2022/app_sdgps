@@ -504,24 +504,26 @@ export class ProjectExplorerComponent implements OnInit, OnDestroy {
     const trail: BreadcrumbItem[] = [
       { label: 'Accueil', route: '/home', icon: 'fa-house' },
       { label: 'Projets', route: base, icon: 'fa-folder-open' },
-      { label: this.projet.nom_projet || this.projet.code_projet, icon: 'fa-diagram-project', route: projRoute },
+      { label: this.projet.nom_projet || this.projet.code_projet, icon: 'fa-diagram-project', route: projRoute,
+        fiche: { type: 'projet', id: this.projet.id } },
     ];
     if (this.chain.propriete) {
       trail.push({
         label: this.proprieteBreadcrumbLabel(this.chain.propriete), icon: 'fa-map-marker-alt',
-        route: projRoute, queryParams: { proprieteId: propId },
+        route: projRoute, queryParams: { proprieteId: propId }, fiche: { type: 'propriete', id: propId! },
       });
     }
     if (this.chain.affaire) {
       trail.push({
         label: `SD ${this.chain.affaire.numero_sd_affaire}`, icon: 'fa-file-signature',
-        route: projRoute, queryParams: { proprieteId: propId, affaireId: affId },
+        route: projRoute, queryParams: { proprieteId: propId, affaireId: affId }, fiche: { type: 'affaire', id: affId! },
       });
     }
     if (this.chain.ssdgps) {
       trail.push({
         label: `SSDGPS ${this.chain.ssdgps.numero_ssdgps}`, icon: 'fa-satellite-dish',
         route: projRoute, queryParams: { proprieteId: propId, affaireId: affId, ssdgpsId: ssId },
+        fiche: { type: 'ssdgps', id: ssId! },
       });
     }
     trail.push({ label: this.levelTitle, icon: this.levelIcon(), isActive: true });

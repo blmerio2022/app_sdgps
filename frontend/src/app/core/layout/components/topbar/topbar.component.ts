@@ -1,4 +1,5 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, HostListener, OnDestroy, OnInit } from '@angular/core';
+import { CibleFiche } from '../fiche-survol/fiche-survol.component';
 import { LayoutService } from '../../services/layout.service';
 import { BreadcrumbService } from '../../services/breadcrumb.service';
 import { UserProfile, BreadcrumbItem, ThemeMode, SidebarState } from '../../interfaces/menu.interface';
@@ -6,12 +7,16 @@ import { Observable } from 'rxjs';
 import { Router, NavigationEnd } from '@angular/router';
 import { filter } from 'rxjs/operators';
 
+/** Délais du survol : ouvrir sans clignoter au passage de la souris, fermer sans couper le trajet vers la fiche. */
+export const DELAI_OUVERTURE_FICHE = 320;
+export const DELAI_FERMETURE_FICHE = 180;
+
 @Component({
   selector: 'app-topbar',
   templateUrl: './topbar.component.html',
   styleUrls: ['./topbar.component.scss']
 })
-export class TopBarComponent implements OnInit {
+export class TopBarComponent implements OnInit, OnDestroy {
   
   userProfile$: Observable<UserProfile | null>;
   theme$: Observable<ThemeMode>;
@@ -22,6 +27,12 @@ export class TopBarComponent implements OnInit {
   // Fil d'Ariane métier fourni par les pages (null → repli URL). Le rendu = trail ?? repli.
   private domainTrail: BreadcrumbItem[] | null = null;
   private urlFallback: BreadcrumbItem[] = [];
+
+  /** Fiche de l'élément survolé dans le fil d'Ariane (null = fermée). */
+  ficheCible: CibleFiche | null = null;
+  private minuterieOuverture?: ReturnType<typeof setTimeout>;
+  private minuterieFermeture?: ReturnType<typeof setTimeout>;
+  private ficheSurvolee = false;
 
   constructor(
     private layoutService: LayoutService,
@@ -50,6 +61,56 @@ export class TopBarComponent implements OnInit {
     });
   }
 
+  ngOnDestroy(): void {
+    clearTimeout(this.minuterieOuverture);
+    clearTimeout(this.minuterieFermeture);
+  }
+
+  /** Survol (ou focus clavier) d'un crumb : sa fiche s'ouvre après un court délai. */
+  survolCrumb(crumb: BreadcrumbItem, event: Event): void {
+    clearTimeout(this.minuterieFermeture);
+    clearTimeout(this.minuterieOuverture);
+    if (!crumb.fiche) { this.fermerFiche(); return; }
+    const el = event.currentTarget as HTMLElement | null;
+    const r = el?.getBoundingClientRect?.();
+    const rect = { left: r?.left ?? 0, bottom: r?.bottom ?? 0, width: r?.width ?? 0 };
+    const { type, id } = crumb.fiche;
+    const ouvrir = () => { this.ficheCible = { type, id, rect }; };
+    // Déjà ouverte sur un autre crumb : on passe de l'un à l'autre sans attendre.
+    if (this.ficheCible) {
+      if (this.ficheCible.type !== type || this.ficheCible.id !== id) ouvrir();
+      return;
+    }
+    this.minuterieOuverture = setTimeout(ouvrir, DELAI_OUVERTURE_FICHE);
+  }
+
+  quitterCrumb(): void {
+    clearTimeout(this.minuterieOuverture);
+    this.planifierFermeture();
+  }
+
+  /** La souris est sur la fiche : elle reste ouverte. */
+  survolFiche(dessus: boolean): void {
+    this.ficheSurvolee = dessus;
+    if (dessus) clearTimeout(this.minuterieFermeture);
+    else this.planifierFermeture();
+  }
+
+  @HostListener('document:keydown.escape')
+  fermerFiche(): void {
+    clearTimeout(this.minuterieOuverture);
+    clearTimeout(this.minuterieFermeture);
+    this.ficheSurvolee = false;
+    this.ficheCible = null;
+  }
+
+  private planifierFermeture(): void {
+    clearTimeout(this.minuterieFermeture);
+    this.minuterieFermeture = setTimeout(() => {
+      if (!this.ficheSurvolee) this.ficheCible = null;
+    }, DELAI_FERMETURE_FICHE);
+  }
+
   /** Le fil affiché = fil métier s'il existe, sinon repli URL. */
   private renderBreadcrumb(): void {
     let trail = this.domainTrail ?? this.urlFallback;
@@ -61,6 +122,7 @@ export class TopBarComponent implements OnInit {
       trail = trail.slice(1);
     }
     this.breadcrumbs = trail;
+    this.fermerFiche();   // nouveau fil (navigation) : l'ancienne fiche n'a plus d'objet
   }
 
   /**

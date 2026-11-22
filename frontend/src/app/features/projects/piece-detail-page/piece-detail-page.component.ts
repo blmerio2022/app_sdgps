@@ -111,7 +111,8 @@ export class PieceDetailPageComponent implements OnInit, OnDestroy {
     const trail: BreadcrumbItem[] = [
       { label: 'Accueil', route: '/home', icon: 'fa-house' },
       { label: 'Projets', route: base, icon: 'fa-folder-open' },
-      { label: this.projet?.nom_projet || this.projet?.code_projet || 'Projet', route: projRoute, icon: 'fa-diagram-project' },
+      { label: this.projet?.nom_projet || this.projet?.code_projet || 'Projet', route: projRoute, icon: 'fa-diagram-project',
+        fiche: { type: 'projet', id: this.projectId } },
     ];
     // Propriété : TOUJOURS l'identifiant (titre foncier, sinon réquisition), jamais la propriété-dite.
     // Cliquable → explorateur au niveau Affaire de cette propriété (restoreToAffaireLevel).
@@ -119,17 +120,20 @@ export class PieceDetailPageComponent implements OnInit, OnDestroy {
     if (proprieteLabel) {
       trail.push({
         label: proprieteLabel, icon: 'fa-map-marker-alt',
+        ...((s.propriete || this.proprieteId) ? { fiche: { type: 'propriete', id: s.propriete || this.proprieteId } } : {}),
         ...(hasParents ? { route: projRoute, queryParams: { proprieteId: this.proprieteId } } : {}),
       });
     }
     if (s.affaire_numero != null) {
       trail.push({
         label: `SD ${s.affaire_numero}`, icon: 'fa-file-signature',
+        ...((s.affaire || this.affaireId) ? { fiche: { type: 'affaire', id: s.affaire || this.affaireId } } : {}),
         ...(hasParents ? { route: projRoute, queryParams: { proprieteId: this.proprieteId, affaireId: this.affaireId } } : {}),
       });
     }
     trail.push({
       label: `SSDGPS ${this.ssdgps.numero_ssdgps}`, icon: 'fa-satellite-dish',
+      fiche: { type: 'ssdgps', id: this.ssdgps.id },
       ...(hasParents ? {
         route: projRoute,
         queryParams: isMulti
@@ -138,12 +142,14 @@ export class PieceDetailPageComponent implements OnInit, OnDestroy {
       } : {}),
     });
     if (isMulti && currentSession) {
-      trail.push({ label: `Session ${currentSession.numero_session}`, icon: 'fa-clock' });
+      trail.push({ label: `Session ${currentSession.numero_session}`, icon: 'fa-clock',
+                   fiche: { type: 'session', id: currentSession.id } });
     }
     // « Pièces » cliquable → page de gestion des pièces du SSDGPS.
     trail.push({ label: 'Pièces', icon: 'fa-paperclip', route: piecesRoute, queryParams: pieceQp });
     // Pièce en cours (consultation/modification) — actif.
-    trail.push({ label: this.pieceLabel(), icon: 'fa-file-lines', isActive: true });
+    trail.push({ label: this.pieceLabel(), icon: 'fa-file-lines', isActive: true,
+                 fiche: { type: 'piece', id: this.pieceId } });
     this.breadcrumb.set(trail);
   }
 

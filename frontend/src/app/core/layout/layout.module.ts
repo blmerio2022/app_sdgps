@@ -10,6 +10,7 @@ import { SidebarComponent } from './components/sidebar/sidebar.component';
 import { TopBarComponent } from './components/topbar/topbar.component';
 import { NotificationBellComponent } from './components/notification-bell/notification-bell.component';
 import { RechercheGlobaleComponent } from './components/recherche-globale/recherche-globale.component';
+import { FicheSurvolComponent } from './components/fiche-survol/fiche-survol.component';
 
 // Directives
 import { ClickOutsideDirective } from './directives/click-outside.directive';
@@ -26,6 +27,7 @@ import { SharedModule } from '../../shared/shared.module';
     TopBarComponent,
     NotificationBellComponent,
     RechercheGlobaleComponent,
+    FicheSurvolComponent,
     ClickOutsideDirective
   ],
   imports: [

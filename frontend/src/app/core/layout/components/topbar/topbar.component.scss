@@ -139,6 +139,14 @@
   // Le crumb « Accueil » (icône maison seule si compact) reste compact.
   &:first-child .crumb-icon { font-size: 1em; }
 
+  // Crumb porteur d'une fiche : focus clavier visible (la fiche s'ouvre aussi au focus).
+  &.avec-fiche > span:focus-visible,
+  &.avec-fiche .breadcrumb-link:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
   // Crumb d'affichage (sans lien) : ni curseur main, ni changement de fond au survol.
   &.static {
     cursor: default;

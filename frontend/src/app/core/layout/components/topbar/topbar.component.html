@@ -15,25 +15,34 @@
         <li *ngFor="let crumb of breadcrumbs; let last = last"
             class="breadcrumb-item"
             [class.active]="last || crumb.isActive"
-            [class.static]="!last && !crumb.route">
+            [class.static]="!last && !crumb.route"
+            [class.avec-fiche]="!!crumb.fiche"
+            (mouseenter)="survolCrumb(crumb, $event)"
+            (mouseleave)="quitterCrumb()"
+            (focusin)="survolCrumb(crumb, $event)"
+            (focusout)="quitterCrumb()">
 
           <a *ngIf="!last && crumb.route"
              [routerLink]="crumb.route"
              [queryParams]="crumb.queryParams || null"
              class="breadcrumb-link"
-             [title]="crumb.label">
+             [attr.title]="crumb.fiche ? null : crumb.label">
             <i *ngIf="crumb.icon" class="fas crumb-icon" [ngClass]="crumb.icon"></i>
             <span class="crumb-label">{{ crumb.label }}</span>
           </a>
 
           <!-- Dernier crumb (actif) OU crumb d'affichage sans lien -->
-          <span *ngIf="last || !crumb.route" [title]="crumb.label">
+          <span *ngIf="last || !crumb.route" [attr.title]="crumb.fiche ? null : crumb.label"
+                [attr.tabindex]="crumb.fiche ? 0 : null">
             <i *ngIf="crumb.icon" class="fas crumb-icon" [ngClass]="crumb.icon"></i>
             <span class="crumb-label">{{ crumb.label }}</span>
           </span>
         </li>
       </ol>
     </nav>
+
+    <!-- Fiche de l'élément survolé (hors des crumbs : leur découpe en flèche la rognerait) -->
+    <app-fiche-survol [cible]="ficheCible" (survolee)="survolFiche($event)"></app-fiche-survol>
   </div>
 
   <div class="right-controls">

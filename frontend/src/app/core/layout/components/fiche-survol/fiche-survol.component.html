@@ -1,0 +1,56 @@
+<div *ngIf="cible" class="fs" role="tooltip"
+     [style.left.px]="gauche" [style.top.px]="haut"
+     (mouseenter)="survolee.emit(true)" (mouseleave)="survolee.emit(false)">
+  <span class="fs-fleche" [style.left.px]="flecheGauche"></span>
+
+  <!-- Chargement : squelette aux proportions de la fiche (pas de saut à l'arrivée) -->
+  <div *ngIf="chargement" class="fs-squelette" aria-busy="true">
+    <div class="sq sq-type"></div>
+    <div class="sq sq-titre"></div>
+    <div class="sq sq-ligne"></div>
+    <div class="sq sq-ligne court"></div>
+  </div>
+
+  <div *ngIf="erreur" class="fs-erreur">
+    <i class="fas fa-circle-exclamation"></i> Informations indisponibles.
+  </div>
+
+  <ng-container *ngIf="fiche as f">
+    <header class="fs-tete">
+      <span class="fs-icone"><i class="fas" [ngClass]="icone"></i></span>
+      <div class="fs-titres">
+        <div class="fs-type">{{ f.libelle_type }}</div>
+        <div class="fs-titre" [title]="f.titre">{{ f.titre }}</div>
+        <div *ngIf="f.sous_titre && f.sous_titre !== f.titre" class="fs-sous-titre">{{ f.sous_titre }}</div>
+      </div>
+      <span *ngIf="f.statut_display" class="fs-statut" [ngClass]="classeStatut(f.statut)">
+        <span class="point"></span>{{ f.statut_display }}
+      </span>
+    </header>
+
+    <div *ngIf="f.compteurs.length" class="fs-compteurs">
+      <div *ngFor="let c of f.compteurs" class="fs-compteur">
+        <span class="valeur">{{ c.valeur }}</span>
+        <span class="libelle">{{ c.label }}</span>
+      </div>
+    </div>
+
+    <dl *ngIf="f.champs.length" class="fs-champs">
+      <ng-container *ngFor="let c of f.champs">
+        <dt>{{ c.label }}</dt>
+        <dd [title]="c.valeur">{{ c.valeur }}</dd>
+      </ng-container>
+    </dl>
+
+    <footer *ngIf="f.audit.cree_par || f.audit.modifie_le" class="fs-audit">
+      <div *ngIf="f.audit.cree_par || f.audit.cree_le">
+        <i class="fas fa-circle-plus"></i>
+        Créé<ng-container *ngIf="f.audit.cree_par"> par <strong>{{ f.audit.cree_par }}</strong></ng-container><ng-container *ngIf="f.audit.cree_le"> le {{ f.audit.cree_le }}</ng-container>
+      </div>
+      <div *ngIf="f.audit.modifie_le">
+        <i class="fas fa-pen"></i>
+        Modifié<ng-container *ngIf="f.audit.modifie_par"> par <strong>{{ f.audit.modifie_par }}</strong></ng-container> le {{ f.audit.modifie_le }}
+      </div>
+    </footer>
+  </ng-container>
+</div>

@@ -1,0 +1,178 @@
+// Fiche au survol du fil d'Ariane — jetons du design système (thèmes clair et sombre).
+.fs {
+  position: fixed;
+  z-index: 1200;
+  width: 360px;
+  max-width: calc(100vw - 24px);
+  padding: 16px 18px 14px;
+  border-radius: 14px;
+  background: var(--secondary-color);
+  border: 1px solid var(--border-color);
+  border-top: 3px solid var(--accent-color);
+  color: var(--text-color);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .28), 0 2px 8px var(--shadow-color);
+  font-size: 13px;
+  line-height: 1.45;
+  animation: fs-entree .16s ease-out;
+  cursor: default;
+}
+
+@keyframes fs-entree {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) { .fs { animation: none; } }
+
+.fs-fleche {
+  position: absolute;
+  top: -8px;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  background: var(--accent-color);
+  transform: rotate(45deg);
+  border-radius: 2px 0 0 0;
+}
+
+// En-tête : pastille d'icône, type, titre, statut
+.fs-tete { display: flex; align-items: flex-start; gap: 12px; }
+
+.fs-icone {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: var(--accent-color);
+  background: color-mix(in srgb, var(--accent-color) 14%, transparent);
+  font-size: 16px;
+}
+
+.fs-titres { flex: 1; min-width: 0; }
+
+.fs-type {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.fs-titre {
+  font-size: 15.5px;
+  font-weight: 700;
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fs-sous-titre {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fs-statut {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  --c: #e0a030;
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c) 35%, transparent);
+
+  .point { width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
+
+  &.st-ok { --c: #2e9e6a; }
+  &.st-info { --c: #3b82c4; }
+  &.st-ko { --c: #d9534f; }
+  &.st-neutre { --c: var(--text-muted); }
+}
+
+// Compteurs : tuiles compactes
+.fs-compteurs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.fs-compteur {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 4px 7px;
+  border-radius: 10px;
+  background: var(--hover-bg);
+  border: 1px solid var(--border-color);
+
+  .valeur { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .libelle { font-size: 10.5px; color: var(--text-muted); text-align: center; line-height: 1.2; }
+}
+
+// Champs : grille libellé / valeur
+.fs-champs {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 14px;
+  row-gap: 6px;
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+
+  dt { color: var(--text-muted); font-size: 12px; }
+  dd {
+    margin: 0;
+    font-weight: 500;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+// Pied : traçabilité
+.fs-audit {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-color);
+  font-size: 11.5px;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+
+  i { width: 14px; margin-right: 4px; opacity: .7; }
+  strong { color: var(--text-color); font-weight: 600; }
+}
+
+.fs-erreur { color: var(--text-muted); i { color: var(--accent-color); margin-right: 6px; } }
+
+// Squelette de chargement
+.fs-squelette { display: flex; flex-direction: column; gap: 9px; }
+
+.sq {
+  height: 10px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--hover-bg) 0%, var(--border-color) 50%, var(--hover-bg) 100%);
+  background-size: 200% 100%;
+  animation: fs-reflet 1.1s linear infinite;
+
+  &.sq-type { width: 30%; height: 8px; }
+  &.sq-titre { width: 70%; height: 14px; }
+  &.sq-ligne { width: 90%; }
+  &.court { width: 55%; }
+}
+
+@keyframes fs-reflet { from { background-position: 200% 0; } to { background-position: -200% 0; } }

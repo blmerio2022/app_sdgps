@@ -212,7 +212,8 @@ export class ProjectSsdgpsListComponent implements OnInit, OnDestroy {
     this.breadcrumb.set([
       { label: 'Accueil', route: '/home', icon: 'fa-house' },
       { label: 'Projets', route: base, icon: 'fa-folder-open' },
-      { label: this.projet?.nom_projet || this.projet?.code_projet || 'Projet', route: `${base}/${this.projectId}`, icon: 'fa-diagram-project' },
+      { label: this.projet?.nom_projet || this.projet?.code_projet || 'Projet', route: `${base}/${this.projectId}`, icon: 'fa-diagram-project',
+        fiche: { type: 'projet' as const, id: this.projectId } },
       ...(this.porteeLabel ? [{ label: this.porteeLabel, icon: 'fa-filter' }] : []),
       { label: 'Tous les SSDGPS', icon: 'fa-satellite-dish', isActive: true },
     ]);

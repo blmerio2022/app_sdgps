@@ -171,7 +171,8 @@ export class ProjectFlatListComponent implements OnInit, OnDestroy {
     const trail: any[] = [
       { label: 'Accueil', route: '/home', icon: 'fa-house' },
       { label: 'Projets', route: '/' + base, icon: 'fa-folder-open' },
-      { label: this.projet?.nom_projet || this.projet?.code_projet || 'Projet', route: `/${base}/${this.projectId}`, icon: 'fa-diagram-project' },
+      { label: this.projet?.nom_projet || this.projet?.code_projet || 'Projet', route: `/${base}/${this.projectId}`, icon: 'fa-diagram-project',
+        fiche: { type: 'projet', id: this.projectId } },
     ];
     if (this.porteeLabel) trail.push({ label: this.porteeLabel, icon: 'fa-filter' });
     trail.push({ label: this.def.titre, icon: this.def.icon, isActive: true });
