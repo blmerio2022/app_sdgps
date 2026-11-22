@@ -155,6 +155,8 @@ ALIAS = {
     'cadence': ['Intervalle', "Intervalle d'enregistrement", "Taux d'enregistrement", 'Fréquence'],
     'haut_ant_m': ['Hauteur ant.', "Hauteur d'antenne", 'Hauteur antenne', 'Haut. ant.', 'Hauteur'],
     'antenne': ['Type ant.', "Type d'antenne", "Modèle d'antenne"],
+    'fabricant_antenne': ['Fabricant ant.', "Fabricant d'antenne", 'Fabricant', 'Marque antenne',
+                          'Marque ant.', "Marque d'antenne", 'Constructeur antenne', 'Constructeur'],
     'ref_antenne': ['Méthode ant.', 'Méthode de mesure', "Méthode de mesure de l'antenne",
                     'Référence antenne', 'Ref antenne'],
     'id_vec': ['ID de vecteur', 'ID vecteur', 'Vecteur', 'Identifiant du vecteur', 'Nom du vecteur',

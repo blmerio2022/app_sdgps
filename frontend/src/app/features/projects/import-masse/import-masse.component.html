@@ -81,8 +81,18 @@
         <label [class.on]="modeDeterminations === 'assemblees'"><input type="radio" name="modeDet" value="assemblees" [(ngModel)]="modeDeterminations"
                       (ngModelChange)="appliquerModeDeterminations()">
           <span><strong>Assemblées</strong> — une seule pièce « Rapport des déterminations intermédiaires » (RDIA)
-            <ng-container *ngIf="nbDeterminations"> regroupant les {{ nbDeterminations }} déterminations (+ la libre)</ng-container>
+            <ng-container *ngIf="nbDeterminations"> regroupant les {{ nbDeterminations }} déterminations<ng-container *ngIf="ligneLibre && libreDansRdia"> + la libre</ng-container></ng-container>
             <ng-container *ngIf="!nbDeterminations && fichierRdia"> depuis le fichier fourni</ng-container></span></label>
+        <!-- Détermination LIBRE : dans la RDIA assemblée, ou pièce RDL à part. -->
+        <div class="im-libre" *ngIf="modeDeterminations === 'assemblees' && ligneLibre">
+          <span class="titre"><i class="fas fa-unlock"></i> Détermination libre</span>
+          <label [class.on]="libreDansRdia"><input type="radio" name="libreDet" [value]="true" [(ngModel)]="libreDansRdia"
+                        (ngModelChange)="appliquerModeDeterminations()">
+            <span><strong>Intégrée</strong> à la RDIA (bloc « Libre » en tête)</span></label>
+          <label [class.on]="!libreDansRdia"><input type="radio" name="libreDet" [value]="false" [(ngModel)]="libreDansRdia"
+                        (ngModelChange)="appliquerModeDeterminations()">
+            <span><strong>À part</strong> — pièce « Rapport de la détermination libre » (RDL) distincte</span></label>
+        </div>
       </fieldset>
       <div class="im-det" *ngIf="multiSession && demandeSession">
         <span class="titre"><i class="fas fa-clock"></i> Session des pièces de session</span>

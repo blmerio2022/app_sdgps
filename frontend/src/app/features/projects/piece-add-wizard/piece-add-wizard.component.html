@@ -699,6 +699,15 @@
     <div class="modal-body tbc-import-body">
       <p class="confirm-note"><i class="fas fa-info-circle"></i> Cochez les déterminations à inclure et ordonnez-les : <strong>l'ordre fixe les blocs</strong> (Libre, N°1, N°2…) dans le tableau assemblé.</p>
 
+      <!-- Détermination LIBRE : intégrée à la RDIA ou laissée à part (pièce RDL distincte). -->
+      <div class="libre-choix" *ngIf="itemLibre" role="radiogroup" aria-label="Détermination libre">
+        <span class="titre"><i class="fas fa-unlock"></i> Détermination libre</span>
+        <label [class.on]="libreIntegree"><input type="radio" name="libreChoix" [value]="true" [(ngModel)]="libreIntegree">
+          <span><strong>Intégrée</strong> à la RDIA (bloc « Libre »)</span></label>
+        <label [class.on]="!libreIntegree"><input type="radio" name="libreChoix" [value]="false" [(ngModel)]="libreIntegree">
+          <span><strong>À part</strong> — reste la pièce RDL distincte</span></label>
+      </div>
+
       <div class="bulk-empty" *ngIf="!assembleItems.length">
         <i class="fas fa-folder-open"></i>
         <span>Aucune détermination (RDL / RDNₖ) dans ce dossier. Ajoutez-les d'abord, ou saisissez le tableau manuellement.</span>

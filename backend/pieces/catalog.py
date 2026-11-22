@@ -79,6 +79,7 @@ _ROB_CHAMPS = [
     ('duree', 'Durée', 'text'), ('type', 'Type', 'text'), ('fichier', 'Fichier', 'text'),
     ('epoques', 'Epoques', 'number'), ('cadence', 'Cadence', 'text'),
     ('haut_ant_m', 'Haut. Ant. (m)', 'number'), ('antenne', 'Antenne', 'text'),
+    ('fabricant_antenne', 'Fabricant antenne', 'text'),
     ('ref_antenne', 'Réf. antenne', 'text'),
 ]
 

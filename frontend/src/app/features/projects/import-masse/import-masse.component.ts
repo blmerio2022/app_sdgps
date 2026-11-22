@@ -65,6 +65,8 @@ export class ImportMasseComponent {
   poigneeHtml: any = null;
   /** Déterminations intermédiaires : une pièce par détermination, ou une seule assemblée. */
   modeDeterminations: 'separees' | 'assemblees' = 'separees';
+  /** Assemblées : la détermination libre entre dans la RDIA (vrai) ou reste une pièce RDL. */
+  libreDansRdia = true;
   erreur = '';
   survol = false;
   progression = 0;
@@ -323,10 +325,19 @@ export class ImportMasseComponent {
     return this.plan.find(l => l.type_piece === 'RDIA' && !l.doublon && (l as any)._propose !== 'ignorer');
   }
 
+  /** Ligne de la détermination libre du lot (RDL), s'il y en a une. */
+  get ligneLibre(): LignePlan | undefined {
+    return this.plan.find(l => l.type_piece === 'RDL' && !l.doublon && (l as any)._propose !== 'ignorer');
+  }
+
   appliquerModeDeterminations(): void {
     for (const l of this.plan) {
       const propose = (l as any)._propose ?? l.action;
       if (l.doublon || propose === 'ignorer') continue;
+      // Libre : à part (pièce RDL) sauf si elle est intégrée à une RDIA assemblée par l'application.
+      if (l.type_piece === 'RDL') {
+        l.action = this.assemblerDepuisDeterminations && this.libreDansRdia ? 'ignorer' : propose;
+      }
       if (l.type_piece === 'RDN') l.action = this.modeDeterminations === 'separees' ? propose : 'ignorer';
       // Assemblées : on assemble les déterminations n°k du lot (rapports HTML d'abord) ; le
       // fichier RDIA fourni ne sert que s'il n'y a aucune détermination à assembler.
@@ -393,7 +404,8 @@ export class ImportMasseComponent {
   }
 
   sourcesAssemblage(): { label: string; rows: any[] }[] {
-    const libre = this.plan.find(l => l.type_piece === 'RDL' && !l.doublon && l.donnees?.length);
+    const libre = this.libreDansRdia
+      ? this.plan.find(l => l.type_piece === 'RDL' && !l.doublon && l.donnees?.length) : undefined;
     const nk = this.plan.filter(l => l.type_piece === 'RDN' && !l.doublon && (l as any)._propose !== 'ignorer' && l.donnees?.length)
       .sort((a, b) => (a.numero || 0) - (b.numero || 0));
     return [...(libre ? [{ label: 'Libre', rows: libre.donnees! }] : []),
@@ -466,7 +478,8 @@ export class ImportMasseComponent {
 
     // Déterminations « assemblées » : une seule RDIA, remplacée si elle existe déjà.
     const etapeRdia$: Observable<Resultat> = assembler
-      ? this.service.assemblerRdia(this.ssdgpsId, this.sourcesAssemblage(), this.reponse.pieces_existantes['RDIA']).pipe(
+      ? this.service.assemblerRdia(this.ssdgpsId, this.sourcesAssemblage(), this.reponse.pieces_existantes['RDIA'],
+                                   this.libreDansRdia).pipe(
           map(() => ({ fichier: 'Déterminations intermédiaires', ok: true,
                        detail: `RDIA assemblée (${this.sourcesAssemblage().length} détermination(s))` })),
           catchError(e => of({ fichier: 'Déterminations intermédiaires', ok: false, detail: this.messageErreur(e) })))

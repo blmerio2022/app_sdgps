@@ -965,7 +965,13 @@ export class PieceAddWizardComponent implements OnInit {
   assembleModalOpen = false;
   assembling = false;
   submittingAssemble = false;
-  assembleItems: { id: string; label: string; count: number; selected: boolean }[] = [];
+  assembleItems: { id: string; label: string; count: number; selected: boolean; libre?: boolean }[] = [];
+
+  /** Détermination libre (RDL) du périmètre, si elle existe. */
+  get itemLibre() { return this.assembleItems.find(x => x.libre); }
+  /** Libre intégrée à la RDIA (cochée) ou laissée à part comme pièce RDL distincte. */
+  get libreIntegree(): boolean { return !!this.itemLibre?.selected; }
+  set libreIntegree(v: boolean) { const it = this.itemLibre; if (it) it.selected = v; }
   private assembleSourceIds: string[] = [];
 
   get supportsAssemble(): boolean { return !!this.selectedType?.assemble; }
@@ -982,6 +988,7 @@ export class PieceAddWizardComponent implements OnInit {
       label: p.type_piece === 'RDL' ? 'Libre' : `N°${p.numero}`,
       count: (p.payload?.rows || []).length,
       selected: true,
+      libre: p.type_piece === 'RDL',
     }));
     this.assembleModalOpen = true;
   }

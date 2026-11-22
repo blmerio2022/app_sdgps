@@ -799,7 +799,17 @@ figé ; NE PERSISTE RIEN) — `pieces/import_masse.py::analyser_lot`, détermini
   (rapports HTML d'abord) sont regroupées ; un fichier RDIA fourni ne sert que s'il n'y a
   aucune détermination à assembler. Le plan transmet les lignes de la libre et des n°k (`donnees`) et `assemble-rdi` accepte
   `sources` [{label, rows}] — aucune RDN n'est créée ; RDIA existante réassemblée
-  (`piece_id`, verrou du dossier figé appliqué) ;
+  (`piece_id`, verrou du dossier figé appliqué). **Libre intégrée ou à part** : en mode
+  assemblé, la détermination libre est INTÉGRÉE à la RDIA par défaut (sa ligne RDL passe à
+  « ignorer ») ou gardée comme pièce RDL distincte (`libreDansRdia`) ; même choix dans la
+  modale d'assemblage de l'ajout unitaire (`libreIntegree`). `assemble-rdi` reçoit
+  `inclure_libre` (`1`/`0`, toujours envoyé par le front) ; absent, une NOUVELLE RDIA intègre
+  la libre et un réassemblage (`piece_id`) reprend le choix d'origine (lignes « Libre »
+  présentes ou non). Tests : `tests_import_masse.AssemblageRdiaTests` ;
+- **ROB — « Fabricant antenne »** (`fabricant_antenne`, après « Antenne ») : apparié aux
+  en-têtes « Fabricant ant. », « Fabricant d'antenne », « Marque antenne », « Constructeur »…
+  (`ALIAS`). La migration `accounts/0043` l'insère dans les configurations de champs déjà
+  enregistrées (une config ne mémorise que les champs activés) ; `pieces/0021` sa métadonnée ;
 - **en-têtes des exports réels** : `import_masse.ALIAS` = synonymes PAR NOM DE CHAMP
   (« ID du point », « Abscisse », « Ordonnée », « Heure de démarrage », « Hauteur ant. »,
   « Méthode ant. », « De l'ID de point », « Type de solution », « Longueur du vecteur »…),

@@ -220,8 +220,11 @@ export class ImportMasseService {
   }
 
   /** Une seule pièce RDIA assemblée à partir des déterminations fournies ({label, rows}). */
-  assemblerRdia(ssdgpsId: string, sources: { label: string; rows: any[] }[], pieceExistante?: string): Observable<any> {
-    const corps: any = { commit: '1', sources: JSON.stringify(sources) };
+  assemblerRdia(ssdgpsId: string, sources: { label: string; rows: any[] }[], pieceExistante?: string,
+                inclureLibre = true): Observable<any> {
+    // Choix TOUJOURS explicite : sans lui, le réassemblage d'une RDIA existante le déduirait
+    // de son ancien contenu.
+    const corps: any = { commit: '1', sources: JSON.stringify(sources), inclure_libre: inclureLibre ? '1' : '0' };
     if (pieceExistante) corps.piece_id = pieceExistante;   // RDIA déjà présente : réassemblée
     else corps.ssdgps = ssdgpsId;
     return this.http.post(`${this.base}assemble-rdi/`, corps);

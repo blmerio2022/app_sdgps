@@ -302,6 +302,34 @@ class AssemblageRdiaTests(WorkflowBaseTest):
                                                               'sources': json.dumps(sources)}, format='json')
         self.assertEqual(r.status_code, 403)
 
+    def test_libre_gardee_a_part_si_demande(self):
+        sources = [{'label': 'Libre', 'rows': [{'nom_point': 'A', 'x_m': '1'}]},
+                   {'label': 'N°1', 'rows': [{'nom_point': 'A', 'x_m': '1', 'sigma_x_m': 'FIXE'}]}]
+        r = self.client.post('/api/v1/pieces/assemble-rdi/', {'ssdgps': str(self.ssdgps.id), 'commit': '1',
+                                                              'sources': json.dumps(sources), 'inclure_libre': '0'},
+                             format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual({l['determination'] for l in r.data['payload']['rows']}, {'N°1'})
+
+    def test_pieces_du_dossier_libre_exclue_puis_reassemblage_fidele(self):
+        Piece.objects.create(ssdgps=self.ssdgps, type_piece='RDL', statut=Piece.Statut.VALIDE,
+                             payload={'rows': [{'nom_point': 'A', 'x_m': '1'}]})
+        Piece.objects.create(ssdgps=self.ssdgps, type_piece='RDN', numero=1, ordre=1, statut=Piece.Statut.VALIDE,
+                             payload={'rows': [{'nom_point': 'A', 'x_m': '1', 'sigma_x_m': 'FIXE'}]})
+        url = '/api/v1/pieces/assemble-rdi/'
+        r = self.client.post(url, {'ssdgps': str(self.ssdgps.id), 'commit': '1', 'inclure_libre': 'false'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        dets = {l['determination'] for l in r.data['payload']['rows']}
+        self.assertNotIn('Libre', dets)
+        self.assertTrue(dets)
+        # Réassemblage sans préciser : le choix d'origine (libre à part) est conservé.
+        r = self.client.post(url, {'piece_id': r.data['id'], 'commit': '1'}, format='json')
+        self.assertNotIn('Libre', {l['determination'] for l in r.data['payload']['rows']})
+        # Par défaut (nouvelle RDIA), la libre est intégrée.
+        Piece.objects.filter(type_piece='RDIA').delete()
+        r = self.client.post(url, {'ssdgps': str(self.ssdgps.id), 'commit': '1'}, format='json')
+        self.assertIn('Libre', {l['determination'] for l in r.data['payload']['rows']})
+
     def test_sources_invalides_400(self):
         r = self.client.post('/api/v1/pieces/assemble-rdi/', {'ssdgps': str(self.ssdgps.id), 'commit': '1',
                                                               'sources': json.dumps([{'label': 'x'}])}, format='json')

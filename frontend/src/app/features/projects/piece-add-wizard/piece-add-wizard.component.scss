@@ -841,3 +841,11 @@
   select { flex: 1; min-width: 260px; font: inherit; font-size: 13px; padding: 6px 9px; border-radius: 8px;
     color: var(--text-color); background: var(--secondary-color); border: 1px solid var(--border-color); }
   .feuille-note { font-size: 12px; color: var(--text-muted); i { color: var(--accent-color); margin-right: 4px; } } }
+
+/* Détermination libre : intégrée à la RDIA ou laissée à part. */
+.libre-choix { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 12px; padding: 10px 12px;
+  border-radius: 10px; border: 1px solid var(--border-color); background: var(--hover-bg);
+  .titre { font-size: 12.5px; font-weight: 600; color: var(--text-color); i { color: var(--accent-color); margin-right: 5px; } }
+  label { flex: 1; min-width: 200px; display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; border-radius: 8px;
+    cursor: pointer; font-size: 12.5px; color: var(--text-color); border: 1px solid var(--border-color); background: var(--secondary-color);
+    input { margin-top: 2px; accent-color: var(--accent-color); } &.on { border-color: var(--accent-color); } } }

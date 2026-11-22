@@ -20,6 +20,33 @@ describe('PieceAddWizardComponent (logique)', () => {
     cmp.existingPieces = [];
   });
 
+  describe('assemblage RDIA — libre intégrée ou à part', () => {
+    it('la libre est intégrée par défaut et peut rester une pièce RDL distincte', () => {
+      cmp.existingPieces = [
+        { id: 'n2', type_piece: 'RDN', numero: 2, ordre: 2, payload: { rows: [{}] } },
+        { id: 'l', type_piece: 'RDL', ordre: 0, payload: { rows: [{}, {}] } },
+        { id: 'n1', type_piece: 'RDN', numero: 1, ordre: 1, payload: { rows: [] } },
+      ] as any;
+      cmp.openAssembleModal();
+      expect(cmp.assembleItems.map(i => i.label)).toEqual(['Libre', 'N°1', 'N°2']);
+      expect(cmp.itemLibre?.id).toBe('l');
+      expect(cmp.libreIntegree).toBeTrue();
+      cmp.libreIntegree = false;
+      expect(cmp.assembleItems.filter(i => i.selected).map(i => i.id)).toEqual(['n1', 'n2']);
+      cmp.libreIntegree = true;
+      expect(cmp.assembleItems.every(i => i.selected)).toBeTrue();
+    });
+
+    it('sans détermination libre, pas de choix proposé', () => {
+      cmp.existingPieces = [{ id: 'n1', type_piece: 'RDN', numero: 1, ordre: 1, payload: { rows: [] } }] as any;
+      cmp.openAssembleModal();
+      expect(cmp.itemLibre).toBeUndefined();
+      expect(cmp.libreIntegree).toBeFalse();
+      cmp.libreIntegree = true;                     // sans effet
+      expect(cmp.assembleItems.length).toBe(1);
+    });
+  });
+
   describe('stepper — sous-étapes de la source', () => {
     it('avant tout choix de type : la phase source est une pastille unique', () => {
       expect(cmp.wizardSteps.map(s => s.key)).toEqual(['type', 'data']);

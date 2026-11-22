@@ -12,7 +12,7 @@ import json
 
 import openpyxl
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 from pieces.import_masse import ALIAS, choisir_feuille, correspondance
 from pieces.models import Piece
@@ -71,6 +71,40 @@ class SynonymesTests(SimpleTestCase):
                              'antenne': 'Type ant.', 'ref_antenne': 'Méthode ant.'})
         self.assertIn("De l'ID de point", ALIAS['de'])
 
+    def test_fabricant_antenne_au_catalogue_du_rob_et_noms_proches(self):
+        from pieces.catalog import get_piece_def
+        noms = [c['name'] for c in get_piece_def('ROB')['champs']]
+        self.assertEqual(noms[noms.index('antenne') + 1], 'fabricant_antenne')
+        champs = [{'name': 'fabricant_antenne', 'label': 'Fabricant antenne'}]
+        for entete in ('Fabricant antenne', 'Fabricant ant.', "Fabricant d'antenne", 'Marque antenne', 'FABRICANT'):
+            self.assertEqual(correspondance([entete], champs), {'fabricant_antenne': entete}, entete)
+
+
+class MigrationFabricantAntenneTests(TestCase):
+    def test_le_champ_est_insere_apres_antenne_dans_les_configurations_existantes(self):
+        import importlib
+
+        from django.apps import apps
+        from accounts.models import CustomUser
+        mig = importlib.import_module('accounts.migrations.0043_rob_fabricant_antenne')
+        u = CustomUser.objects.create_user(username='m@x.ma', email='m@x.ma', password='Passw0rd!')
+        u.piece_fields_config = {'ROB': {'import': {'brut': ['point', 'antenne', 'ref_antenne']},
+                                         'pdf': {'brut': ['point']},
+                                         'app': {'brut': ['antenne', 'fabricant_antenne']}},
+                                 'LPA': {'import': {'brut': ['nom_point']}}}
+        u.save()
+        mig.ajouter(apps, None)
+        mig.ajouter(apps, None)                                        # idempotente
+        u.refresh_from_db()
+        rob = u.piece_fields_config['ROB']
+        self.assertEqual(rob['import']['brut'], ['point', 'antenne', 'fabricant_antenne', 'ref_antenne'])
+        self.assertEqual(rob['pdf']['brut'], ['point', 'fabricant_antenne'])
+        self.assertEqual(rob['app']['brut'], ['antenne', 'fabricant_antenne'])
+        self.assertEqual(u.piece_fields_config['LPA'], {'import': {'brut': ['nom_point']}})
+        mig.retirer(apps, None)
+        u.refresh_from_db()
+        self.assertNotIn('fabricant_antenne', u.piece_fields_config['ROB']['import']['brut'])
+
 
 class ClasseurImportMasseTests(WorkflowBaseTest):
     def test_chaque_feuille_reconnue_par_ses_en_tetes(self):
@@ -82,6 +116,7 @@ class ClasseurImportMasseTests(WorkflowBaseTest):
         self.assertEqual(types, {'Feuil1': 'LPA', 'Feuil2': 'PPA', 'Feuil3': 'ROB', 'Feuil4': 'RTLB'})
         rob = next(l for l in r.data['plan'] if l['feuille'] == 'Feuil3')
         self.assertEqual(rob['mapping']['haut_ant_m'], 'Hauteur ant.')
+        self.assertEqual(rob['mapping']['fabricant_antenne'], 'Fabricant ant.')   # nom proche reconnu
         self.assertEqual(rob['apercu'][0][1], '11/07/2024 08:03:21')          # date Excel lisible
 
 

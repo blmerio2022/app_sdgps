@@ -1279,6 +1279,10 @@ class PieceViewSet(viewsets.ModelViewSet):
           les déterminations du scope (RDL puis RDN par numéro).
         - Sans `commit`/`piece_id` : APERÇU. `commit=1` : crée la pièce. `piece_id` :
           réassemble (met à jour) une pièce RDIA existante (et invalide ses écarts).
+        - `inclure_libre` (1/0) : la détermination LIBRE est intégrée à la RDIA (bloc
+          « Libre ») ou laissée à part (pièce RDL distincte). Défaut : intégrée ; au
+          réassemblage d'une RDIA existante, le choix est lu dans son contenu (présence d'un
+          bloc « Libre ») pour qu'un réassemblage ne le défasse pas.
         Champs : ssdgps (requis sauf si piece_id), session (optionnelle).
         """
         type_piece = 'RDIA'
@@ -1321,6 +1325,19 @@ class PieceViewSet(viewsets.ModelViewSet):
             ordered = (list(scope.filter(type_piece='RDL').order_by('ordre'))
                        + list(scope.filter(type_piece='RDN').order_by('numero', 'ordre')))
 
+        # Détermination libre intégrée ou à part.
+        brut_libre = request.data.get('inclure_libre')
+        if brut_libre not in (None, ''):
+            inclure_libre = str(brut_libre).strip().lower() in ('1', 'true', 'yes', 'oui')
+        elif piece_id:
+            lignes = (target.payload or {}).get('rows') or []
+            inclure_libre = not lignes or any(
+                str(r.get('determination', '')).strip().lower() == 'libre' for r in lignes)
+        else:
+            inclure_libre = True
+        if not inclure_libre:
+            ordered = [p for p in ordered if p.type_piece != 'RDL']
+
         # `sources` : déterminations fournies DIRECTEMENT ({label, rows}, dans l'ordre) — import
         # en masse en mode « assemblées » : une seule RDIA, sans pièces RDL / RDN séparées.
         directes = request.data.get('sources')
@@ -1333,7 +1350,8 @@ class PieceViewSet(viewsets.ModelViewSet):
                     isinstance(d, dict) and isinstance(d.get('rows'), list) for d in directes):
                 return Response({'detail': '« sources » : liste de {label, rows} attendue.'}, status=400)
             ordered = []
-            sources = [{'label': str(d.get('label') or ''), 'rows': d['rows']} for d in directes]
+            sources = [{'label': str(d.get('label') or ''), 'rows': d['rows']} for d in directes
+                       if inclure_libre or str(d.get('label') or '').strip().lower() != 'libre']
         elif not ordered:
             return Response({'detail': (
                 'Aucune détermination (RDL / RDNₖ) trouvée dans ce SSDGPS/session : '

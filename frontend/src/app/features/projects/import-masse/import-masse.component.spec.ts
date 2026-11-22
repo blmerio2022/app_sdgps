@@ -26,6 +26,10 @@ describe('ImportMasseService', () => {
     svc.importerHtml('s1', new File(['x'], 'a.html'), L({ mode: 'html', type_piece: 'RDN', numero: 3 }), null).subscribe();
     const h = http.expectOne(`${base}import-html/`).request.body as FormData;
     expect([h.get('numero'), h.has('payload')]).toEqual(['3', false]);
+    svc.assemblerRdia('s1', [{ label: 'N°1', rows: [] }], undefined, false).subscribe();
+    expect(http.expectOne(`${base}assemble-rdi/`).request.body.inclure_libre).toBe('0');
+    svc.assemblerRdia('s1', [{ label: 'Libre', rows: [] }]).subscribe();
+    expect(http.expectOne(`${base}assemble-rdi/`).request.body.inclure_libre).toBe('1');
     svc.remplacerLignes('rc1', [{ a: 1 }]).subscribe();
     expect(http.expectOne(`${base}rc1/`).request.method).toBe('PATCH');
     http.verify();
@@ -183,11 +187,18 @@ describe('ImportMasseComponent', () => {
     expect(cmp.aImporter).toBe(3);
     cmp.modeDeterminations = 'assemblees';
     cmp.appliquerModeDeterminations();
-    expect(cmp.aImporter).toBe(1);                        // la RDL seule ; les n°k partent dans la RDIA
+    // Par défaut la libre est INTÉGRÉE à la RDIA : aucune pièce RDL à part.
+    expect(cmp.libreDansRdia).toBeTrue();
+    expect(cmp.aImporter).toBe(0);
     expect(cmp.sourcesAssemblage().map(s => s.label)).toEqual(['Libre', 'N°1', 'N°2']);
+    // Libre À PART : la RDL redevient une pièce distincte, hors de la RDIA.
+    cmp.libreDansRdia = false;
+    cmp.appliquerModeDeterminations();
+    expect(cmp.aImporter).toBe(1);
+    expect(cmp.sourcesAssemblage().map(s => s.label)).toEqual(['N°1', 'N°2']);
     cmp.importer();
     expect(svc.importerHtml).toHaveBeenCalledTimes(1);
-    expect(svc.assemblerRdia).toHaveBeenCalledWith('s1', cmp.sourcesAssemblage(), undefined);
+    expect(svc.assemblerRdia).toHaveBeenCalledWith('s1', cmp.sourcesAssemblage(), undefined, false);
     cmp.modeDeterminations = 'separees';
     cmp.appliquerModeDeterminations();
     expect(cmp.aImporter).toBe(3);
