@@ -306,6 +306,27 @@ describe('PieceAddWizardComponent (logique)', () => {
       expect(cmp.dragOver).toBeFalse();
     });
 
+    it('classeur à plusieurs feuilles : feuille retenue d’office, changement puis import de la feuille choisie', () => {
+      cmp.selectedType = def();
+      const feuilles = [{ nom: 'Feuil1', lignes: 3, score: 0.2, type_suggere: 'LPA', libelle_suggere: 'Liste' },
+                        { nom: 'Feuil3', lignes: 2, score: 0.9, type_suggere: 'ROB', libelle_suggere: 'Obs' }];
+      const svc = {
+        previewImport: jasmine.createSpy('previewImport').and.callFake((_f: File, _t: string, feuille?: string) =>
+          of({ ...preview(), feuille: feuille || 'Feuil3', feuilles: feuille ? [] : feuilles, mapping_propose: { a: 'b' } })),
+        confirmImport: jasmine.createSpy('confirmImport').and.returnValue(of({ id: 'p1', ordre: 0 })),
+      };
+      (cmp as any).piecesService = svc;
+      cmp.onCsvDrop({ preventDefault() {}, dataTransfer: { files: [new File(['x'], 'AUTRES.xlsx')] } } as any);
+      expect(cmp.importPreview!.feuille).toBe('Feuil3');
+      expect(cmp.feuilleRetenueAuto).toBeTrue();
+      cmp.changerFeuille('Feuil1');
+      expect(svc.previewImport.calls.mostRecent().args[2]).toBe('Feuil1');
+      expect(cmp.importPreview!.feuilles!.length).toBe(2);       // la liste reste affichée
+      expect(cmp.feuilleRetenueAuto).toBeFalse();
+      cmp.confirmImport();
+      expect(svc.confirmImport.calls.mostRecent().args[5]).toBe('Feuil1');
+    });
+
     it('onDragOver / onDragLeave basculent l’état de survol', () => {
       const e: any = { preventDefault() {} };
       cmp.onDragOver(e);

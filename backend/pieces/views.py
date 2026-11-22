@@ -43,6 +43,7 @@ from .serializers import PieceSerializer, RapportGenerationSerializer
 from .tasks import generer_rapport
 
 from projects.suppressions import tracer_corbeille, tracer_definitive, tracer_restauration
+from .import_masse import choisir_feuille as _choisir_feuille, mapping_propose as _mapping_propose
 logger = logging.getLogger(__name__)
 
 
@@ -1822,13 +1823,20 @@ class PieceViewSet(viewsets.ModelViewSet):
             piece_def = get_piece_def(type_piece)
         except KeyError:
             return Response({'detail': 'Type de pièce inconnu.'}, status=400)
+        mapping_raw = request.data.get('mapping')
+        feuille = request.data.get('feuille') or None
+        feuilles = []
+        if not mapping_raw and not feuille:
+            # Classeur à plusieurs feuilles (une pièce par feuille) : la feuille dont les
+            # en-têtes correspondent au type choisi est retenue d'office ; la liste revient
+            # à l'écran pour que l'opérateur puisse en changer.
+            feuille, feuilles = _choisir_feuille(f, type_piece)
         try:
-            # `feuille` : une feuille précise d'un classeur à plusieurs pièces (import en masse).
-            columns, rows = parse_uploaded_table(f, request.data.get('feuille') or None)
+            # `feuille` : une feuille précise d'un classeur à plusieurs pièces.
+            columns, rows = parse_uploaded_table(f, feuille)
         except ValueError as e:
             return Response({'detail': str(e)}, status=400)
 
-        mapping_raw = request.data.get('mapping')
         if not mapping_raw:
             # --- Phase 1 : aperçu ---
             # Champs proposés au mapping = FILTRE-MAÎTRE « import » de l'opérateur : seuls les
@@ -1847,6 +1855,11 @@ class PieceViewSet(viewsets.ModelViewSet):
                 # Champs enrichis des descriptions/infobulles → aide à la correspondance
                 # des colonnes dans le mapping d'import.
                 'champs': champs,
+                # Correspondance proposée par le serveur (libellés + synonymes des exports
+                # réels : « Abscisse », « ID du point »…) — point de départ modifiable.
+                'mapping_propose': _mapping_propose(columns, champs),
+                'feuille': feuille,
+                'feuilles': feuilles,
             })
 
         # --- Phase 2 : confirmation ---

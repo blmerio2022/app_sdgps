@@ -7,6 +7,7 @@ import {
   dossiersFilesManquants, estPageCadre, lireDossiersFiles, lireEntree, utile,
 } from '../../../core/services/import-masse.service';
 import { PiecesService } from '../../../core/services/pieces.service';
+import { PieceImportPreview, PieceTypeDef } from '../../../core/models/piece.model';
 import { PdfRenderService, canvasToJpeg } from '../../../core/services/pdf-render.service';
 
 export interface SessionChoix { id: string; numero_session: number; }
@@ -73,6 +74,50 @@ export class ImportMasseComponent {
 
   constructor(private service: ImportMasseService, private pieces: PiecesService,
               private pdf: PdfRenderService) {}
+
+  // ---- correspondance des colonnes d'une ligne (manuelle ou par l'IA) ----
+  /** Ligne dont la correspondance est en cours d'édition (null : fenêtre fermée). */
+  correspondanceLigne: LignePlan | null = null;
+  correspondancePreview: PieceImportPreview | null = null;
+  correspondanceProposee: Record<string, string> | null = null;
+  private correspondanceEnCours: Record<string, string> = {};
+  private catalogue: PieceTypeDef[] | null = null;
+
+  /** Champs du type mappés (hors ID) : ce que l'opérateur lit dans la colonne « Type ». */
+  champsMappes(l: LignePlan): number { return Object.keys(l.mapping || {}).filter(k => k !== 'id').length; }
+
+  /** Ouvre l'outil de correspondance sur la ligne : proposition automatique du plan comme
+   * référence, choix courant comme départ, IA disponible dans l'outil s'il est activé. */
+  ouvrirCorrespondance(l: LignePlan): void {
+    if (l.mode !== 'tableau' || !l.type_piece) return;
+    const ouvrir = (types: PieceTypeDef[]) => {
+      const def = types.find(t => t.code === l.type_piece);
+      if (!def) return;
+      this.correspondanceLigne = l;
+      this.correspondanceProposee = { ...(this.candidat(l)?.mapping || {}) };
+      this.correspondanceEnCours = { ...(l.mapping || {}) };
+      this.correspondancePreview = { columns: l.colonnes || [], preview_rows: l.apercu || [],
+                                     total_rows: l.lignes, champs: def.champs };
+    };
+    if (this.catalogue) { ouvrir(this.catalogue); return; }
+    this.pieces.getCatalog().subscribe({ next: types => { this.catalogue = types; ouvrir(types); } });
+  }
+
+  onCorrespondance(mapping: Record<string, string>): void { this.correspondanceEnCours = mapping; }
+
+  appliquerCorrespondance(): void {
+    const l = this.correspondanceLigne;
+    if (!l) return;
+    l.mapping = { ...this.correspondanceEnCours };
+    l.mappingModifie = JSON.stringify(l.mapping) !== JSON.stringify(this.correspondanceProposee || {});
+    this.fermerCorrespondance();
+  }
+
+  fermerCorrespondance(): void {
+    this.correspondanceLigne = null;
+    this.correspondancePreview = null;
+    this.correspondanceProposee = null;
+  }
 
   // ---- étape 1 : dépôt (fichiers ou dossier) ----
   ajouterDepots(liste: FichierDepose[]): void {
@@ -233,6 +278,7 @@ export class ImportMasseComponent {
     l.type_piece = type;
     const c = this.candidat(l);
     l.mapping = c ? { ...c.mapping } : {};
+    l.mappingModifie = false;
     l.numero = c?.repetable ? (l.numero || c.numero_nom || 1) : null;
     l.piece_existante = null;   // l'existant n'est connu que pour le type proposé
     l.action = type ? 'creer' : 'ignorer';

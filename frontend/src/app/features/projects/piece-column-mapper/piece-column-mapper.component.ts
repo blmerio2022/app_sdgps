@@ -20,6 +20,13 @@ export class PieceColumnMapperComponent implements OnChanges, OnInit {
   @Input() preview!: PieceImportPreview;
   /** Code du type de pièce : requis pour la proposition par l'IA (champs du catalogue). */
   @Input() typePiece: string | null = null;
+  /** Correspondance proposée par le SERVEUR (libellés + synonymes des exports réels :
+   * « Abscisse », « ID du point »…). Fait référence pour « Réinitialiser » ; à défaut, la
+   * correspondance par nom faite ici. */
+  @Input() mappingPropose: Record<string, string> | null = null;
+  /** Correspondance de départ, quand elle diffère de la proposition (import en masse :
+   * choix déjà ajusté par l'opérateur). */
+  @Input() mappingInitial: Record<string, string> | null = null;
   @Output() mappingChange = new EventEmitter<Record<string, string>>();
 
   /** N°4 — Correspondance proposée par l'IA (masquée si l'IA n'est pas activée). */
@@ -44,7 +51,7 @@ export class PieceColumnMapperComponent implements OnChanges, OnInit {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['champs'] || changes['preview']) {
+    if (changes['champs'] || changes['preview'] || changes['mappingPropose'] || changes['mappingInitial']) {
       this.buildForm();
     }
   }
@@ -75,9 +82,16 @@ export class PieceColumnMapperComponent implements OnChanges, OnInit {
       return false;
     };
 
+    // Passe 0 : proposition du serveur (synonymes), quand elle désigne une colonne existante.
+    const propose = this.mappingPropose || {};
+    const restants: PieceChampDef[] = [];
+    for (const champ of this.champs) {
+      const col = propose[champ.name];
+      if (!claim(champ, c => !!col && c.raw === col)) restants.push(champ);
+    }
     // Passe 1 : exacte
     const pending: PieceChampDef[] = [];
-    for (const champ of this.champs) {
+    for (const champ of restants) {
       const tl = this.normalize(champ.label), tn = this.normalize(champ.name);
       if (!claim(champ, c => c.norm === tl || c.norm === tn)) pending.push(champ);
     }
@@ -89,8 +103,12 @@ export class PieceColumnMapperComponent implements OnChanges, OnInit {
       }
     }
 
+    const initial = this.mappingInitial;
     for (const champ of this.champs) {
-      group[champ.name] = [this.originalSuggestions[champ.name] ?? IGNORE];
+      const depart = initial
+        ? (initial[champ.name] && this.preview?.columns?.includes(initial[champ.name]) ? initial[champ.name] : IGNORE)
+        : this.originalSuggestions[champ.name];
+      group[champ.name] = [depart ?? IGNORE];
     }
     this.form = this.fb.group(group);
     this.form.valueChanges.subscribe(() => this.emitMapping());

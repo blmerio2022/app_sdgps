@@ -66,6 +66,29 @@ def _parse_csv(file_obj):
     return all_rows[0], all_rows[1:]
 
 
+def _cellule(c):
+    """Texte d'une cellule Excel. Dates et heures au format des rapports GNSS (« 11/07/2024
+    08:03:21 », durée « 03:34:32 ») : `str()` donnait « 2024-07-11 08:03:21 », illisible par
+    les contrôles (tolérances, contrôle croisé). Une date sans heure : « 11/07/2024 »."""
+    import datetime as dt
+    if c is None:
+        return ''
+    if isinstance(c, dt.datetime):
+        if (c.hour, c.minute, c.second) == (0, 0, 0):
+            return c.strftime('%d/%m/%Y')
+        return c.strftime('%d/%m/%Y %H:%M:%S')
+    if isinstance(c, dt.date):
+        return c.strftime('%d/%m/%Y')
+    if isinstance(c, dt.time):
+        return c.strftime('%H:%M:%S')
+    if isinstance(c, dt.timedelta):
+        total = int(c.total_seconds())
+        return f'{total // 3600:02d}:{total % 3600 // 60:02d}:{total % 60:02d}'
+    if isinstance(c, float) and c.is_integer():
+        return str(int(c))
+    return str(c)
+
+
 def _parse_xlsx(file_obj, feuille=None):
     import openpyxl
     file_obj.seek(0)
@@ -83,14 +106,14 @@ def _parse_xlsx(file_obj, feuille=None):
         header_row = next(rows_iter)
     except StopIteration:
         raise ValueError("Fichier Excel vide.")
-    header = [str(c) if c is not None else '' for c in header_row]
+    header = [_cellule(c).strip() for c in header_row]
     data_rows = []
     max_rows = getattr(settings, 'PIECE_IMPORT_MAX_ROWS', 5000)
     for i, row in enumerate(rows_iter):
         if i >= max_rows:
             raise ValueError(f"Fichier trop volumineux (> {max_rows} lignes).")
         if any(c is not None for c in row):
-            data_rows.append(['' if c is None else str(c) for c in row])
+            data_rows.append([_cellule(c) for c in row])
     return header, data_rows
 
 

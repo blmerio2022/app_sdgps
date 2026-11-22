@@ -300,11 +300,20 @@
                   <input type="file" accept=".csv,.xlsx" (change)="onReimportFileSelected($event)">
                 </label>
               </div>
+              <div class="feuilles-classeur" *ngIf="reimportPreview?.feuilles?.length">
+                <label for="feuille-reimport"><i class="fas fa-file-excel"></i> Feuille du classeur</label>
+                <select id="feuille-reimport" [ngModel]="reimportPreview?.feuille" (ngModelChange)="changerFeuilleReimport($event)">
+                  <option *ngFor="let f of reimportPreview!.feuilles" [value]="f.nom">
+                    {{ f.nom }} — {{ f.lignes }} ligne(s){{ f.type_suggere ? ' · semble être : ' + f.libelle_suggere : '' }}
+                  </option>
+                </select>
+              </div>
               <app-piece-column-mapper
                 *ngIf="reimportPreview"
                 [champs]="reimportPreview.champs"
                 [preview]="reimportPreview"
                 [typePiece]="piece.type_piece"
+                [mappingPropose]="reimportPreview.mapping_propose || null"
                 (mappingChange)="onReimportMappingChange($event)">
               </app-piece-column-mapper>
               <div class="section-actions">

@@ -125,9 +125,57 @@ def _nombre_final(nom):
 
 
 # Libellés alternatifs rencontrés dans les fichiers réels, par champ cible.
+# Synonymes des champs, par NOM de champ (commun à tous les types qui le portent). Les
+# exports réels (TBC, tableurs des bureaux d'études) n'emploient pas les libellés du
+# catalogue : « ID du point », « Abscisse », « De l'ID de point », « Heure de démarrage »,
+# « Hauteur ant. »… Comparaison normalisée (sans casse, accents ni ponctuation).
+# Partagé par l'import en masse ET l'import unitaire (`mapping_propose`, phase 1).
 ALIAS = {
-    'determination': ['Nom Point Fixe', 'Point Fixe'],
-    'nom_point': ['Nom Point Calculé', 'Point', 'ID de point', 'Nom'],
+    'nom_point': ['ID du point', 'ID de point', 'Nom du point', 'Point', 'Nom', 'Station',
+                  'Nom Point Calculé', 'Identifiant du point', 'Matricule'],
+    'point': ['ID du point', 'ID de point', 'Nom du point', 'Nom Point', 'Station', 'Nom'],
+    'x_m': ['Abscisse', 'X', 'X (m)', 'Est', 'Easting', 'Coordonnée X'],
+    'y_m': ['Ordonnée', 'Y', 'Y (m)', 'Nord', 'Northing', 'Coordonnée Y'],
+    'reference': ['Reference fonciere', 'Référence foncière', 'Source', 'Origine', 'Référence du point'],
+    'nature_materialisation': ['Materialisation', 'Matérialisation', 'Type de matérialisation'],
+    'nature_signalisation': ['Signalisation', 'Type de signalisation'],
+    'date_visite': ['Date de visite', 'Date visite', 'Date'],
+    'systeme_projection': ['Systeme', 'Système', 'Système de coordonnées', 'Systeme de projection',
+                           'Projection', 'Système de référence'],
+    'zone_projection': ['Zone', 'Zone Lambert'],
+    'fichier_image': ['Image', 'Photo', 'Nom de la photo', 'Fichier photo'],
+    'heure_debut': ['Heure de démarrage', 'Heure de début', 'Heure début', 'Début', 'Démarrage',
+                    'Heure de départ'],
+    'heure_fin': ['Heure de fin', 'Fin', "Heure d'arrêt"],
+    'duree': ['Durée', 'Temps'],
+    'type': ['Méthode sur terrain', 'Méthode terrain', 'Mode', "Mode d'observation",
+             "Type d'observation", 'Méthode'],
+    'fichier': ['Nom du fichier', 'Nom de fichier', 'Fichier brut'],
+    'epoques': ['Époques', "Nombre d'époques", 'Nb époques', 'Nb Epoques'],
+    'cadence': ['Intervalle', "Intervalle d'enregistrement", "Taux d'enregistrement", 'Fréquence'],
+    'haut_ant_m': ['Hauteur ant.', "Hauteur d'antenne", 'Hauteur antenne', 'Haut. ant.', 'Hauteur'],
+    'antenne': ['Type ant.', "Type d'antenne", "Modèle d'antenne"],
+    'ref_antenne': ['Méthode ant.', 'Méthode de mesure', "Méthode de mesure de l'antenne",
+                    'Référence antenne', 'Ref antenne'],
+    'id_vec': ['ID de vecteur', 'ID vecteur', 'Vecteur', 'Identifiant du vecteur', 'Nom du vecteur',
+               'ID ligne de base'],
+    'de': ["De l'ID de point", "De l'ID du point", 'Depuis', 'Point de départ', 'From'],
+    'vers': ["A l'ID de point", "À l'ID de point", "A l'ID du point", 'A', 'À',
+             "Point d'arrivée", 'Destination', 'To'],
+    'solution': ['Type de solution'],
+    'methode_terrain': ['Méthode sur terrain', 'Méthode terrain', 'Mode', 'Méthode'],
+    'longueur_m': ['Longueur du vecteur', 'Longueur', 'Distance', 'Longueur ellipsoïdale'],
+    'rms_m': ['RMS', 'Erreur RMS'],
+    'prec_horiz_m': ['Précision horizontale', 'Préc. H.', 'Précision H', 'Prec. Horiz.'],
+    'prec_vert_m': ['Précision verticale', 'Préc. V.', 'Précision V', 'Prec. Vert.'],
+    'satellites': ['Nb satellites', 'Nombre de satellites', 'Sat.'],
+    'nb_epoques': ['Epoques', 'Époques', "Nombre d'époques"],
+    'sigma_x_m': ['Sigma X', 'Ecart type X', 'Écart-type X'],
+    'sigma_y_m': ['Sigma Y', 'Ecart type Y', 'Écart-type Y'],
+    'determination': ['Nom Point Fixe', 'Point Fixe', 'Détermination n°'],
+    'id_boucle': ['ID de boucle', 'Identifiant de boucle', 'Boucle'],
+    'nom_boucle': ['Nom de boucle', 'Points de la boucle'],
+    'tolerable': ['Acceptable', 'Conforme'],
 }
 
 
@@ -235,7 +283,7 @@ def analyser_tableau(fichier, nature, contexte, custom_map=None, feuille=None):
         raison = ("Le rapport de contrôle est calculé par l'application à partir de la LPA et des "
                   "déterminations : cochez « Générer le rapport de contrôle ».")
     return {
-        **base, 'lisible': True, 'colonnes': columns, 'lignes': len(rows), 'apercu': rows[:3],
+        **base, 'lisible': True, 'colonnes': columns, 'lignes': len(rows), 'apercu': rows[:5],
         'raison': raison,
         '_rows': rows,
         'candidats': [{k: c[k] for k in ('type_piece', 'libelle', 'score', 'champs_reconnus',
@@ -631,3 +679,43 @@ def completer_plan(plan, ssdgps):
         item['piece_existante'] = str(existante.id) if existante else None
         item['action'] = 'remplacer' if existante else 'creer'
     return plan
+
+
+# ----------------------------------------------------------------------------- import unitaire
+
+def choisir_feuille(fichier, type_piece, custom_map=None):
+    """Classeur à plusieurs feuilles, import UNITAIRE d'un type donné : la feuille dont les
+    en-têtes correspondent le mieux à ce type est retenue (aucun nom de feuille n'est
+    exigé — « Feuil1…Feuil4 » est courant). Renvoie `(feuille retenue | None, feuilles)`,
+    `feuilles` = [{nom, lignes, score (0–1) pour ce type, type_suggere, libelle_suggere}]
+    pour que l'opérateur voie la répartition et change de feuille s'il le souhaite."""
+    if not str(getattr(fichier, 'name', '')).lower().endswith('.xlsx'):
+        return None, []
+    noms = feuilles_excel(fichier)
+    if len(noms) < 2:
+        return None, []
+    from .catalog import _custom_fields_map
+    custom_map = custom_map if custom_map is not None else _custom_fields_map()
+    codes = [c for c, d in PIECE_CATALOG.items() if d.get('champs')]
+    infos = []
+    for nom in noms:
+        try:
+            columns, rows = parse_uploaded_table(fichier, nom)
+        except ValueError:
+            continue
+        evals = [e for e in (evaluer_type(c, columns, nom, custom_map, mots=set()) for c in codes) if e]
+        meilleur = max(evals, key=lambda e: e['score'], default=None)
+        pour_type = next((e for e in evals if e['type_piece'] == type_piece), None)
+        infos.append({
+            'nom': nom, 'lignes': len(rows),
+            'score': round(min(1.0, pour_type['score']), 3) if pour_type else 0.0,
+            'type_suggere': meilleur['type_piece'] if meilleur and meilleur['score'] > 0 else None,
+            'libelle_suggere': PIECE_CATALOG.get(meilleur['type_piece'], {}).get('nom', '') if meilleur else '',
+        })
+    retenue = max(infos, key=lambda i: (i['type_suggere'] == type_piece, i['score']), default=None)
+    return (retenue['nom'] if retenue else None), infos
+
+
+def mapping_propose(columns, champs):
+    """Correspondance proposée {champ: colonne} (libellés, noms techniques, synonymes)."""
+    return correspondance(columns, champs)

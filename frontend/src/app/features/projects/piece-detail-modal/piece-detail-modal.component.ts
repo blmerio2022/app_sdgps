@@ -789,10 +789,21 @@ export class PieceDetailModalComponent implements OnInit, OnDestroy {
     });
   }
   onReimportMappingChange(mapping: Record<string, string>): void { this.reimportMapping = mapping; }
+
+  /** Classeur à plusieurs feuilles : autre feuille → nouvel aperçu et nouvelle proposition. */
+  changerFeuilleReimport(nom: string): void {
+    if (!this.reimportFile || !nom) return;
+    const feuilles = this.reimportPreview?.feuilles || [];
+    this.piecesService.previewImport(this.reimportFile, this.piece.type_piece, nom).subscribe({
+      next: (preview) => { this.reimportPreview = { ...preview, feuille: nom, feuilles }; },
+      error: (e) => this.toast.error('Échec', e?.error?.detail || 'Lecture de la feuille impossible'),
+    });
+  }
   confirmReimport(): void {
     if (!this.reimportFile || this.reimporting) return;
     this.reimporting = true;
-    this.piecesService.reimport(this.piece.id, this.reimportFile, this.piece.type_piece, this.reimportMapping).subscribe({
+    this.piecesService.reimport(this.piece.id, this.reimportFile, this.piece.type_piece, this.reimportMapping,
+                                this.reimportPreview?.feuille || null).subscribe({
       next: (updated) => {
         this.reimporting = false; this.piece = updated; this.cancelReimport();
         this.initManualForm();  // la grille éditable reflète les données réimportées

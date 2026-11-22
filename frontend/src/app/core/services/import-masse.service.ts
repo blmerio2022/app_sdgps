@@ -43,6 +43,10 @@ export interface LignePlan {
   doublon?: boolean;
   /** Lignes d'une détermination (libre, n°k) : de quoi assembler une RDIA. */
   donnees?: any[];
+  /** Premières lignes du tableau (outil de correspondance des colonnes). */
+  apercu?: string[][];
+  /** Correspondance ajustée par l'opérateur (manuellement ou par l'IA). */
+  mappingModifie?: boolean;
 }
 
 /** Une image : photo de point (PPA / PPN), canevas ou photo du rapport de consultation. */

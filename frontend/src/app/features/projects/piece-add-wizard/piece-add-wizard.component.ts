@@ -798,9 +798,27 @@ export class PieceAddWizardComponent implements OnInit {
     this.selectedFile = file;
     this.importPreview = null;
     this.mappedPreviewChamps = []; this.mappedPreviewRows = [];
+    this.feuilleRetenueAuto = false;
     this.piecesService.previewImport(file, this.selectedType.code).subscribe({
-      next: (preview) => { this.importPreview = preview; },
+      next: (preview) => { this.importPreview = preview; this.feuilleRetenueAuto = !!preview.feuilles?.length; },
       error: (e) => this.toast.error('Échec', e?.error?.detail || 'Lecture du fichier impossible'),
+    });
+  }
+
+  /** Classeur à plusieurs feuilles : la feuille a-t-elle été choisie par le serveur ? */
+  feuilleRetenueAuto = false;
+
+  /** L'opérateur change de feuille : nouvel aperçu, nouvelle correspondance proposée. */
+  changerFeuille(nom: string): void {
+    if (!this.selectedFile || !this.selectedType || !nom) return;
+    const feuilles = this.importPreview?.feuilles || [];
+    this.mappedPreviewChamps = []; this.mappedPreviewRows = [];
+    this.piecesService.previewImport(this.selectedFile, this.selectedType.code, nom).subscribe({
+      next: (preview) => {
+        this.importPreview = { ...preview, feuille: nom, feuilles };
+        this.feuilleRetenueAuto = false;
+      },
+      error: (e) => this.toast.error('Échec', e?.error?.detail || 'Lecture de la feuille impossible'),
     });
   }
 
@@ -809,7 +827,8 @@ export class PieceAddWizardComponent implements OnInit {
   confirmImport(): void {
     if (!this.selectedFile || !this.selectedType || this.importing) return;
     this.importing = true;
-    this.piecesService.confirmImport(this.selectedFile, this.selectedType.code, this.parentRef(), this.currentMapping, this.nextNumero())
+    this.piecesService.confirmImport(this.selectedFile, this.selectedType.code, this.parentRef(), this.currentMapping,
+                                     this.nextNumero(), this.importPreview?.feuille || null)
       .subscribe({
         next: (p) => { this.importing = false; this.finishCreate(p, 'Import confirmé'); },
         error: (e) => { this.importing = false; this.toast.error('Échec', e?.error?.detail || 'Import impossible'); },

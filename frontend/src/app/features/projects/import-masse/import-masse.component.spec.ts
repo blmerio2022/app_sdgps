@@ -297,5 +297,38 @@ describe('ImportMasseComponent', () => {
     expect(cmp.refusQuota).toBe(0);
     expect(cmp.resultats[0].detail).toBe('Colonne manquante');
   });
+
+  it('correspondance d’une ligne : outil ouvert sur la proposition, modification appliquée et signalée', () => {
+    deposer();
+    cmp.analyser();
+    pieces.getCatalog = jasmine.createSpy('getCatalog').and.returnValue(of([
+      { code: 'LPA', champs: [{ name: 'id', label: 'ID' }, { name: 'nom_point', label: 'Nom Point' }, { name: 'x_m', label: 'X(m)' }] }]));
+    const ligne = cmp.plan[0];
+    ligne.colonnes = ['ID du point', 'Abscisse'];
+    ligne.apercu = [['A', '1']];
+    ligne.mapping = { nom_point: 'ID du point' };
+    cmp.ouvrirCorrespondance(ligne);
+    expect(cmp.correspondanceLigne).toBe(ligne);
+    expect(cmp.correspondancePreview!.columns).toEqual(['ID du point', 'Abscisse']);
+    expect(cmp.correspondancePreview!.champs.length).toBe(3);
+    cmp.onCorrespondance({ nom_point: 'ID du point', x_m: 'Abscisse' });
+    cmp.appliquerCorrespondance();
+    expect(ligne.mapping).toEqual({ nom_point: 'ID du point', x_m: 'Abscisse' });
+    expect(ligne.mappingModifie).toBeTrue();
+    expect(cmp.correspondanceLigne).toBeNull();
+    expect(cmp.champsMappes(ligne)).toBe(2);
+    // Changer de type repart de la proposition de ce type.
+    cmp.changerType(ligne, ligne.type_piece);
+    expect(ligne.mappingModifie).toBeFalse();
+  });
+
+  it('pas d’outil de correspondance pour un rapport HTML', () => {
+    deposer();
+    cmp.analyser();
+    pieces.getCatalog = jasmine.createSpy('getCatalog');
+    cmp.ouvrirCorrespondance(cmp.plan[1]);
+    expect(pieces.getCatalog).not.toHaveBeenCalled();
+    expect(cmp.correspondanceLigne).toBeNull();
+  });
 });
 

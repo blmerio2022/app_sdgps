@@ -73,6 +73,28 @@ describe('PiecesService', () => {
     req.flush({ deleted_count: 2, errors: [] });
   });
 
+  describe('import d’un classeur', () => {
+    it('previewImport / confirmImport / reimport transmettent la feuille', () => {
+      const f = new File(['x'], 'a.xlsx');
+      service.previewImport(f, 'ROB', 'Feuil3').subscribe();
+      let req = httpMock.expectOne(r => r.url === `${BASE}import/`);
+      expect((req.request.body as FormData).get('feuille')).toBe('Feuil3');
+      req.flush({});
+      service.previewImport(f, 'ROB').subscribe();
+      req = httpMock.expectOne(r => r.url === `${BASE}import/`);
+      expect((req.request.body as FormData).has('feuille')).toBeFalse();
+      req.flush({});
+      service.confirmImport(f, 'ROB', { ssdgps: 's1' } as any, { point: 'ID du point' }, undefined, 'Feuil3').subscribe();
+      req = httpMock.expectOne(r => r.url === `${BASE}import/`);
+      expect((req.request.body as FormData).get('feuille')).toBe('Feuil3');
+      req.flush({});
+      service.reimport('p1', f, 'ROB', {}, 'Feuil2').subscribe();
+      req = httpMock.expectOne(r => r.url === `${BASE}import/`);
+      expect((req.request.body as FormData).get('feuille')).toBe('Feuil2');
+      req.flush({});
+    });
+  });
+
   describe('downloadReport()', () => {
     it('porte sur une session unique quand elle est fournie', () => {
       service.downloadReport('s1', 'sess-2', false).subscribe();

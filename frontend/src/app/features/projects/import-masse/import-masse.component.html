@@ -1,4 +1,6 @@
-<div class="im-fond" (click)="fermer()">
+<!-- Le fond ne ferme l'import que sur un clic SUR lui : un clic venu d'une fenêtre imbriquée
+     (correspondance), détruite pendant le clic, remonterait sinon jusqu'ici. -->
+<div class="im-fond" (click)="$event.target === $event.currentTarget && fermer()">
   <div class="im-modale" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-label="Import en masse">
     <header class="im-tete">
       <h3><i class="fas fa-layer-group"></i> Import en masse</h3>
@@ -106,7 +108,11 @@
                 <option [ngValue]="null">— Aucun —</option>
                 <option *ngFor="let c of l.candidats" [ngValue]="c.type_piece">{{ c.type_piece }} · {{ c.libelle }}<ng-container *ngIf="l.mode === 'tableau'"> ({{ pourcent(c) }} %)</ng-container></option>
               </select>
-              <span class="ctx" *ngIf="l.mode === 'tableau' && candidat(l) as c">{{ c.champs_reconnus }}/{{ c.champs_total }} colonnes reconnues<span *ngIf="c.nom_reconnu"> · indice dans le nom</span></span>
+              <span class="ctx" *ngIf="l.mode === 'tableau' && candidat(l) as c">{{ champsMappes(l) }}/{{ c.champs_total }} champs associés<span *ngIf="c.nom_reconnu"> · indice dans le nom</span></span>
+              <button type="button" class="im-corresp" *ngIf="l.mode === 'tableau' && l.type_piece && l.lisible"
+                      (click)="ouvrirCorrespondance(l)" title="Vérifier ou modifier l'association des colonnes aux champs de la pièce (manuellement ou avec l'IA)">
+                <i class="fas fa-table-columns"></i> Correspondance<span class="im-modif" *ngIf="l.mappingModifie"> · modifiée</span>
+              </button>
               <span class="ctx avert" *ngIf="l.ambigu && !l.type_piece">Plusieurs types possibles : à préciser</span>
               <span class="ctx avert" *ngIf="l.doublon">Doublon d'une pièce unique</span>
             </td>
@@ -224,5 +230,31 @@
         <button type="button" class="btn" (click)="fermer()">Terminer</button>
       </ng-container>
     </footer>
+  </div>
+
+  <!-- Correspondance des colonnes d'une feuille / d'un CSV : manuelle, ou complétée par l'IA. -->
+  <div class="im-corresp-overlay" *ngIf="correspondanceLigne && correspondancePreview"
+       (click)="fermerCorrespondance(); $event.stopPropagation()">
+    <div class="im-corresp-modale" role="dialog" aria-labelledby="im-corresp-titre" (click)="$event.stopPropagation()">
+      <header>
+        <h4 id="im-corresp-titre"><i class="fas fa-table-columns"></i> Correspondance des colonnes</h4>
+        <span class="ctx">{{ correspondanceLigne.fichier }} → {{ correspondanceLigne.type_piece }} · {{ candidat(correspondanceLigne)?.libelle }}</span>
+        <button type="button" class="im-x" (click)="fermerCorrespondance()" aria-label="Fermer"><i class="fas fa-times"></i></button>
+      </header>
+      <div class="im-corresp-corps">
+        <app-piece-column-mapper
+          [champs]="correspondancePreview.champs"
+          [preview]="correspondancePreview"
+          [typePiece]="correspondanceLigne.type_piece"
+          [mappingPropose]="correspondanceProposee"
+          [mappingInitial]="correspondanceLigne.mapping"
+          (mappingChange)="onCorrespondance($event)">
+        </app-piece-column-mapper>
+      </div>
+      <footer>
+        <button type="button" class="btn secondaire" (click)="fermerCorrespondance()">Annuler</button>
+        <button type="button" class="btn" (click)="appliquerCorrespondance()"><i class="fas fa-check"></i> Appliquer</button>
+      </footer>
+    </div>
   </div>
 </div>

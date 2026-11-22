@@ -103,9 +103,23 @@ export interface Piece {
   deleted_by_email?: string;
 }
 
+/** Feuille d'un classeur à plusieurs pièces : score pour le type demandé et type reconnu. */
+export interface FeuilleImport {
+  nom: string;
+  lignes: number;
+  score: number;
+  type_suggere: string | null;
+  libelle_suggere: string;
+}
+
 export interface PieceImportPreview {
   columns: string[];
   preview_rows: string[][];
   total_rows: number;
   champs: PieceChampDef[];
+  /** Correspondance proposée par le serveur (libellés + synonymes). */
+  mapping_propose?: Record<string, string>;
+  /** Feuille lue (classeur à plusieurs feuilles) et liste des feuilles du classeur. */
+  feuille?: string | null;
+  feuilles?: FeuilleImport[];
 }

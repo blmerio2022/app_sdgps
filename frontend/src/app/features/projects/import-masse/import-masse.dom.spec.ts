@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterTestingModule } from '@angular/router/testing';
 import { of } from 'rxjs';
@@ -54,5 +55,56 @@ describe('ImportMasseComponent (gabarit)', () => {
     expect(champDossier).withContext('champ dossier présent').toBeTruthy();
     choisir(champDossier, [new File(['x'], 'a.csv'), new File(['y'], 'b.jpg')]);
     expect(fixture.componentInstance.depots.length).toBe(2);
+  });
+});
+
+/** Fenêtre de correspondance imbriquée dans le fond de l'import : ses clics ne doivent pas
+ * remonter jusqu'au fond (qui fermerait tout l'import en masse). */
+describe('ImportMasseComponent (fenêtre de correspondance)', () => {
+  let fixture: ComponentFixture<ImportMasseComponent>;
+  let cmp: ImportMasseComponent;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      declarations: [ImportMasseComponent],
+      imports: [FormsModule, RouterTestingModule],
+      schemas: [NO_ERRORS_SCHEMA],
+      providers: [{ provide: ImportMasseService, useValue: {} }, { provide: PiecesService, useValue: {} },
+                  { provide: PdfRenderService, useValue: {} }],
+    });
+    fixture = TestBed.createComponent(ImportMasseComponent);
+    cmp = fixture.componentInstance;
+    const ligne: any = { fichier: 'a.xlsx › Feuil3', type_piece: 'ROB', candidats: [], mapping: {} };
+    cmp.correspondanceLigne = ligne;
+    cmp.correspondancePreview = { columns: ['A'], preview_rows: [], total_rows: 1, champs: [] };
+    fixture.detectChanges();
+  });
+
+  it('« Appliquer » et le fond ne ferment que la correspondance, jamais l’import', () => {
+    // Rafraîchissement automatique, comme dans l'application : la fenêtre est détruite
+    // PENDANT le clic (c'est ce qui laissait le clic remonter jusqu'au fond de l'import).
+    fixture.autoDetectChanges(true);
+    const fermee = spyOn(cmp.fermee, 'emit');
+    const appliquer = [...fixture.nativeElement.querySelectorAll('.im-corresp-modale button')]
+      .find((b: HTMLButtonElement) => /Appliquer/.test(b.textContent || '')) as HTMLButtonElement;
+    appliquer.click();
+    fixture.detectChanges();
+    expect(cmp.correspondanceLigne).toBeNull();
+    expect(fermee).not.toHaveBeenCalled();
+
+    cmp.correspondanceLigne = { fichier: 'x', type_piece: 'ROB', candidats: [], mapping: {} } as any;
+    cmp.correspondancePreview = { columns: ['A'], preview_rows: [], total_rows: 1, champs: [] };
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('.im-corresp-overlay') as HTMLElement).click();
+    expect(cmp.correspondanceLigne).toBeNull();
+    expect(fermee).not.toHaveBeenCalled();
+  });
+
+  it('un clic SUR le fond ferme l’import', () => {
+    cmp.correspondanceLigne = null;
+    fixture.detectChanges();
+    const fermee = spyOn(cmp.fermee, 'emit');
+    (fixture.nativeElement.querySelector('.im-fond') as HTMLElement).click();
+    expect(fermee).toHaveBeenCalled();
   });
 });

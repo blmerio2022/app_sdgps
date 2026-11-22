@@ -114,3 +114,37 @@ describe('PieceColumnMapperComponent (compléter avec l’IA)', () => {
     expect(ia.mappingColonnes).not.toHaveBeenCalled();
   });
 });
+
+/** Correspondance proposée par le serveur (synonymes des exports réels) et départ imposé. */
+describe('PieceColumnMapperComponent (proposition du serveur)', () => {
+  const fb = new FormBuilder();
+  const champs = [{ name: 'point', label: 'Point' }, { name: 'haut_ant_m', label: 'Haut. Ant. (m)' },
+                  { name: 'antenne', label: 'Antenne' }] as any[];
+  const preview = { columns: ['ID du point', 'Hauteur ant.', 'Type ant.'], preview_rows: [], total_rows: 0, champs } as any;
+
+  function construire(propose: any, initial: any = null): PieceColumnMapperComponent {
+    const cmp = new PieceColumnMapperComponent(fb, fauxIa([], false) as any);
+    Object.assign(cmp, { champs, preview, mappingPropose: propose, mappingInitial: initial });
+    cmp.ngOnChanges({ champs: {} as any });
+    return cmp;
+  }
+
+  it('part de la proposition du serveur, que la correspondance par nom ne trouverait pas', () => {
+    const cmp = construire({ point: 'ID du point', haut_ant_m: 'Hauteur ant.', antenne: 'Type ant.' });
+    expect(cmp.form.value).toEqual({ point: 'ID du point', haut_ant_m: 'Hauteur ant.', antenne: 'Type ant.' });
+    expect(cmp.isModified('point')).toBeFalse();
+  });
+
+  it('ignore une colonne proposée absente du fichier', () => {
+    const cmp = construire({ point: 'Colonne fantôme' });
+    expect(cmp.form.value.point).not.toBe('Colonne fantôme');
+  });
+
+  it('un départ imposé (choix déjà ajusté) prime ; « Réinitialiser » revient à la proposition', () => {
+    const cmp = construire({ point: 'ID du point', antenne: 'Type ant.' }, { point: 'ID du point', antenne: '' });
+    expect(cmp.form.value.antenne).toBe('');
+    expect(cmp.isModified('antenne')).toBeTrue();
+    cmp.resetAllToSuggestions();
+    expect(cmp.form.value.antenne).toBe('Type ant.');
+  });
+});

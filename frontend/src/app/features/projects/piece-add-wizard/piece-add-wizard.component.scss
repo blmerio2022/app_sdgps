@@ -833,3 +833,11 @@
   i { color: var(--accent-color); margin-top: 2px; flex-shrink: 0; }
   strong { color: var(--text-color); font-weight: 600; }
 }
+
+/* Choix de la feuille d'un classeur à plusieurs pièces. */
+.feuilles-classeur { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; padding: 10px 12px;
+  border-radius: 10px; background: var(--hover-bg); border: 1px solid var(--border-color);
+  label { font-size: 12.5px; font-weight: 600; color: var(--text-color); i { color: #2e7d32; margin-right: 5px; } }
+  select { flex: 1; min-width: 260px; font: inherit; font-size: 13px; padding: 6px 9px; border-radius: 8px;
+    color: var(--text-color); background: var(--secondary-color); border: 1px solid var(--border-color); }
+  .feuille-note { font-size: 12px; color: var(--text-muted); i { color: var(--accent-color); margin-right: 4px; } } }

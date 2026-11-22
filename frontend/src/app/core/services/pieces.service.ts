@@ -322,20 +322,24 @@ export class PiecesService {
     return this.http.post<Piece>(`${this.base}import-html/`, formData);
   }
 
-  previewImport(file: File, typePiece: string): Observable<PieceImportPreview> {
+  /** Phase 1 de l'import. `feuille` : feuille imposée d'un classeur (sinon le serveur choisit
+   * celle dont les en-têtes correspondent au type, et renvoie la liste des feuilles). */
+  previewImport(file: File, typePiece: string, feuille?: string | null): Observable<PieceImportPreview> {
     const formData = new FormData();
     formData.append('fichier', file, file.name);
     formData.append('type_piece', typePiece);
+    if (feuille) formData.append('feuille', feuille);
     return this.http.post<PieceImportPreview>(`${this.base}import/`, formData);
   }
 
   confirmImport(
     file: File, typePiece: string, parent: PieceParent,
-    mapping: Record<string, string>, numero?: number,
+    mapping: Record<string, string>, numero?: number, feuille?: string | null,
   ): Observable<Piece> {
     const formData = new FormData();
     formData.append('fichier', file, file.name);
     formData.append('type_piece', typePiece);
+    if (feuille) formData.append('feuille', feuille);
     if (parent.ssdgps) formData.append('ssdgps', parent.ssdgps);
     if (parent.session) formData.append('session', parent.session);
     if (numero != null) formData.append('numero', String(numero));
@@ -353,10 +357,12 @@ export class PiecesService {
     return this.http.patch<Piece>(`${this.base}${id}/`, formData);
   }
 
-  reimport(pieceId: string, file: File, typePiece: string, mapping: Record<string, string>): Observable<Piece> {
+  reimport(pieceId: string, file: File, typePiece: string, mapping: Record<string, string>,
+           feuille?: string | null): Observable<Piece> {
     const formData = new FormData();
     formData.append('fichier', file, file.name);
     formData.append('type_piece', typePiece);
+    if (feuille) formData.append('feuille', feuille);
     formData.append('mapping', JSON.stringify(mapping));
     formData.append('piece_id', pieceId);
     return this.http.post<Piece>(`${this.base}import/`, formData);

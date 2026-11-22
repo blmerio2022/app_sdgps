@@ -418,6 +418,20 @@
           </button>
         </div>
 
+        <!-- Classeur à plusieurs feuilles : feuille retenue d'office (en-têtes du type choisi),
+             modifiable ; chaque feuille annonce la pièce qu'elle semble contenir. -->
+        <div class="feuilles-classeur" *ngIf="importPreview?.feuilles?.length">
+          <label for="feuille-import"><i class="fas fa-file-excel"></i> Feuille du classeur</label>
+          <select id="feuille-import" [ngModel]="importPreview?.feuille" (ngModelChange)="changerFeuille($event)">
+            <option *ngFor="let f of importPreview!.feuilles" [value]="f.nom">
+              {{ f.nom }} — {{ f.lignes }} ligne(s){{ f.type_suggere ? ' · semble être : ' + f.libelle_suggere : '' }}
+            </option>
+          </select>
+          <span class="feuille-note" *ngIf="feuilleRetenueAuto">
+            <i class="fas fa-wand-magic-sparkles"></i> Retenue d'après ses en-têtes.
+          </span>
+        </div>
+
         <!-- Onglets : mapping des colonnes / aperçu des premières lignes. -->
         <div class="wizard-tabs" role="tablist" aria-label="Colonnes et aperçu">
           <button type="button" class="wizard-tab" role="tab" [class.active]="mapTab==='mapping'"
@@ -437,6 +451,7 @@
             [champs]="importPreview.champs"
             [preview]="importPreview"
             [typePiece]="selectedType?.code || null"
+            [mappingPropose]="importPreview.mapping_propose || null"
             (mappingChange)="onMappingChange($event)">
           </app-piece-column-mapper>
         </div>

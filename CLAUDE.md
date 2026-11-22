@@ -800,6 +800,20 @@ figé ; NE PERSISTE RIEN) — `pieces/import_masse.py::analyser_lot`, détermini
   aucune détermination à assembler. Le plan transmet les lignes de la libre et des n°k (`donnees`) et `assemble-rdi` accepte
   `sources` [{label, rows}] — aucune RDN n'est créée ; RDIA existante réassemblée
   (`piece_id`, verrou du dossier figé appliqué) ;
+- **en-têtes des exports réels** : `import_masse.ALIAS` = synonymes PAR NOM DE CHAMP
+  (« ID du point », « Abscisse », « Ordonnée », « Heure de démarrage », « Hauteur ant. »,
+  « Méthode ant. », « De l'ID de point », « Type de solution », « Longueur du vecteur »…),
+  partagés par l'import en masse et l'import unitaire. Classeurs « Feuil1…FeuilN » sans indice
+  dans le nom : reconnus par leurs seuls en-têtes (classeurs Zelmath : LPA / PPA / ROB / RTLB).
+  Cellules Excel lues par `parsing._cellule` : dates « 11/07/2024 08:03:21 », dates seules
+  « 11/07/2024 », durées « 03:34:32 », entiers sans « .0 » ;
+- **correspondance modifiable** : chaque ligne de tableau du plan porte `apercu` (5 lignes) et
+  un bouton « Correspondance » → `<app-piece-column-mapper>` (proposition automatique =
+  `mappingPropose`, choix courant = `mappingInitial`, « Compléter avec l'IA » si l'IA est
+  active) ; une ligne ajustée est marquée « modifiée », changer de type repart de la
+  proposition. ⚠ Le fond de l'import ne se ferme que sur un clic SUR lui
+  (`$event.target === $event.currentTarget`) : la fenêtre imbriquée est détruite PENDANT le
+  clic « Appliquer », qui remontait sinon jusqu'au fond et fermait tout l'import ;
 - réponse : `plan`, `images`, `ecartes`, `points` (PPA / PPN), `rc_possible`,
   `rc_existant`, `pieces_existantes` (pièces à images et RC déjà présentes).
 Exécution par le front (`<app-import-masse>`, bouton « Import en masse ») avec les imports
@@ -809,6 +823,13 @@ SANS lignes — le serveur relit le fichier), puis images groupées par pièce e
 contrôle** si coché (`compute-rc` ; RC existant → lignes remplacées, version archivée).
 ⚠ Les ré-imports par `piece_id` (`import/` et `import-html/`) ne passent pas par
 `get_object()` : ils appellent `_check_modifiable`. `DATA_UPLOAD_MAX_NUMBER_FILES` = 500.
+**Import UNITAIRE d'un classeur à plusieurs feuilles** : phase 1 de `import/` sans `feuille` →
+`choisir_feuille` évalue chaque feuille pour le type demandé et retient la meilleure ; la
+réponse porte `feuille`, `feuilles` [{nom, lignes, score, type_suggere, libelle_suggere}] et
+`mapping_propose` (synonymes) ; la phase 2 reçoit `feuille`. Front : sélecteur « Feuille du
+classeur » dans l'assistant d'ajout ET le réimport (`piece-detail-modal`), `previewImport` /
+`confirmImport` / `reimport` transmettent la feuille ; le mapper part de `mapping_propose`.
+Tests : `pieces/tests_import_classeur.py` (classeur synthétique au format Zelmath).
 Tests : `pieces/tests_import_masse.py`, `tests_import_masse_exemple.py` (bout en bout sur le
 levé d'exemple réel, formats « une pièce par dossier » et « à plat », sauté s'il est absent — non versionné), `import-masse.component.spec.ts`.
 
