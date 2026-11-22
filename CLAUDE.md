@@ -810,6 +810,12 @@ figé ; NE PERSISTE RIEN) — `pieces/import_masse.py::analyser_lot`, détermini
   en-têtes « Fabricant ant. », « Fabricant d'antenne », « Marque antenne », « Constructeur »…
   (`ALIAS`). La migration `accounts/0043` l'insère dans les configurations de champs déjà
   enregistrées (une config ne mémorise que les champs activés) ; `pieces/0021` sa métadonnée ;
+- **ROB — cadence CALCULÉE** (`pieces/cadence.py`, signal `pre_save` sur les pièces ROB : écran,
+  imports, ré-imports, restauration) : `durée ÷ (époques − 1)` ramenée à l'intervalle standard
+  le plus proche (`INTERVALLES` : 1, 2, 5, 10, 15, 30 s…), écrite « 1 s », « 0,5 s ». Cellule vide
+  → calculée ; cadence calculée auparavant → recalculée si la durée ou les époques changent ;
+  cadence FOURNIE par la source → conservée (elle seule rend utile le contrôle de complétude
+  de `controle_valeurs`). Tests : `pieces/tests_cadence.py` ;
 - **en-têtes des exports réels** : `import_masse.ALIAS` = synonymes PAR NOM DE CHAMP
   (« ID du point », « Abscisse », « Ordonnée », « Heure de démarrage », « Hauteur ant. »,
   « Méthode ant. », « De l'ID de point », « Type de solution », « Longueur du vecteur »…),

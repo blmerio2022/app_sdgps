@@ -9,3 +9,5 @@ class PiecesConfig(AppConfig):
     def ready(self):
         # Historique des versions : archive le contenu remplacé avant chaque changement.
         from . import versions  # noqa: F401
+        # ROB : cadence d'enregistrement calculée (durée ÷ (époques − 1)) avant enregistrement.
+        from . import cadence  # noqa: F401
