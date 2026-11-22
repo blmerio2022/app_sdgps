@@ -8,23 +8,30 @@ from django.core.exceptions import ValidationError
 # --- Formats d'identifiants de propriété -----------------------------------
 # Indice : soit un numéro d'ordre (1–1000, borne large tolérée), soit 1 à 2 lettres majuscules.
 _INDICE = r'(?:\d{1,4}|[A-Z]{1,2})'
-REQUISITION_RE = re.compile(rf'^R\d{{1,6}}/{_INDICE}$')
-TITRE_RE = re.compile(rf'^T\d{{1,6}}/{_INDICE}$')
+# La lettre de tête (R pour une réquisition, T pour un titre) est FACULTATIVE : les deux
+# écritures circulent dans les dossiers (« R19000/55 » comme « 19000/55 »).
+REQUISITION_RE = re.compile(rf'^R?\d{{1,6}}/{_INDICE}$')
+TITRE_RE = re.compile(rf'^T?\d{{1,6}}/{_INDICE}$')
+MESSAGE_REQUISITION = ("Format de réquisition invalide. Attendu : [R]<numéro>/<indice> "
+                       "(ex. R19000/55, 19000/55 ou R19000/AB).")
+MESSAGE_TITRE = ("Format de titre invalide. Attendu : [T]<numéro>/<indice> "
+                 "(ex. T12345/A ou 12345/A).")
+
+
+def normaliser_identifiant(value):
+    """Écriture canonique d'une saisie : espaces retirés, lettres en majuscules
+    (« r 19000/ab » → « R19000/AB »). La lettre de tête n'est ni ajoutée ni retirée."""
+    return re.sub(r'\s+', '', str(value or '')).upper()
 
 
 def validate_requisition_format(value):
     if value and not REQUISITION_RE.match(value):
-        raise ValidationError(
-            "Format de réquisition invalide. Attendu : R<numéro>/<indice> "
-            "(ex. R19000/55 ou R19000/AB)."
-        )
+        raise ValidationError(MESSAGE_REQUISITION)
 
 
 def validate_titre_format(value):
     if value and not TITRE_RE.match(value):
-        raise ValidationError(
-            "Format de titre invalide. Attendu : T<numéro>/<indice> (ex. T12345/A)."
-        )
+        raise ValidationError(MESSAGE_TITRE)
 
 
 # --- Procédures / natures d'affaire -----------------------------------------

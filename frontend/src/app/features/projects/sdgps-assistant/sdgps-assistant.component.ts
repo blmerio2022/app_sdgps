@@ -27,8 +27,9 @@ export type StepKey = 'projet' | 'propriete' | 'affaire' | 'dossier' | 'pieces' 
 type Mode = 'existant' | 'nouveau';
 
 /** Formats d'identifiant de propriété — miroir de `projects/validators.py`. */
-const REQUISITION_RE = /^R\d{1,6}\/(?:\d{1,4}|[A-Z]{1,2})$/;
-const TITRE_RE = /^T\d{1,6}\/(?:\d{1,4}|[A-Z]{1,2})$/;
+/** Lettre de tête facultative : « R19000/55 » comme « 19000/55 » (miroir de validators.py). */
+export const REQUISITION_RE = /^R?\d{1,6}\/(?:\d{1,4}|[A-Z]{1,2})$/i;
+export const TITRE_RE = /^T?\d{1,6}\/(?:\d{1,4}|[A-Z]{1,2})$/i;
 
 /** Présentation des 4 natures de SDGPS (cartes de l'étape « Dossier »). */
 export const NATURES_PRESENTATION: { value: NatureSsdgps; court: string; titre: string; icon: string }[] = [
@@ -298,7 +299,7 @@ export class SdgpsAssistantComponent implements OnInit, OnDestroy {
       case 'projet':
         return this.projetMode === 'existant'
           ? !!this.projetId
-          : !!this.projetNew.nom_projet.trim() && !!this.projetNew.code_projet.trim()
+          : !!this.projetNew.nom_projet.trim()
             && (!!this.currentOrgId || !!this.projetNew.organization);
       case 'propriete':
         return this.proprieteMode === 'existant'
@@ -339,16 +340,6 @@ export class SdgpsAssistantComponent implements OnInit, OnDestroy {
       next: list => { this.proprietes = list; this.proprieteMode = list.length ? 'existant' : 'nouveau'; },
       error: () => { this.proprietes = []; },
     });
-  }
-
-  /** Code projet proposé : préfixe du nom + date + suffixe aléatoire court. */
-  suggestCode(): void {
-    const prefix = (this.projetNew.nom_projet || 'PRJ').normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase() || 'PRJ';
-    const d = new Date();
-    const date = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-    const rand = Math.random().toString(36).slice(2, 5).toUpperCase();
-    this.projetNew.code_projet = `${prefix}-${date}-${rand}`;
   }
 
   private resetBelowProjet(): void {
@@ -562,7 +553,9 @@ export class SdgpsAssistantComponent implements OnInit, OnDestroy {
     const projet = this.projetMode === 'existant'
       ? { id: this.projetId! }
       : { nouveau: {
-          nom_projet: this.projetNew.nom_projet.trim(), code_projet: this.projetNew.code_projet.trim(),
+          nom_projet: this.projetNew.nom_projet.trim(),
+          // Code laissé vide → attribué par le serveur (PRJ-<année>-<n°>).
+          ...(this.projetNew.code_projet.trim() ? { code_projet: this.projetNew.code_projet.trim() } : {}),
           description_projet: this.projetNew.description_projet.trim(),
           ...(this.currentOrgId ? {} : { organization: this.projetNew.organization }),
         } };

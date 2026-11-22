@@ -194,7 +194,8 @@ export class ProjectListComponent implements OnInit, OnDestroy {
   ) {
     this.form = this.fb.group({
       nom_projet: ['', Validators.required],
-      code_projet: ['', Validators.required],
+      // Généré par le serveur à la création (laissé vide) ; modifiable ensuite.
+      code_projet: [''],
       description_projet: [''],
       statut: ['brouillon', Validators.required],
       organization: ['', Validators.required],
@@ -636,7 +637,7 @@ export class ProjectListComponent implements OnInit, OnDestroy {
   }
   getFieldDescription(field: string): string {
     const d: Record<string, string> = {
-      code_projet: 'Identifiant court et unique du projet',
+      code_projet: 'Identifiant court et unique du projet — généré automatiquement à la création (PRJ-<année>-<n°>)',
       nom_projet: 'Nom complet du projet',
       statut: 'État d\'avancement du projet',
       organization_name: 'Organisation à laquelle appartient le projet',
@@ -702,6 +703,8 @@ export class ProjectListComponent implements OnInit, OnDestroy {
   openCreate(): void {
     this.editing = null;
     this.form.reset({ statut: 'brouillon', organization: this.currentOrgId || '' });
+    this.form.get('code_projet')!.clearValidators();
+    this.form.get('code_projet')!.updateValueAndValidity();
     this.showModal = true;
   }
   openEdit(projet: Projet, ev: Event): void {
@@ -712,6 +715,8 @@ export class ProjectListComponent implements OnInit, OnDestroy {
       description_projet: projet.description_projet || '', statut: projet.statut,
       organization: projet.organization,
     });
+    this.form.get('code_projet')!.setValidators(Validators.required);
+    this.form.get('code_projet')!.updateValueAndValidity();
     this.showModal = true;
   }
   closeModal(): void { this.showModal = false; this.editing = null; }
@@ -721,6 +726,8 @@ export class ProjectListComponent implements OnInit, OnDestroy {
     if (this.form.invalid || this.submitting) { this.form.markAllAsTouched(); return; }
     this.submitting = true;
     const payload = { ...this.form.value };
+    // Création : code laissé vide → généré par le serveur (PRJ-<année>-<n°>).
+    if (!this.editing && !String(payload.code_projet || '').trim()) delete payload.code_projet;
     const done = () => { this.submitting = false; this.closeModal(); this.load(); };
     const fail = (e: any) => {
       this.submitting = false;
@@ -852,7 +859,7 @@ export class ProjectListComponent implements OnInit, OnDestroy {
   }
   openFromContext(): void { if (this.contextMenuProjet) this.open(this.contextMenuProjet); this.closeAllContextMenus(); }
   openEditFromContext(): void {
-    if (this.contextMenuProjet) { this.editing = this.contextMenuProjet; this.form.reset({ nom_projet: this.contextMenuProjet.nom_projet, code_projet: this.contextMenuProjet.code_projet, description_projet: this.contextMenuProjet.description_projet || '', statut: this.contextMenuProjet.statut, organization: this.contextMenuProjet.organization }); this.showModal = true; }
+    if (this.contextMenuProjet) { this.openEdit(this.contextMenuProjet, new Event('menu')); }
     this.closeAllContextMenus();
   }
   openDeleteFromContext(): void { if (this.contextMenuProjet) { this.deleteTarget = this.contextMenuProjet; this.isBulkDelete = false; this.showDeleteModal = true; } this.closeAllContextMenus(); }

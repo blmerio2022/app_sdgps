@@ -419,8 +419,11 @@
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label>Code projet <span class="required">*</span></label>
-              <input type="text" formControlName="code_projet" placeholder="PRJ-2026-001">
+              <label>Code projet <span class="required" *ngIf="editing">*</span></label>
+              <input type="text" formControlName="code_projet"
+                     [placeholder]="editing ? 'PRJ-2026-001' : 'Généré automatiquement'">
+              <small class="field-hint" *ngIf="!editing"><i class="fas fa-wand-magic-sparkles"></i>
+                Laissez vide : le code est attribué à l'enregistrement (PRJ-&lt;année&gt;-&lt;n°&gt;).</small>
             </div>
             <div class="form-group">
               <label>Statut <span class="required">*</span></label>

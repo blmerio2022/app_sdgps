@@ -1,5 +1,5 @@
 import { of, throwError } from 'rxjs';
-import { SdgpsAssistantComponent } from './sdgps-assistant.component';
+import { SdgpsAssistantComponent, REQUISITION_RE, TITRE_RE } from './sdgps-assistant.component';
 
 describe('SdgpsAssistantComponent (logique)', () => {
   let cmp: SdgpsAssistantComponent;
@@ -48,11 +48,11 @@ describe('SdgpsAssistantComponent (logique)', () => {
       expect(projects.getProprietes).toHaveBeenCalledWith('p1');
     });
 
-    it('nouveau projet : nom + code, et organisation si l’utilisateur n’en a pas', () => {
+    it('nouveau projet : le nom suffit (code généré par le serveur), organisation si l’utilisateur n’en a pas', () => {
       cmp.projetMode = 'nouveau';
-      cmp.projetNew.nom_projet = 'P';
       expect(cmp.stepValid('projet')).toBeFalse();
-      cmp.projetNew.code_projet = 'P-1';
+      cmp.projetNew.nom_projet = 'P';
+      cmp.projetNew.code_projet = '';
       expect(cmp.stepValid('projet')).toBeTrue();
       cmp.currentOrgId = null;
       expect(cmp.stepValid('projet')).toBeFalse();
@@ -117,10 +117,14 @@ describe('SdgpsAssistantComponent (logique)', () => {
       expect(cmp.affaireId).toBeNull();
     });
 
-    it('suggestCode propose un code à partir du nom', () => {
+    it('code projet facultatif : généré par le serveur quand il est laissé vide', () => {
       cmp.projetNew.nom_projet = 'Élancourt Nord';
-      cmp.suggestCode();
-      expect(cmp.projetNew.code_projet).toMatch(/^ELAN-\d{8}-[A-Z0-9]{3}$/);
+      cmp.projetNew.code_projet = '';
+      expect(TITRE_RE.test('12345/a')).toBeTrue();
+      expect(TITRE_RE.test('T12345/A')).toBeTrue();
+      expect(REQUISITION_RE.test('19000/55')).toBeTrue();
+      expect(REQUISITION_RE.test('R19000/AB')).toBeTrue();
+      expect(REQUISITION_RE.test('X19000/55')).toBeFalse();
     });
   });
 

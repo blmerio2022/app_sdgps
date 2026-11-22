@@ -92,13 +92,13 @@ class Propriete(BaseModel):
     nom_propriete = models.CharField(max_length=255, verbose_name="Propriété-dite")
     id_requisition = models.CharField(
         max_length=50, blank=True, verbose_name="Réquisition",
-        validators=[RegexValidator(REQUISITION_RE, "Format attendu : R<numéro>/<indice>.")],
-        help_text="Ex. R19000/55",
+        validators=[RegexValidator(REQUISITION_RE, "Format attendu : [R]<numéro>/<indice>.")],
+        help_text="Ex. R19000/55 ou 19000/55",
     )
     id_titre = models.CharField(
         max_length=50, blank=True, verbose_name="Titre foncier",
-        validators=[RegexValidator(TITRE_RE, "Format attendu : T<numéro>/<indice>.")],
-        help_text="Ex. T12345/A",
+        validators=[RegexValidator(TITRE_RE, "Format attendu : [T]<numéro>/<indice>.")],
+        help_text="Ex. T12345/A ou 12345/A",
     )
     projet = models.ForeignKey(
         Projet, on_delete=models.CASCADE, related_name='proprietes',

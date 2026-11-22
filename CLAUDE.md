@@ -279,6 +279,16 @@ détermination** — et non plus par point ancien *tenu fixe quelque part*.
   pour bénéficier du correctif ;
 - tests : `backend/pieces/tests_rc.py` (17 cas).
 
+**Code projet généré ; titre / réquisition avec ou sans lettre.** Un projet créé sans code
+(ou code vide) reçoit `PRJ-<année>-<n°>` (`projects/codes.py` : plus grand numéro de l'année,
+projets supprimés compris ; course rattrapée par l'unicité — `creer_avec_code`). Un code saisi
+est conservé ; il ne peut pas être vidé en modification. Vaut pour l'écran Projets et
+l'assistant SDGPS (même `ProjetSerializer`). Titre `[T]<n°>/<indice>` et réquisition
+`[R]<n°>/<indice>` : lettre de tête FACULTATIVE (`validators.TITRE_RE` / `REQUISITION_RE`,
+miroir front dans `sdgps-assistant`) ; saisie normalisée (espaces retirés, majuscules —
+`normaliser_identifiant`), lettre ni ajoutée ni retirée. Tests :
+`projects/tests_codes_identifiants.py`.
+
 **Vues « à plat » entre niveaux.** Depuis un projet, une propriété, une affaire ou un SSDGPS
 multi-session, le menu `<app-sous-niveaux-menu>` (icône *sitemap* dans les actions des
 lignes ; bouton « À plat » dans l'en-tête de l'explorateur) ouvre la liste de TOUS les

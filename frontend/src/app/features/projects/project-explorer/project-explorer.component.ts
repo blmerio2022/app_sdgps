@@ -116,8 +116,8 @@ const SORTABLE_FIELDS_BY_LEVEL: Record<Level, SortableField[]> = {
 
 const FIELD_DESCRIPTIONS: Record<string, string> = {
   nom_propriete: 'Nom de la propriété (propriété-dite)',
-  id_requisition: 'Identifiant de réquisition (R<numéro>/<indice>)',
-  id_titre: 'Identifiant du titre foncier (T<numéro>/<indice>)',
+  id_requisition: 'Identifiant de réquisition ([R]<numéro>/<indice> — la lettre R est facultative)',
+  id_titre: 'Identifiant du titre foncier ([T]<numéro>/<indice> — la lettre T est facultative)',
   id_propriete: 'Identifiant de la propriété : le titre foncier s\'il est renseigné, sinon la réquisition',
   numero_sd_affaire: "Numéro d'ordre du SD d'affaire dans la propriété",
   nature_procedure_affaire: "Type de procédure d'immatriculation",

@@ -1119,3 +1119,6 @@
   .sort-rank { line-height: 1; }
   i { margin-left: 0; opacity: 1; font-size: 10px; }
 }
+
+/* Aide sous le champ « Code projet » (création : code attribué par le serveur). */
+.field-hint { display: block; margin-top: 5px; font-size: 11.5px; color: var(--text-muted); i { color: var(--accent-color); margin-right: 4px; } }

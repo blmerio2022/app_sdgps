@@ -81,12 +81,9 @@
         <div class="as-form" *ngIf="projetMode === 'nouveau'">
           <label class="field span-2"><span>Nom du projet <em>*</em></span>
             <input type="text" [(ngModel)]="projetNew.nom_projet" placeholder="Ex. Levé cadastral — Commune X" maxlength="255" /></label>
-          <label class="field"><span>Code projet <em>*</em></span>
-            <div class="as-input-action">
-              <input type="text" [(ngModel)]="projetNew.code_projet" placeholder="Identifiant court unique" maxlength="50" />
-              <button type="button" class="btn-ghost btn-sm" (click)="suggestCode()" title="Proposer un code"><i class="fas fa-wand-magic-sparkles"></i></button>
-            </div>
-            <span class="hint">Unique dans l'application.</span></label>
+          <label class="field"><span>Code projet</span>
+            <input type="text" [(ngModel)]="projetNew.code_projet" placeholder="Généré automatiquement" maxlength="50" />
+            <span class="hint">Laissez vide : attribué à la création (PRJ-&lt;année&gt;-&lt;n°&gt;).</span></label>
           <label class="field" *ngIf="!currentOrgId"><span>Organisation <em>*</em></span>
             <select [(ngModel)]="projetNew.organization">
               <option value="">— Choisir —</option>
@@ -145,11 +142,11 @@
           <label class="field span-2"><span>Propriété-dite <em>*</em></span>
             <input type="text" [(ngModel)]="proprieteNew.nom_propriete" placeholder="Ex. Bled Ouled Ahmed" /></label>
           <label class="field"><span>Titre foncier</span>
-            <input type="text" [(ngModel)]="proprieteNew.id_titre" placeholder="T12345/A"
+            <input type="text" [(ngModel)]="proprieteNew.id_titre" placeholder="T12345/A ou 12345/A"
                    [class.invalid]="hasError(proprieteErrors(), 'titre')" />
             <span class="err" *ngIf="hasError(proprieteErrors(), 'titre')">Format attendu : T&lt;numéro&gt;/&lt;indice&gt;</span></label>
           <label class="field"><span>Réquisition</span>
-            <input type="text" [(ngModel)]="proprieteNew.id_requisition" placeholder="R19000/55"
+            <input type="text" [(ngModel)]="proprieteNew.id_requisition" placeholder="R19000/55 ou 19000/55"
                    [class.invalid]="hasError(proprieteErrors(), 'requisition')" />
             <span class="err" *ngIf="hasError(proprieteErrors(), 'requisition')">Format attendu : R&lt;numéro&gt;/&lt;indice&gt;</span></label>
           <p class="hint span-2 as-inline-hint" *ngIf="hasError(proprieteErrors(), 'identifiant')">

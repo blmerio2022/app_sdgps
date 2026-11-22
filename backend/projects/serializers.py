@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from organismes.models import OrganismeNiveau1, OrganismeNiveau2
 from .models import Projet, Propriete, Affaire, Ssdgps, Session, ModeleSsdgps
-from .validators import validate_affaire_coherence
+from .validators import normaliser_identifiant, validate_affaire_coherence
 from accounts.fields import AuthorDisplayField
 
 
@@ -31,14 +31,28 @@ class ProjetSerializer(serializers.ModelSerializer):
             'created_by_email', 'updated_by_email', 'deleted_by_email',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'is_deleted', 'deleted_at']
+        # Le code est GÉNÉRÉ quand il est laissé vide à la création (`codes.py`).
+        extra_kwargs = {'code_projet': {'required': False, 'allow_blank': True}}
 
     def validate_code_projet(self, value):
+        value = (value or '').strip()
+        if not value:
+            if self.instance is not None:
+                raise serializers.ValidationError("Le code projet ne peut pas être vidé.")
+            return value
         qs = Projet.objects.filter(code_projet=value)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
             raise serializers.ValidationError("Ce code projet est déjà utilisé.")
         return value
+
+    def create(self, validated_data):
+        if validated_data.get('code_projet'):
+            return super().create(validated_data)
+        from .codes import creer_avec_code
+        return creer_avec_code(lambda code: super(ProjetSerializer, self).create(
+            {**validated_data, 'code_projet': code}))
 
 
 class ProprieteSerializer(serializers.ModelSerializer):
@@ -71,6 +85,16 @@ class ProprieteSerializer(serializers.ModelSerializer):
             'created_by_email', 'updated_by_email', 'deleted_by_email',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'is_deleted', 'deleted_at']
+
+    def to_internal_value(self, data):
+        # Saisie normalisée AVANT validation : « r 19000/ab » → « R19000/AB ». La lettre de
+        # tête (R / T) reste facultative (cf. validators.py).
+        if hasattr(data, 'copy'):
+            data = data.copy()
+        for champ in ('id_requisition', 'id_titre'):
+            if champ in data and data[champ] is not None:
+                data[champ] = normaliser_identifiant(data[champ])
+        return super().to_internal_value(data)
 
     def get_id_propriete(self, obj) -> str:
         """Titre foncier prioritaire, repli sur la réquisition ('' si aucun des deux)."""
