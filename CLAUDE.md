@@ -576,7 +576,13 @@ puis de deviner pièce par pièce ce que la nature du dossier exige.
   de l'étape — ne pas la remettre en `position: sticky` dans le contenu ;
 - tests : `backend/projects/tests_modeles_assistant.py` (48 cas) + specs
   `modeles-ssdgps.service`, `sdgps-assistant`, `modele-ssdgps-editor`,
-  `modele-ssdgps-list`, `piece-add-wizard` (type imposé).
+  `modele-ssdgps-list`, `piece-add-wizard` (type imposé) ;
+- **déterminations intermédiaires communes aux 4 natures** : RDN et RDIA sont applicables au
+  DLC comme au PDC / DDC / PLC. L'ancien type `RDI` (première version du catalogue, réservé au
+  DLC) n'a plus aucune nature : il n'est plus proposé, les pièces RDI existantes restent
+  lisibles et rendues. La migration `projects/0011` remplace RDI par « RDN n°1 + RDIA » dans les
+  modèles et dans la liste de contrôle des dossiers modifiables sans pièce RDI. Tests :
+  `projects/tests_dlc_determinations.py`.
 
 **Import de PDF d'images (RDC, pièces à images, photos PPA/PPN).** Un PDF déposé là où
 l'on attend des images ouvre l'**éditeur de pages** `features/projects/pdf-page-editor/`

@@ -81,8 +81,9 @@ class ModelesSystemeTests(BaseTest):
 
     def test_les_pieces_suivent_le_catalogue_de_la_nature(self):
         types = [p['type_piece'] for p in self.modele_systeme('DLC').pieces]
-        self.assertIn('RDI', types)          # propre au DLC
-        self.assertNotIn('RDN', types)       # non applicable au DLC
+        self.assertIn('RDN', types)          # déterminations intermédiaires : communes aux 4 natures
+        self.assertIn('RDIA', types)
+        self.assertNotIn('RDI', types)       # ancien type réservé au DLC, plus proposé
         self.assertNotIn('PGSDGPS', types)   # générée par le rapport
         self.assertEqual(types, [p['type_piece'] for p in pieces_par_defaut('DLC/GPS')])
 
