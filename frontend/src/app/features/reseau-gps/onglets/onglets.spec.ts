@@ -16,7 +16,7 @@ function variante(code: string, score: number, lignes: number): VarianteReseau {
   return { code, nom: code, indicateurs: { score, nb_lignes_base: lignes } } as unknown as VarianteReseau;
 }
 
-describe('Onglets du module Réseau GPS', () => {
+describe('Onglets du module Réseau GNSS', () => {
   let service: jasmine.SpyObj<ReseauGpsService>;
   let toast: jasmine.SpyObj<ToastService>;
   let store: ReseauGpsStore;

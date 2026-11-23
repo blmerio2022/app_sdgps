@@ -1,6 +1,8 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { Subscription } from 'rxjs';
 import { OngletReseau, ReseauGpsStore } from '../reseau-gps.store';
-import { COULEURS_POINTS, LIBELLES_POINTS, StylePoint } from '../reseau-carte/reseau-carte.component';
+import { COULEURS_POINTS, LIBELLES_POINTS, ReseauCarteComponent, StylePoint } from '../reseau-carte/reseau-carte.component';
+import { fr } from '../onglets/onglet-controle.component';
 
 interface DefOnglet { code: OngletReseau; titre: string; icone: string; etape: number | null; }
 
@@ -10,11 +12,12 @@ const LEGENDE: Record<OngletReseau, StylePoint[]> = {
   controle: ['ancien', 'ecarte', 'suggere'],
   ecarts: ['homogene', 'non_homogene', 'non_controle'],
   densification: ['homogene', 'propose', 'nouveau'],
+  zones: ['ancien', 'ecarte'],
   fonds: [],
 };
 
 /**
- * Module « Réseau de triangulation GPS ». Les onglets suivent le travail de densification
+ * Module « Réseau de triangulation GNSS ». Les onglets suivent le travail de densification
  * (points anciens → réseau de contrôle → contrôle des écarts → densification), plus les
  * fonds de carte ; la carte reste visible à droite et montre ce que l'onglet traite.
  * L'état est porté par `ReseauGpsStore`, fourni ici (une instance par visite de la page).
@@ -25,22 +28,45 @@ const LEGENDE: Record<OngletReseau, StylePoint[]> = {
   styleUrls: ['./reseau-gps-page.component.scss'],
   providers: [ReseauGpsStore],
 })
-export class ReseauGpsPageComponent implements OnInit {
+export class ReseauGpsPageComponent implements OnInit, OnDestroy {
   readonly onglets: DefOnglet[] = [
     { code: 'points', titre: 'Points anciens', icone: 'fas fa-map-marker-alt', etape: 1 },
     { code: 'controle', titre: 'Réseau de contrôle', icone: 'fas fa-project-diagram', etape: 2 },
     { code: 'ecarts', titre: 'Contrôle des écarts', icone: 'fas fa-ruler-combined', etape: 3 },
     { code: 'densification', titre: 'Densification', icone: 'fas fa-map-pin', etape: 4 },
+    { code: 'zones', titre: 'Zones', icone: 'fas fa-draw-polygon', etape: null },
     { code: 'fonds', titre: 'Fonds de carte', icone: 'fas fa-layer-group', etape: null },
   ];
   readonly couleurs = COULEURS_POINTS;
   readonly libelles = LIBELLES_POINTS;
+  readonly fr = fr;
   etiquettesDistances = true;
   afficherTriangles = true;
+  /** Carte élargie à toute la page (Échap pour quitter). */
+  pleinEcran = false;
+  @ViewChild('carte') carte?: ReseauCarteComponent;
+  private abonnement?: Subscription;
 
   constructor(public store: ReseauGpsStore) {}
 
-  ngOnInit(): void { this.store.init(); }
+  ngOnInit(): void {
+    this.store.init();
+    this.abonnement = this.store.cadrerZones$.subscribe(ids => { if (ids?.length) setTimeout(() => this.carte?.cadrerSurZones(ids)); });
+  }
+
+  ngOnDestroy(): void { this.abonnement?.unsubscribe(); }
+
+  /** Mode de clic transmis à la carte. */
+  get outilCarte(): 'aucun' | 'dessin' | 'lignes' {
+    return this.store.modeDessinZone ? 'dessin' : this.store.editionLignes ? 'lignes' : 'aucun';
+  }
+
+  basculerPleinEcran(): void { this.pleinEcran = !this.pleinEcran; }
+
+  @HostListener('document:keydown.escape')
+  quitterPleinEcran(): void {
+    if (this.pleinEcran && !this.store.modeDessinZone && !this.store.editionLignes) this.pleinEcran = false;
+  }
 
   /** Résumé affiché sous le titre de chaque onglet (état d'avancement). */
   resume(o: OngletReseau): string {
@@ -57,6 +83,7 @@ export class ReseauGpsPageComponent implements OnInit {
       case 'densification': return s.densification
         ? `${score(s.densification.score)}/100${s.densificationPerimee ? ' · à recalculer' : ''}`
         : `${s.nouveaux.length} point(s) nouveau(x)`;
+      case 'zones': return s.zones.length ? `${s.zones.length} zone(s)` : 'Import ou tracé';
       default: return `${s.listeFonds.length} fond(s)`;
     }
   }

@@ -48,9 +48,17 @@
 <app-rg-section titre="Liste des points anciens" icone="fas fa-map-marker-alt" cle="points.liste"
                 [badge]="store.anciens.length ? store.anciensRetenus.length + ' / ' + store.anciens.length : null">
   <div class="rg-ligne-outils">
-    <span class="rg-compte">{{ store.anciensRetenus.length }} retenu(s)<ng-container *ngIf="store.nbEcartes">,
-      {{ store.nbEcartes }} écarté(s)</ng-container><em *ngIf="store.libelleSource"> · {{ store.libelleSource }}</em></span>
+    <span class="rg-compte">{{ store.anciensRetenus.length }} actif(s)<ng-container *ngIf="store.nbEcartes">,
+      {{ store.nbEcartes }} désactivé(s)</ng-container><em *ngIf="store.libelleSource"> · {{ store.libelleSource }}</em></span>
     <span class="spacer"></span>
+    <ng-container *ngIf="store.anciens.length">
+      <button type="button" class="btn-ghost btn-sm" (click)="store.activerTous(true)" title="Activer tous les points">
+        <i class="fas fa-check-double"></i> Tout activer</button>
+      <button type="button" class="btn-ghost btn-sm" (click)="store.activerTous(false)" title="Désactiver tous les points">
+        <i class="fas fa-ban"></i> Tout désactiver</button>
+      <button type="button" class="btn-ghost btn-sm" (click)="store.activerTous('inverser')" title="Inverser l'activation">
+        <i class="fas fa-exchange-alt"></i></button>
+    </ng-container>
     <button type="button" class="btn-ghost btn-sm" (click)="store.ajouterAncien()"><i class="fas fa-plus"></i> Ajouter</button>
     <button type="button" class="btn-ghost btn-sm" *ngIf="store.anciens.length" (click)="store.viderAnciens()"
             title="Vider la liste"><i class="fas fa-trash"></i></button>
@@ -59,13 +67,14 @@
   <div class="rg-table-wrap" *ngIf="store.anciens.length">
     <table class="rg-table">
       <thead>
-        <tr><th title="Retenu dans le réseau">Retenu</th><th>Nom</th><th>X (m)</th><th>Y (m)</th>
+        <tr><th title="Point intégré au réseau">Actif</th><th>Nom</th><th>X (m)</th><th>Y (m)</th>
           <th>Référence</th><th>Matérialisation</th><th>Signalisation</th><th></th></tr>
       </thead>
       <tbody>
         <tr *ngFor="let p of store.anciens; let i = index; trackBy: trackIndex" [class.attenue]="!p.retenu">
           <td><input type="checkbox" [checked]="p.retenu" (change)="basculer(p)"
-                     [title]="p.retenu ? 'Écarter ce point du réseau' : (p.motifEcart || 'Réintégrer ce point')"></td>
+                     [attr.aria-label]="(p.retenu ? 'Désactiver ' : 'Activer ') + p.nom_point"
+                     [title]="p.retenu ? 'Désactiver ce point (il reste dans la liste)' : (p.motifEcart || 'Activer ce point')"></td>
           <td><input [(ngModel)]="p.nom_point" (ngModelChange)="store.toutInvalider()" class="w-nom"></td>
           <td><input type="number" step="0.01" [(ngModel)]="p.x_m" (ngModelChange)="store.toutInvalider()" class="w-coord"></td>
           <td><input type="number" step="0.01" [(ngModel)]="p.y_m" (ngModelChange)="store.toutInvalider()" class="w-coord"></td>
@@ -78,6 +87,6 @@
       </tbody>
     </table>
   </div>
-  <p class="hint" *ngIf="store.nbEcartes">Un point écarté reste dans la liste (grisé), son motif en info-bulle ;
-    cochez-le pour le réintégrer.</p>
+  <p class="hint">Seuls les points <strong>actifs</strong> entrent dans le réseau. Un point désactivé reste dans la liste
+    (grisé), son motif en info-bulle ; vous pouvez aussi l'activer ou le désactiver depuis sa fiche sur la carte.</p>
 </app-rg-section>

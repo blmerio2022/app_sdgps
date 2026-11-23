@@ -151,14 +151,14 @@ change-password/logout.
 - `platform_admin/` — profil self-service du super-admin + mot de passe (pas de modèles,
   uniquement des vues).
 - `reseaux/` — conception de réseaux de triangulation GPS (pas de modèles ; voir
-  « Réseau de triangulation GPS » ci-dessous).
+  « Réseau de triangulation GNSS » ci-dessous).
 - Racines des URL (`backend/urls.py`) :
   - `/api/auth/` → accounts (login, forgot/verify/reset/change password, `me/`) — **pas de
     `register/`** : voir « Création de comptes » ci-dessous
   - `/api/v1/users/` → gestion des utilisateurs
   - `/api/v1/organizations/` → organisations
   - `/api/v1/platform-admin/` → profil super-admin
-  - `/api/v1/reseau-gps/` → réseau de triangulation GPS (tous rôles)
+  - `/api/v1/reseau-gps/` → réseau de triangulation GNSS (tous rôles ; URL inchangée)
   - `/api/v1/notifications/` → notifications personnelles
   - `/api/v1/ressources-tbc/` → étude modèle et ruban TBC à télécharger (tous rôles)
 
@@ -604,7 +604,10 @@ changement backend**, le PDF lui-même n'est jamais stocké.
 - tests : `pdf-page-editor.component.spec.ts` (+ utilitaires), specs wizard / galerie /
   photos par point.
 
-**Réseau de triangulation GPS (module indépendant, TOUS les rôles).** Conçoit la géométrie
+**Réseau de triangulation GNSS (module indépendant, TOUS les rôles).** Renommé de « GPS » en
+« GNSS » (libellés, menu « Réseau GNSS ») ; routes `/reseau-gps`, API `/api/v1/reseau-gps/` et
+noms de code (`reseaux/`, `ReseauGpsStore`…) INCHANGÉS pour ne casser ni liens ni préférences.
+Conçoit la géométrie
 d'un réseau GNSS avant le terrain, à partir d'une liste de points au format LPA. Les règles
 viennent de `docs/normes-reseau-triangulation-gps.md` (codes **N1…N12** : angles 30°–120°,
 triangles équilatéraux, 100 % des lignes en boucle, ≥ 2 liaisons par station, lignes ≤ 10/15 km
@@ -612,7 +615,34 @@ selon l'Instruction GPS ANCFCC 2007, règle des stations voisines, ≥ 3 quadran
 **N11** tout point de la zone à ≤ 5 km de 3 points de densification, **N12** points anciens
 homogènes à ΔD ≤ 15 cm). L'écran suit le **workflow de densification** en onglets numérotés :
 1 Points anciens → 2 Réseau de contrôle (points à rechercher / à écarter) → 3 Contrôle des
-écarts (RC, points homogènes) → 4 Densification (points nouveaux), + Fonds de carte.
+écarts (RC, points homogènes) → 4 Densification (points nouveaux), + Zones + Fonds de carte.
+- **zones** (onglet « Zones ») : zones LEVÉES (lever de détail : couverture N11 calculée sur
+  elles) et zones de DENSIFICATION (points nouveaux placés dedans) — une seule sorte fournie
+  sert aux deux, aucune : enveloppe des anciens. Import `POST zones/importer/` (multipart
+  `fichiers`, `zone`, `type_defaut`) : `reseaux/zones.py` lit en **Python pur** (ni GDAL ni
+  Fiona) un SHAPEFILE (.shp/.dbf/.shx/.prj/.cpg ou .zip ; Polygon/Z/M, trous rattachés à leur
+  extérieur) ou un GEOPACKAGE (.gpkg via sqlite3 en lecture seule, Polygon/MultiPolygon WKB) ;
+  projection lue dans le .prj / `gpkg_spatial_ref_sys` (Lambert I–IV par EPSG ou latitude
+  d'origine, WGS84, Web Mercator), sinon supposée (degrés → WGS84, sinon la zone Lambert de
+  l'écran) et signalée ; nom et type déduits des attributs (nom/libellé, type/nature « levée »
+  / « densification ») ou du nom de la couche. Rien n'est enregistré : les zones vivent dans
+  `ReseauGpsStore` (WGS84), avec nom, type, référence, description, couleur, « active » ;
+  surface / périmètre dans le plan Lambert (`mesures.util.ts`) ; tracé à la main sur la carte
+  (double-clic pour fermer) ; export GeoJSON. `densifier/` reçoit `zones_densification` /
+  `zones_levee` (Lambert) ;
+- **réseau personnalisé** (contrôle ET densification, `<app-rg-reseau-perso>`) : l'opérateur
+  part du réseau affiché ou d'un réseau vide, ajoute / retire / modifie des lignes de base
+  (carte : point A puis point B, clic sur une ligne pour la retirer ; ou tableau) ; évaluation
+  différée de `DELAI_EVALUATION_MS` : `POST evaluer/` (`points`, `lignes` = paires de NOMS ;
+  mêmes contrôles et même score que les variantes) pour le contrôle, `densifier/` avec
+  `lignes` (paires d'INDICES dans anciens + nouveaux, `proposer` ignoré) pour la
+  densification. Désactiver un point retire ses lignes ;
+- **points actifs** : case « Actif » de la liste + Tout activer / désactiver / inverser + bouton
+  de la fiche du point sur la carte. Les coordonnées des pièces (« 353 108.16 ») sont
+  converties en nombres au chargement (`ReseauGpsStore.nombre`) ;
+- **carte** : barre d'outils façon QGIS (zoom ±, emprise, vues précédente / suivante, mesure de
+  distance / surface / angle en ° et gon dans le plan Lambert, effacer), coordonnées du curseur
+  (WGS84 + Lambert), **plein écran** (Échap) ;
 - backend (suite) : `optimisation.py` (points anciens à écarter : doublons, points
   pénalisants ; jamais sous 3 anciens), `ecarts.py` (analyse du RC, compatibilité ΔD ≤
   tolérance par paire, points homogènes = clique maximale), `densification.py` (zone =
@@ -645,16 +675,21 @@ homogènes à ΔD ≤ 15 cm). L'écran suit le **workflow de densification** en 
   **Leaflet** persistante (`reseau-carte`, clic → point nouveau en mode placement) ; projection
   Lambert↔WGS84 portée en TS (`lambert-maroc.ts`, mêmes valeurs de référence que le backend).
   « Mes fonds » = sélection dans le catalogue + fonds personnalisés XYZ/WMS, **retirables**,
-  enregistrés dans le **navigateur** (`fonds-carte.ts`). **Google Satellite volontairement
-  absent** du catalogue (conditions des API Google Maps). Import CSV/Excel des points (LPA) et
+  enregistrés dans le **navigateur** (`fonds-carte.ts`). **Google Satellite** (actif par
+  défaut) et **Google Satellite hybride** figurent au catalogue à la demande de l'ANCFCC
+  (`sous_domaines` « 0123 ») ; ⚠ tuiles non ouvertes (conditions de Google Maps Platform) — la
+  licence affichée le rappelle. Les choix enregistrés avant leur ajout sont migrés une fois
+  (`VERSION_MES_FONDS`). Import CSV/Excel des points (LPA) et
   du RC par `points-import.util.ts` (en-têtes techniques ou libellés des pièces). Les tableaux
   de la page (saisie, comparaison, écarts) ne sont **pas** des listes d'entités persistées :
   hors du périmètre des règles colonnes d'audit / configuration des colonnes / tri
   multi-niveaux ;
 - tests : `backend/reseaux/tests.py` (projection vs PROJ, Delaunay, algorithme, API, RBAC) +
-  `tests_densification.py` (suppressions, écarts/homogènes, couverture N11, catalogue, API) ;
-  specs `reseau-gps.service`, `points-import.util`, `fonds-carte`, `lambert-maroc`,
-  `reseau-gps.store`, `reseau-carte`, `reseau-gps-page`, `onglets`, `menu.config`.
+  `tests_densification.py` (suppressions, écarts/homogènes, couverture N11, catalogue, API) +
+  `tests_zones.py` (shapefile / GeoPackage synthétiques, projections, réseau personnalisé,
+  densification dans les zones, API) ; specs `reseau-gps.service`, `points-import.util`,
+  `fonds-carte`, `lambert-maroc`, `mesures.util`, `reseau-gps.store`, `reseau-carte`,
+  `reseau-gps-page`, `onglets`, `zones-perso`, `menu.config`.
 
 **Journal d'audit (`accounts.models.AuditEvent`).** Les 7 colonnes d'audit disent qui a
 touché une ligne **en dernier** ; elles ne disent pas ce qui a changé et ne gardent aucune

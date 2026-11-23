@@ -30,7 +30,7 @@ export class OngletEcartsComponent {
     if (s === 'piece' && !this.sourcesChargees) {
       this.service.sourcesRc().subscribe({
         next: l => { this.sourcesRc = l; this.sourcesChargees = true; },
-        error: () => this.toast.error('Réseau GPS', 'Liste des rapports de contrôle indisponible.'),
+        error: () => this.toast.error('Réseau GNSS', 'Liste des rapports de contrôle indisponible.'),
       });
     }
   }
@@ -43,13 +43,13 @@ export class OngletEcartsComponent {
     try {
       const lignes = await lireFichierRc(fichier);
       if (!lignes.length) {
-        this.toast.error('Réseau GPS', 'Aucune ligne exploitable (colonnes Nom Point Fixe / Nom Point Calculé attendues).');
+        this.toast.error('Réseau GNSS', 'Aucune ligne exploitable (colonnes Nom Point Fixe / Nom Point Calculé attendues).');
       } else {
         this.store.definirRc(lignes, fichier.name);
         this.store.analyserEcarts();
       }
     } catch {
-      this.toast.error('Réseau GPS', 'Lecture du fichier impossible.');
+      this.toast.error('Réseau GNSS', 'Lecture du fichier impossible.');
     } finally {
       this.importEnCours = false;
       input.value = '';
@@ -60,7 +60,7 @@ export class OngletEcartsComponent {
     if (!this.ssdgpsChoisi) return;
     this.service.sourceRc(this.ssdgpsChoisi).subscribe({
       next: d => { this.store.definirRc(d.lignes, d.libelle); this.store.analyserEcarts(); },
-      error: () => this.toast.error('Réseau GPS', 'Reprise du rapport de contrôle impossible.'),
+      error: () => this.toast.error('Réseau GNSS', 'Reprise du rapport de contrôle impossible.'),
     });
   }
 

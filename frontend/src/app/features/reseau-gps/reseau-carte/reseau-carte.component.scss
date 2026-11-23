@@ -1,7 +1,49 @@
 :host { display: block; position: relative; width: 100%; height: 100%; min-height: 360px; }
 .rg-carte { position: absolute; inset: 0; border-radius: 10px; overflow: hidden; background: var(--content-bg);
   &.mode-ajout { cursor: crosshair; } }
-:host ::ng-deep .rg-carte.mode-ajout .leaflet-container, :host ::ng-deep .mode-ajout.leaflet-container { cursor: crosshair; }
+:host ::ng-deep .rg-carte.mode-ajout.leaflet-container,
+:host ::ng-deep .mode-ajout.leaflet-container { cursor: crosshair; }
+:host ::ng-deep .mode-lignes.leaflet-container .leaflet-interactive { cursor: pointer; }
+
+/* Barre d'outils verticale, en haut à gauche (style des contrôles de la carte). */
+.rg-outils {
+  position: absolute; top: 10px; left: 10px; z-index: 800; display: flex; flex-direction: column; gap: 6px;
+  .groupe {
+    display: flex; flex-direction: column; border-radius: 9px; overflow: hidden;
+    background: var(--secondary-color); border: 1px solid var(--border-color); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+  }
+  button {
+    width: 34px; height: 32px; border: none; background: transparent; color: var(--text-color); cursor: pointer;
+    font-size: 13px; display: grid; place-items: center; border-bottom: 1px solid var(--border-color);
+    &:last-child { border-bottom: none; }
+    &:hover:not(:disabled) { background: var(--hover-bg); color: var(--accent-color); }
+    &:disabled { opacity: 0.35; cursor: default; }
+    &.actif { background: var(--accent-color); color: #fff; }
+    &:focus-visible { outline: 2px solid var(--accent-color); outline-offset: -2px; }
+  }
+}
+
+.rg-panneau-mesure {
+  position: absolute; top: 10px; left: 56px; z-index: 800; max-width: min(360px, calc(100% - 70px));
+  padding: 9px 12px; border-radius: 10px; font-size: 12px; line-height: 1.45;
+  background: var(--secondary-color); color: var(--text-color); border: 1px solid var(--border-color);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+  .consigne { margin: 0; i { color: var(--accent-color); margin-right: 4px; } }
+  .touches { display: block; color: var(--text-muted); font-size: 11px; margin-top: 2px; }
+  .resultat {
+    display: flex; flex-direction: column; margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--border-color);
+    strong { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+    span { font-variant-numeric: tabular-nums; }
+    &.recent span:first-of-type { font-weight: 700; color: #00bcd4; }
+  }
+  .note { margin: 6px 0 0; font-size: 10.5px; color: var(--text-muted); }
+}
+
+.rg-coords {
+  position: absolute; left: 10px; bottom: 10px; z-index: 800; padding: 3px 9px; border-radius: 6px;
+  font-size: 11px; font-variant-numeric: tabular-nums; color: #fff; background: rgba(20, 20, 20, 0.72);
+  pointer-events: none; &:empty { display: none; }
+}
 
 /* Contenus Leaflet injectés hors du gabarit Angular : ::ng-deep limité à ce composant. */
 :host ::ng-deep {
@@ -15,6 +57,11 @@
     text-shadow: 0 0 3px #000, 0 0 2px #000;
     &::before { display: none; }
   }
+  .rg-mesure-direct, .rg-mesure-fixe {
+    background: rgba(0, 60, 70, 0.88); color: #fff; border: 1px solid #00bcd4; border-radius: 6px;
+    font-size: 11px; font-weight: 600; padding: 3px 7px; box-shadow: none;
+    &::before { display: none; }
+  }
   .rg-popup {
     font-size: 12px; min-width: 200px;
     em { color: #7f8c8d; font-style: normal; margin-left: 4px; }
@@ -23,4 +70,11 @@
     td { padding: 2px 0; }
     p { margin: 6px 0 0; max-width: 280px; }
   }
+  .rg-popup-action {
+    margin-top: 8px; width: 100%; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;
+    border: 1px solid #c0392b; background: #fff; color: #c0392b;
+    &.activer { border-color: #27ae60; color: #27ae60; }
+    &:hover { filter: brightness(0.95); }
+  }
+  .leaflet-control-scale-line { font-size: 10.5px; }
 }

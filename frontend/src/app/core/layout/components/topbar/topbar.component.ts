@@ -222,7 +222,7 @@ export class TopBarComponent implements OnInit, OnDestroy {
       'maintenance': 'Maintenance',
       'profile': 'Mon profil',
       'parametres': 'Paramètres',
-      'reseau-gps': 'Réseau GPS',
+      'reseau-gps': 'Réseau GNSS',
       'ressources-tbc': 'Ressources TBC',
     };
     // Segments à ne jamais afficher (déjà couverts par « Accueil » ou non signifiants).

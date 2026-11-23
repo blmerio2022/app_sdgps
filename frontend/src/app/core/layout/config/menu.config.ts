@@ -22,13 +22,13 @@ export const USER_MENU: MenuItem[] = [
     description: 'Projets, propriétés, affaires, SSDGPS & sessions'
   },
   {
-    // Réseau de triangulation GPS — module indépendant, ouvert à tous les rôles.
+    // Réseau de triangulation GNSS — module indépendant, ouvert à tous les rôles.
     id: 'reseau-gps',
-    title: 'Réseau GPS',
+    title: 'Réseau GNSS',
     icon: 'fas fa-draw-polygon',
     route: '/reseau-gps',
     type: 'link',
-    description: 'Conception de réseaux de triangulation GPS (variantes, carte, normes)'
+    description: 'Conception de réseaux de triangulation GNSS (zones, variantes, carte, normes)'
   },
   {
     id: 'carte-dossiers',
@@ -232,11 +232,11 @@ export const ADMIN_MENU: MenuItem[] = [
   },
   {
     id: 'reseau-gps',
-    title: 'Réseau GPS',
+    title: 'Réseau GNSS',
     icon: 'fas fa-draw-polygon',
     route: '/admin/reseau-gps',
     type: 'link',
-    description: 'Conception de réseaux de triangulation GPS (variantes, carte, normes)',
+    description: 'Conception de réseaux de triangulation GNSS (zones, variantes, carte, normes)',
     roles: ALL_ADMIN_ROLES,
   },
   {

@@ -1,12 +1,13 @@
-"""Catalogue des fonds de carte proposés par l'application (module Réseau GPS).
+"""Catalogue des fonds de carte proposés par l'application (module Réseau GNSS).
 
 Seuls figurent des services **gratuits ou à accès gratuit** dont les conditions autorisent
 l'affichage direct des tuiles avec attribution. Chaque entrée porte sa licence / ses
 conditions, affichées à l'opérateur avant qu'il l'ajoute à « Mes fonds ».
 
-Volontairement absent : **Google Maps / Google Satellite** — ses tuiles ne sont utilisables
-qu'au travers des API Google Maps (clé, facturation, conditions) ; un opérateur qui en a
-l'accès peut l'ajouter comme fond personnalisé.
+**Google Satellite** (normal et hybride) figure à la demande de l'ANCFCC, actif par défaut.
+⚠ Ses tuiles XYZ « mt*.google.com » ne relèvent pas d'un service ouvert : les conditions de
+Google Maps Platform réservent l'accès aux tuiles à leurs API (clé, facturation). Leur usage
+relève de la responsabilité de l'organisation ; la licence affichée le rappelle.
 
 Ajouter un fond = une entrée ici (identifiant stable : il est mémorisé dans les choix des
 opérateurs). Les URL XYZ utilisent {z}/{x}/{y} (et {s} pour les sous-domaines a/b/c).
@@ -24,6 +25,8 @@ _OSM = '&copy; contributeurs <a href="https://www.openstreetmap.org/copyright">O
 _ESRI = 'Tuiles &copy; Esri'
 _LIC_OSM = 'ODbL — usage raisonnable des serveurs de tuiles OSM (pas de téléchargement massif).'
 _LIC_ESRI = "Esri — affichage gratuit avec attribution (conditions d'utilisation ArcGIS Online)."
+_LIC_GOOGLE = ("Google — tuiles non ouvertes : les conditions de Google Maps Platform réservent leur accès "
+               "aux API Google (clé, facturation). Usage sous la responsabilité de l'organisation.")
 
 CATALOGUE = [
     # --- Cartographiques
@@ -53,6 +56,14 @@ CATALOGUE = [
      'max_zoom': 16, 'attribution': _ESRI + ' — National Geographic', 'licence': _LIC_ESRI,
      'description': 'Style atlas, relief estompé et toponymie.'},
     # --- Satellitaires
+    {'id': 'google-satellite', 'nom': 'Google Satellite', 'categorie': 'satellitaire', 'type': 'xyz',
+     'url': 'https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', 'sous_domaines': '0123', 'max_zoom': 21,
+     'attribution': 'Imagerie &copy; Google', 'licence': _LIC_GOOGLE,
+     'description': 'Imagerie satellite et aérienne Google, sans libellés.'},
+    {'id': 'google-hybride', 'nom': 'Google Satellite hybride', 'categorie': 'satellitaire', 'type': 'xyz',
+     'url': 'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', 'sous_domaines': '0123', 'max_zoom': 21,
+     'attribution': 'Imagerie et données cartographiques &copy; Google', 'licence': _LIC_GOOGLE,
+     'description': 'Imagerie Google avec routes, limites et toponymes superposés.'},
     {'id': 'esri-imagerie', 'nom': 'Esri World Imagery', 'categorie': 'satellitaire', 'type': 'xyz',
      'url': 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
      'max_zoom': 19, 'attribution': _ESRI + ' — Esri, Maxar, Earthstar Geographics', 'licence': _LIC_ESRI,
@@ -110,7 +121,8 @@ CATALOGUE = [
      'description': 'Carte topographique (relief SRTM + OSM) en WMS.'},
 ]
 
-FONDS_PAR_DEFAUT = ['osm', 'esri-imagerie', 'opentopomap', 'carto-clair']
+# Le premier est le fond actif par défaut.
+FONDS_PAR_DEFAUT = ['google-satellite', 'google-hybride', 'osm', 'esri-imagerie', 'opentopomap', 'carto-clair']
 
 AIDE_FOND_PERSONNALISE = [
     "Tuiles XYZ : l'URL contient {z} (zoom), {x} et {y} (colonne / ligne de la tuile), "
@@ -123,7 +135,6 @@ AIDE_FOND_PERSONNALISE = [
     "Le service doit accepter la projection Web Mercator (EPSG:3857).",
     "Vérifiez les conditions d'utilisation du fournisseur (clé d'accès, usage commercial, "
     "attribution à afficher) et renseignez l'attribution demandée.",
-    "Exemples : orthophotos d'un géoportail régional ou de votre organisme (WMS), "
-    "Google Satellite si vous disposez d'un accès autorisé par les API Google Maps.",
+    "Exemples : orthophotos d'un géoportail régional ou de votre organisme (WMS).",
     "Les fonds personnalisés sont enregistrés dans votre navigateur.",
 ]

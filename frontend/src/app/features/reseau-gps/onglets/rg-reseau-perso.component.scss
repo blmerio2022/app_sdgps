@@ -1,0 +1,7 @@
+:host { display: block; }
+.rp-titre { margin: 12px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.rg-kpi .val.positif { color: #27ae60; }
+.rg-kpi .val.negatif { color: #e74c3c; }
+.rp-ajout td { background: var(--hover-bg); }
+.rp-plus { color: var(--accent-color); &:disabled { opacity: 0.4; cursor: default; } &:hover:not(:disabled) { color: var(--accent-color); } }
+.btn-primary.actif { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25) inset; }

@@ -47,7 +47,14 @@
 .rg-panneau { min-height: 0; overflow-y: auto; padding-right: 4px; }
 
 .rg-zone-carte { min-height: 0; display: flex; flex-direction: column; gap: 10px; }
-.rg-barre-carte { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; .rg-fond { min-width: 220px; } }
+.rg-barre-carte { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; .rg-fond { min-width: 220px; }
+  .rg-espace { flex: 1; } }
+
+/* Plein écran : la zone carte couvre toute la fenêtre, au-dessus de la coquille de l'application. */
+.rg-zone-carte.plein-ecran {
+  position: fixed; inset: 0; z-index: 2000; padding: 12px 14px; background: var(--background-color);
+  .rg-carte-cadre { min-height: 0; }
+}
 .rg-case { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-color); padding-bottom: 8px; cursor: pointer; }
 .rg-carte-cadre { position: relative; flex: 1 1 auto; min-height: 380px; border: 1px solid var(--border-color); border-radius: 10px; }
 .rg-vide {
@@ -57,10 +64,11 @@
   i { font-size: 30px; color: var(--accent-color); }
 }
 .rg-bandeau-ajout {
-  position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 600;
+  position: absolute; bottom: 38px; left: 50%; transform: translateX(-50%); z-index: 850; max-width: calc(100% - 24px);
   display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 14px; border-radius: 20px;
   background: var(--secondary-color); border: 1px solid var(--accent-color); color: var(--text-color); font-size: 12.5px;
   box-shadow: 0 4px 14px var(--shadow-color); i { color: var(--accent-color); }
+  .rg-score-direct { font-weight: 800; color: var(--accent-color); }
 }
 
 .rg-legende {
@@ -74,4 +82,7 @@
     &.incompatible { background: repeating-linear-gradient(90deg, #e74c3c 0 5px, transparent 5px 9px); } }
   .tr { width: 14px; height: 10px; display: inline-block; border-radius: 2px; &.ko { background: rgba(217, 164, 65, 0.45); } }
   .zone { width: 16px; height: 10px; display: inline-block; border: 1.5px dashed #8e44ad; border-radius: 2px; }
+  .zn { width: 16px; height: 10px; display: inline-block; border-radius: 2px; border: 1.5px solid;
+    &.levee { border-color: #f39c12; background: rgba(243, 156, 18, 0.2); }
+    &.densification { border-color: #8e44ad; background: rgba(142, 68, 173, 0.2); } }
 }

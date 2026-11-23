@@ -11,13 +11,17 @@ import { fr } from './onglet-controle.component';
 @Component({
   selector: 'app-onglet-densification',
   templateUrl: './onglet-densification.component.html',
-  styleUrls: ['./onglet.scss'],
+  styleUrls: ['./onglet.scss', './onglet-densification.component.scss'],
 })
 export class OngletDensificationComponent {
   readonly fr = fr;
 
   constructor(public store: ReseauGpsStore) {}
 
-  basculerModeAjout(): void { this.store.modeAjoutCarte = !this.store.modeAjoutCarte; }
+  basculerModeAjout(): void {
+    const actif = !this.store.modeAjoutCarte;
+    this.store.arreterModesCarte();
+    this.store.modeAjoutCarte = actif;
+  }
   trackIndex(i: number): number { return i; }
 }

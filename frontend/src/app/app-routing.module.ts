@@ -157,10 +157,10 @@ export const routes: Routes = [
         data: { title: 'Projets' }
       },
       {
-        // Réseau de triangulation GPS — module indépendant, ouvert à TOUS les rôles.
+        // Réseau de triangulation GNSS — module indépendant, ouvert à TOUS les rôles.
         path: 'reseau-gps',
         loadChildren: () => import('./features/reseau-gps/reseau-gps.module').then(m => m.ReseauGpsModule),
-        data: { title: 'Réseau GPS' }
+        data: { title: 'Réseau GNSS' }
       },
       {
         // Carte des dossiers (tous rôles) : chaque SDGPS au centre de ses points anciens.
@@ -229,10 +229,10 @@ export const routes: Routes = [
         data: { title: 'Mon Profil' }
       },
       {
-        // Réseau de triangulation GPS — module indépendant, ouvert à TOUS les rôles.
+        // Réseau de triangulation GNSS — module indépendant, ouvert à TOUS les rôles.
         path: 'reseau-gps',
         loadChildren: () => import('./features/reseau-gps/reseau-gps.module').then(m => m.ReseauGpsModule),
-        data: { title: 'Réseau GPS' }
+        data: { title: 'Réseau GNSS' }
       },
       {
         // Carte des dossiers (tous rôles) : chaque SDGPS au centre de ses points anciens.

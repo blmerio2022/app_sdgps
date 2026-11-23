@@ -40,10 +40,30 @@ describe('ReseauGpsPageComponent', () => {
     fixture.detectChanges();
   });
 
-  it('affiche les 4 étapes dans l\'ordre du travail, puis les fonds de carte', () => {
+  it('affiche les 4 étapes dans l\'ordre du travail, puis les zones et les fonds de carte', () => {
     const titres = Array.from(fixture.nativeElement.querySelectorAll('.rg-onglet-titre'))
       .map((e: any) => e.textContent.trim());
-    expect(titres).toEqual(['Points anciens', 'Réseau de contrôle', 'Contrôle des écarts', 'Densification', 'Fonds de carte']);
+    expect(titres).toEqual(['Points anciens', 'Réseau de contrôle', 'Contrôle des écarts', 'Densification', 'Zones',
+      'Fonds de carte']);
+  });
+
+  it('titre GNSS, plein écran (Échap pour quitter) et mode de clic transmis à la carte', () => {
+    expect(fixture.nativeElement.querySelector('h1').textContent).toContain('Réseau de triangulation GNSS');
+    comp.basculerPleinEcran();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.rg-zone-carte').classList).toContain('plein-ecran');
+    comp.quitterPleinEcran();
+    expect(comp.pleinEcran).toBeFalse();
+    expect(comp.outilCarte).toBe('aucun');
+    store.commencerDessinZone();
+    expect(comp.outilCarte).toBe('dessin');
+    comp.pleinEcran = true;
+    comp.quitterPleinEcran();
+    expect(comp.pleinEcran).toBeTrue();          // Échap annule d'abord le tracé
+    store.arreterModesCarte();
+    store.editionLignes = 'controle';
+    expect(comp.outilCarte).toBe('lignes');
+    expect(comp.resume('zones')).toBe('Import ou tracé');
   });
 
   it('change d\'onglet au clic', () => {

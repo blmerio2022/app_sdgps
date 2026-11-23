@@ -3,7 +3,7 @@ import { Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
 const CLE = 'reseauGps.sections';
 
 /**
- * Section dépliable / repliable du module Réseau GPS. L'état ouvert/fermé est mémorisé par
+ * Section dépliable / repliable du module Réseau GNSS. L'état ouvert/fermé est mémorisé par
  * `cle` dans le navigateur : l'opérateur retrouve la page telle qu'il l'a laissée.
  */
 @Component({

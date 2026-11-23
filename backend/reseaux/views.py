@@ -1,4 +1,4 @@
-"""API du module « Réseau de triangulation GPS ».
+"""API du module « Réseau de triangulation GNSS ».
 
 Module indépendant et sans état : rien n'est enregistré, le réseau est recalculé à chaque
 demande. Ouvert à TOUS les rôles authentifiés (défaut DRF `IsAuthenticated`) ; seule la
@@ -19,7 +19,8 @@ from . import densification as D
 from . import fonds as F
 from . import normes as N
 from .ecarts import TOLERANCE_MAX_M, TOLERANCE_MIN_M, ErreurEcarts, analyser_ecarts
-from .generation import TYPES_RESEAU, VARIANTES, ErreurReseau, generer_reseau
+from .generation import TYPES_RESEAU, VARIANTES, ErreurReseau, evaluer_personnalise, generer_reseau
+from .zones import TAILLE_MAX as ZONES_TAILLE_MAX, TYPES_ZONE, ErreurZones, importer_zones
 from .projection import ZONE_DEFAUT, ZONES, deviner_zone
 
 CHAMPS_RC = ('id', 'nom_point_fixe', 'nom_point_calcule', 'x_m_fixe', 'y_m_fixe', 'x_m_calcule',
@@ -239,11 +240,33 @@ class DensificationSerializer(serializers.Serializer):
         min_value=0.1, max_value=N.LONGUEUR_MAX_KM_LIMITE, default=N.LONGUEUR_MAX_KM_DEFAUT)
     rayon_couverture_km = serializers.FloatField(min_value=0.1, max_value=50, default=D.RAYON_KM_DEFAUT)
     points_couverture_min = serializers.IntegerField(min_value=1, max_value=10, default=D.POINTS_MIN_DEFAUT)
+    # Zones de l'opérateur : polygone = [anneau extérieur, trous…], anneau = [[x, y], …] Lambert.
+    zones_densification = serializers.ListField(required=False, default=list, max_length=200)
+    zones_levee = serializers.ListField(required=False, default=list, max_length=200)
+    # Réseau personnalisé : paires d'indices dans anciens + nouveaux (dans cet ordre).
+    lignes = serializers.ListField(child=serializers.ListField(child=serializers.IntegerField(min_value=0),
+                                                               min_length=2, max_length=2),
+                                   required=False, allow_null=True, default=None, max_length=2000)
 
     def validate(self, data):
         if len(data['anciens']) + len(data.get('nouveaux') or []) > N.POINTS_MAX:
             raise serializers.ValidationError(f'Au plus {N.POINTS_MAX} points.')
         return data
+
+
+def _polygones(valeur):
+    """Polygones reçus du navigateur : listes de listes de (x, y) flottants."""
+    sortie = []
+    try:
+        for poly in valeur or []:
+            anneaux = [[(float(pt[0]), float(pt[1])) for pt in anneau] for anneau in poly]
+            if anneaux and len(anneaux[0]) >= 3:
+                sortie.append(anneaux)
+    except (TypeError, ValueError, IndexError):
+        raise D.ErreurDensification('Zone mal formée.')
+    if sum(len(a) for p in sortie for a in p) > 50_000:
+        raise D.ErreurDensification('Zones trop détaillées : simplifiez-les.')
+    return sortie
 
 
 class DensifierView(APIView):
@@ -259,6 +282,56 @@ class DensifierView(APIView):
             return Response(D.densifier(
                 d['anciens'], d.get('nouveaux') or [], nb_nouveaux=d['nb_nouveaux'], zone=d['zone'],
                 longueur_max_km=d['longueur_max_km'], rayon_km=d['rayon_couverture_km'],
-                points_min=d['points_couverture_min'], proposer=d['proposer']))
+                points_min=d['points_couverture_min'], proposer=d['proposer'],
+                zones_densification=_polygones(d.get('zones_densification')),
+                zones_levee=_polygones(d.get('zones_levee')), lignes=d.get('lignes')))
         except D.ErreurDensification as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class EvaluationSerializer(serializers.Serializer):
+    points = PointSerializer(many=True)
+    lignes = serializers.ListField(child=serializers.ListField(child=serializers.CharField(max_length=100),
+                                                               min_length=2, max_length=2),
+                                   max_length=2000)
+    type_reseau = serializers.ChoiceField(choices=list(TYPES_RESEAU), default='anciens')
+    zone = serializers.ChoiceField(choices=list(ZONES), default=ZONE_DEFAUT)
+    longueur_max_km = serializers.FloatField(
+        min_value=0.1, max_value=N.LONGUEUR_MAX_KM_LIMITE, default=N.LONGUEUR_MAX_KM_DEFAUT)
+
+
+class EvaluerView(APIView):
+    """`POST` : contrôle et note le réseau PERSONNALISÉ (lignes de base de l'opérateur)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        ser = EvaluationSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        d = ser.validated_data
+        try:
+            return Response(evaluer_personnalise(d['points'], d['lignes'], type_reseau=d['type_reseau'],
+                                                 zone=d['zone'], longueur_max_km=d['longueur_max_km']))
+        except ErreurReseau as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ImporterZonesView(APIView):
+    """`POST` multipart : zones d'un shapefile (.shp/.dbf/.shx/.prj/.cpg ou .zip) ou d'un
+    GeoPackage (.gpkg), renvoyées en WGS84. Rien n'est enregistré."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        fichiers = request.FILES.getlist('fichiers')
+        if not fichiers:
+            return Response({'detail': 'Aucun fichier reçu.'}, status=status.HTTP_400_BAD_REQUEST)
+        if sum(f.size for f in fichiers) > ZONES_TAILLE_MAX:
+            return Response({'detail': 'Fichiers trop volumineux (30 Mo au plus).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        zone = request.data.get('zone') or ZONE_DEFAUT
+        type_defaut = request.data.get('type_defaut') or None
+        if type_defaut and type_defaut not in TYPES_ZONE:
+            return Response({'detail': 'Type de zone inconnu.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            return Response(importer_zones([(f.name, f.read()) for f in fichiers], zone, type_defaut))
+        except ErreurZones as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

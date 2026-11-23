@@ -1,8 +1,8 @@
 <div class="rg-page">
   <header class="page-header">
-    <h1><i class="fas fa-draw-polygon"></i> Réseau de triangulation GPS</h1>
-    <p class="subtitle">Densification par triangulation GPS : des points anciens disponibles au réseau de points anciens
-      et nouveaux le plus optimisé possible, selon les normes de triangulation et de réseaux GPS.</p>
+    <h1><i class="fas fa-draw-polygon"></i> Réseau de triangulation GNSS</h1>
+    <p class="subtitle">Densification par triangulation GNSS : des points anciens disponibles au réseau de points anciens
+      et nouveaux le plus optimisé possible, selon les normes de triangulation et de réseaux GNSS.</p>
   </header>
 
   <nav class="rg-onglets" role="tablist">
@@ -27,11 +27,12 @@
         <app-onglet-controle *ngSwitchCase="'controle'"></app-onglet-controle>
         <app-onglet-ecarts *ngSwitchCase="'ecarts'"></app-onglet-ecarts>
         <app-onglet-densification *ngSwitchCase="'densification'"></app-onglet-densification>
+        <app-onglet-zones *ngSwitchCase="'zones'"></app-onglet-zones>
         <app-onglet-fonds *ngSwitchCase="'fonds'"></app-onglet-fonds>
       </ng-container>
     </section>
 
-    <section class="rg-zone-carte">
+    <section class="rg-zone-carte" [class.plein-ecran]="pleinEcran">
       <div class="rg-barre-carte">
         <label class="field rg-fond">
           <span>Fond de carte</span>
@@ -43,21 +44,43 @@
           <i class="fas fa-layer-group"></i> Gérer</button>
         <label class="rg-case"><input type="checkbox" [(ngModel)]="etiquettesDistances"> Distances</label>
         <label class="rg-case"><input type="checkbox" [(ngModel)]="afficherTriangles"> Triangles</label>
-        <button type="button" class="btn-ghost btn-sm" (click)="carte.recadrer()" title="Recadrer sur les points">
-          <i class="fas fa-expand"></i></button>
+        <label class="rg-case"><input type="checkbox" [(ngModel)]="store.afficherZones" (ngModelChange)="store.rafraichirVue()"> Zones</label>
+        <span class="rg-espace"></span>
+        <button type="button" class="btn-ghost btn-sm" (click)="basculerPleinEcran()"
+                [title]="pleinEcran ? 'Quitter le plein écran (Échap)' : 'Carte en plein écran'">
+          <i class="fas" [ngClass]="pleinEcran ? 'fa-compress' : 'fa-expand'"></i>
+          {{ pleinEcran ? 'Quitter le plein écran' : 'Plein écran' }}</button>
       </div>
 
       <div class="rg-carte-cadre">
         <app-reseau-carte #carte [vue]="store.vue$ | async" [fond]="store.fondActif" [etiquettesDistances]="etiquettesDistances"
                           [afficherTriangles]="afficherTriangles" [modeAjout]="store.modeAjoutCarte"
-                          (clicCarte)="clicCarte($event)"></app-reseau-carte>
+                          [outil]="outilCarte" [zoneLambert]="store.zone" [actionsPoints]="store.onglet === 'points'"
+                          [pleinEcran]="pleinEcran" (basculerPleinEcran)="basculerPleinEcran()"
+                          (clicCarte)="clicCarte($event)" (zoneDessinee)="store.ajouterZoneDessinee($event)"
+                          (clicPoint)="store.clicPointEdition($event)" (clicLigne)="store.clicLigneEdition($event.a, $event.b)"
+                          (actionPoint)="store.basculerRetenuParNom($event)" (annulerOutil)="store.arreterModesCarte(); store.rafraichirVue()">
+        </app-reseau-carte>
         <div class="rg-vide" *ngIf="!(store.vue$ | async)">
           <i class="fas fa-map-marked-alt"></i>
-          Importez la liste des points anciens pour commencer.
+          Importez la liste des points anciens ou des zones pour commencer.
         </div>
         <div class="rg-bandeau-ajout" *ngIf="store.modeAjoutCarte">
           <i class="fas fa-crosshairs"></i> Cliquez pour placer un point nouveau
           <button type="button" class="btn-ghost btn-sm" (click)="store.modeAjoutCarte = false">Terminer</button>
+        </div>
+        <div class="rg-bandeau-ajout" *ngIf="store.modeDessinZone">
+          <i class="fas fa-draw-polygon"></i> Tracé d'une {{ store.typeDessin === 'levee' ? 'zone levée' : 'zone de densification' }} :
+          double-clic pour fermer
+          <button type="button" class="btn-ghost btn-sm" (click)="store.modeDessinZone = false; store.rafraichirVue()">Annuler</button>
+        </div>
+        <div class="rg-bandeau-ajout" *ngIf="store.editionLignes">
+          <i class="fas fa-pencil-ruler"></i>
+          <ng-container *ngIf="!store.selectionLigne">Cliquez un point, puis un second (ajout / retrait) ; ou une ligne pour la retirer</ng-container>
+          <ng-container *ngIf="store.selectionLigne">Départ : <strong>{{ store.selectionLigne }}</strong> — cliquez le second point</ng-container>
+          <span class="rg-score-direct" *ngIf="store.scorePerso(store.editionLignes) !== null">
+            {{ fr(store.scorePerso(store.editionLignes)!) }}/100</span>
+          <button type="button" class="btn-ghost btn-sm" (click)="store.terminerEditionLignes()">Terminer</button>
         </div>
       </div>
 
@@ -69,6 +92,10 @@
           <span><i class="tr ko"></i> Triangle hors [30°;120°]</span>
         </ng-container>
         <span *ngIf="store.onglet === 'controle'"><i class="pt marque"></i> Proposé à l'écart</span>
+        <ng-container *ngIf="store.afficherZones && store.zones.length">
+          <span><i class="zn levee"></i> Zone levée</span>
+          <span><i class="zn densification"></i> Zone de densification</span>
+        </ng-container>
         <span *ngIf="store.onglet === 'ecarts'"><i class="ln incompatible"></i> Écart ΔD hors tolérance</span>
         <ng-container *ngIf="store.onglet === 'densification'">
           <span><i class="zone"></i> Zone à densifier</span>

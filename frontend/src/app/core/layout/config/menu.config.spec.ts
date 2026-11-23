@@ -52,11 +52,12 @@ describe('menu.config — entrées supprimées / restructurées', () => {
   });
 });
 
-describe('menu.config — Réseau GPS ouvert à tous les rôles', () => {
+describe('menu.config — Réseau GNSS ouvert à tous les rôles', () => {
   it('entrée opérateur (Agent) vers /reseau-gps', () => {
     const item = USER_MENU.find(i => i.id === 'reseau-gps');
     expect(item?.route).toBe('/reseau-gps');
     expect(item?.roles).toBeFalsy();
+    expect(item?.title).toBe('Réseau GNSS');
   });
 
   it('entrée admin vers /admin/reseau-gps pour les 3 rôles admin', () => {

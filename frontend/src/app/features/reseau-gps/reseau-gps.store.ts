@@ -1,8 +1,8 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
 import {
-  AnalyseEcarts, FondCatalogue, LigneRc, PointReseau, ReferentielReseau, ReseauGpsService, ResultatDensification,
-  ResultatReseau, SuggestionSuppression,
+  AnalyseEcarts, FondCatalogue, LigneBase, LigneRc, PointReseau, ReferentielReseau, ReseauGpsService,
+  ResultatDensification, ResultatPersonnalise, ResultatReseau, SuggestionSuppression, TypeZone, ZoneImportee,
 } from '../../core/services/reseau-gps.service';
 import { ToastService } from '../../core/services/toast.service';
 import {
@@ -10,7 +10,8 @@ import {
   nouveauFondPersonnel, retirerFond,
 } from './fonds-carte';
 import { lambertVersWgs84, wgs84VersLambert } from './lambert-maroc';
-import { PointCarte, StylePoint, VueCarte } from './reseau-carte/reseau-carte.component';
+import { mesurerZone } from './mesures.util';
+import { LigneCarte, PointCarte, StylePoint, VueCarte, ZoneCarte } from './reseau-carte/reseau-carte.component';
 
 /**
  * Onglets, dans l'ordre du travail de densification :
@@ -18,7 +19,45 @@ import { PointCarte, StylePoint, VueCarte } from './reseau-carte/reseau-carte.co
  * (optimisation : points à rechercher / à écarter) ; 3. contrôle des écarts (RC) et points
  * homogènes ; 4. densification (points nouveaux) ; 5. fonds de carte.
  */
-export type OngletReseau = 'points' | 'controle' | 'ecarts' | 'densification' | 'fonds';
+export type OngletReseau = 'points' | 'controle' | 'ecarts' | 'densification' | 'zones' | 'fonds';
+
+/** Réseau que l'opérateur peut personnaliser : celui du contrôle, ou celui de la densification. */
+export type ContexteReseau = 'controle' | 'densification';
+
+export const COULEURS_ZONES: Record<TypeZone, string> = { levee: '#f39c12', densification: '#8e44ad' };
+export const LIBELLES_ZONES: Record<TypeZone, string> = {
+  levee: 'Zone levée (lever de détail à couvrir)',
+  densification: 'Zone de densification (points nouveaux à y placer)',
+};
+
+/** Zone de travail : importée (shapefile / GeoPackage) ou dessinée sur la carte. */
+export interface ZoneReseau {
+  id: string;
+  nom: string;
+  type: TypeZone;
+  /** Référence libre : n° de titre, d'affaire, de secteur… */
+  reference: string;
+  description: string;
+  couleur: string;
+  /** Prise en compte dans la densification (sinon seulement affichée, estompée). */
+  active: boolean;
+  source: 'import' | 'dessin';
+  fichier?: string;
+  attributs?: Record<string, string>;
+  /** Polygones WGS84 : [anneau extérieur, trous…], anneau = [[lat, lon]…]. */
+  polygones: number[][][][];
+}
+
+/** Réseau personnalisé : lignes de base choisies par l'opérateur (paires de noms). */
+export interface ReseauPerso {
+  lignes: [string, string][];
+  resultat: ResultatPersonnalise | ResultatDensification | null;
+  calcul: boolean;
+  erreur: string;
+}
+
+/** Délai avant l'évaluation d'un réseau personnalisé (plusieurs clics = un seul calcul). */
+export const DELAI_EVALUATION_MS = 350;
 
 export interface PointAncien extends PointReseau {
   /** Retenu dans le réseau (l'opérateur peut écarter un point, avec un motif). */
@@ -37,7 +76,7 @@ const message = (err: any, defaut: string) => {
   return d?.detail || (d && typeof d === 'object' ? JSON.stringify(d) : defaut);
 };
 
-/** État du module « Réseau GPS », partagé par les onglets et la carte (fourni par la page). */
+/** État du module « Réseau GNSS », partagé par les onglets et la carte (fourni par la page). */
 @Injectable()
 export class ReseauGpsStore {
   referentiel: ReferentielReseau | null = null;
@@ -81,6 +120,23 @@ export class ReseauGpsStore {
   // --- 5. Fonds de carte
   mesFonds: MesFonds = { ids: [], persos: [], actif: null };
 
+  // --- Zones (levées / à densifier)
+  zones: ZoneReseau[] = [];
+  zoneSelectionnee: string | null = null;
+  afficherZones = true;
+  modeDessinZone = false;
+  /** Type donné à la prochaine zone dessinée. */
+  typeDessin: TypeZone = 'densification';
+  importZonesEnCours = false;
+  avertissementsZones: string[] = [];
+
+  // --- Réseaux personnalisés
+  perso: Record<ContexteReseau, ReseauPerso | null> = { controle: null, densification: null };
+  /** Édition des lignes sur la carte (clic point A puis point B ; clic sur une ligne = la retirer). */
+  editionLignes: ContexteReseau | null = null;
+  selectionLigne: string | null = null;
+  private minuteurs: Partial<Record<ContexteReseau, ReturnType<typeof setTimeout>>> = {};
+
   readonly vue$ = new BehaviorSubject<VueCarte | null>(null);
 
   constructor(private service: ReseauGpsService, private toast: ToastService) {}
@@ -97,20 +153,33 @@ export class ReseauGpsStore {
         this.pointsCouvertureMin = r.defauts.points_couverture_min;
         this.mesFonds = chargerMesFonds(r.fonds.par_defaut);
       },
-      error: () => this.toast.error('Réseau GPS', 'Chargement du référentiel impossible.'),
+      error: () => this.toast.error('Réseau GNSS', 'Chargement du référentiel impossible.'),
     });
   }
 
   choisirOnglet(o: OngletReseau): void {
     this.onglet = o;
     if (o !== 'densification') this.modeAjoutCarte = false;
+    if (o !== 'zones') this.modeDessinZone = false;
+    if (this.editionLignes && this.editionLignes !== o) this.terminerEditionLignes();
     this.rafraichirVue();
+  }
+
+  /** Un seul mode de clic actif sur la carte à la fois. */
+  arreterModesCarte(): void {
+    this.modeAjoutCarte = false;
+    this.modeDessinZone = false;
+    this.editionLignes = null;
+    this.selectionLigne = null;
   }
 
   // ================================================================== 1. points anciens
 
   definirAnciens(points: PointReseau[], libelle: string): void {
-    this.anciens = points.map(p => ({ ...p, statut: 'ancien', retenu: true, homogene: null }));
+    this.anciens = points.map(p => ({
+      ...p, x_m: ReseauGpsStore.nombre(p.x_m), y_m: ReseauGpsStore.nombre(p.y_m),
+      statut: 'ancien', retenu: true, homogene: null,
+    }));
     this.libelleSource = libelle;
     this.toutInvalider();
   }
@@ -144,11 +213,38 @@ export class ReseauGpsStore {
     this.toutInvalider();
   }
 
+  /** Active / désactive tous les points (ou inverse la sélection). */
+  activerTous(actif: boolean | 'inverser'): void {
+    this.anciens.forEach(a => {
+      const cible = actif === 'inverser' ? !a.retenu : actif;
+      if (a.retenu !== cible) {
+        a.retenu = cible;
+        a.motifEcart = cible ? '' : 'Désactivé par l\'opérateur';
+      }
+    });
+    this.toutInvalider();
+  }
+
+  /** Bascule un point désigné sur la carte (bouton de sa fiche). */
+  basculerRetenuParNom(nom: string): void {
+    const a = this.anciens.find(p => p.nom_point === nom);
+    if (a) this.basculerRetenu(a, 'Désactivé depuis la carte');
+  }
+
   /** Une saisie a changé : les résultats calculés ne correspondent plus aux données. */
   toutInvalider(): void {
     if (this.controle) this.controlePerime = true;
     if (this.densification) this.densificationPerimee = true;
+    (['controle', 'densification'] as ContexteReseau[]).forEach(c => this.persoPointsModifies(c));
     this.rafraichirVue();
+  }
+
+  /** Coordonnée lue d'une pièce : « 353 108.16 », « 353 108,16 » (espaces, virgule) → nombre. */
+  static nombre(v: unknown): number | null {
+    if (v === null || v === undefined || v === '') return null;
+    if (typeof v === 'number') return isFinite(v) ? v : null;
+    const n = Number(String(v).replace(/[\s\u00a0\u202f]/g, '').replace(',', '.'));
+    return isFinite(n) ? n : null;
   }
 
   static coordonneesValides(p: PointReseau): boolean {
@@ -208,7 +304,7 @@ export class ReseauGpsStore {
     a.retenu = false;
     a.motifEcart = s.motif;
     this.toutInvalider();
-    this.toast.success('Réseau GPS', `${s.nom_point} écarté : recalculez le réseau.`);
+    this.toast.success('Réseau GNSS', `${s.nom_point} écarté : recalculez le réseau.`);
   }
 
   // ================================================================== 3. écarts (RC)
@@ -291,7 +387,7 @@ export class ReseauGpsStore {
         .map(n => this.versApi({ ...n, statut: 'nouveau' })),
       nb_nouveaux: Number(this.nbNouveaux) || 0, proposer, zone: this.zone,
       longueur_max_km: Number(this.longueurMaxKm), rayon_couverture_km: Number(this.rayonCouvertureKm),
-      points_couverture_min: Number(this.pointsCouvertureMin),
+      points_couverture_min: Number(this.pointsCouvertureMin), ...this.zonesPourCalcul(),
     }).subscribe({
       next: r => {
         this.densification = r;
@@ -338,7 +434,334 @@ export class ReseauGpsStore {
 
   nouveauxModifies(): void {
     if (this.densification) this.densificationPerimee = true;
+    this.persoPointsModifies('densification');
     this.rafraichirVue();
+  }
+
+
+  // ================================================================== zones
+
+  private idZone(): string { return `zone-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`; }
+
+  private nomZoneLibre(base = 'Zone'): string {
+    const pris = new Set(this.zones.map(z => z.nom));
+    let k = this.zones.length + 1;
+    while (pris.has(`${base} ${k}`)) k++;
+    return `${base} ${k}`;
+  }
+
+  importerZones(fichiers: File[], typeDefaut: TypeZone | null): void {
+    if (!fichiers.length || this.importZonesEnCours) return;
+    this.importZonesEnCours = true;
+    this.service.importerZones(fichiers, this.zone, typeDefaut).subscribe({
+      next: r => {
+        this.importZonesEnCours = false;
+        const nouvelles = r.zones.map(z => this.depuisImport(z, typeDefaut));
+        this.zones = [...this.zones, ...nouvelles];
+        const supposees = r.projections.filter(p => p.supposee)
+          .map(p => `« ${p.couche} » : projection non indiquée, ${p.libelle} supposée.`);
+        this.avertissementsZones = [...r.avertissements, ...supposees];
+        const aVerifier = nouvelles.filter((_, k) => !r.zones[k].type_deduit).length;
+        this.toast.success('Réseau GNSS', `${nouvelles.length} zone(s) importée(s)`
+          + (aVerifier ? ` — ${aVerifier} dont le type est à vérifier.` : '.'));
+        this.zonesModifiees();
+        this.cadrerZones$.next(nouvelles.map(z => z.id));
+      },
+      error: err => {
+        this.importZonesEnCours = false;
+        this.toast.error('Import des zones', message(err, 'Lecture des fichiers impossible.'));
+      },
+    });
+  }
+
+  private depuisImport(z: ZoneImportee, typeDefaut: TypeZone | null): ZoneReseau {
+    const type: TypeZone = z.type || typeDefaut || 'densification';
+    const attr = z.attributs || {};
+    const cle = (noms: string[]) => Object.keys(attr).find(k => noms.includes(k.toLowerCase()));
+    const ref = cle(['reference', 'ref', 'titre', 'affaire', 'numero', 'num']);
+    const desc = cle(['description', 'observation', 'observations', 'commentaire', 'remarque']);
+    return {
+      id: this.idZone(), nom: z.nom || this.nomZoneLibre(), type, couleur: COULEURS_ZONES[type], active: true,
+      reference: ref ? attr[ref] : '', description: desc ? attr[desc] : '',
+      source: 'import', fichier: z.couche && z.fichier !== `${z.couche}.shp` ? `${z.fichier} › ${z.couche}` : z.fichier,
+      attributs: attr, polygones: z.polygones,
+    };
+  }
+
+  commencerDessinZone(): void {
+    this.arreterModesCarte();
+    this.modeDessinZone = true;
+  }
+
+  /** Fin du tracé sur la carte : anneau [[lat, lon]…] (au moins 3 sommets). */
+  ajouterZoneDessinee(anneau: number[][]): void {
+    this.modeDessinZone = false;
+    if (anneau.length < 3) return;
+    const zone: ZoneReseau = {
+      id: this.idZone(), nom: this.nomZoneLibre(), type: this.typeDessin, couleur: COULEURS_ZONES[this.typeDessin],
+      active: true, reference: '', description: '', source: 'dessin', polygones: [[anneau]],
+    };
+    this.zones = [...this.zones, zone];
+    this.zoneSelectionnee = zone.id;
+    this.onglet = 'zones';
+    this.zonesModifiees();
+    this.toast.success('Réseau GNSS', `${zone.nom} ajoutée : nommez-la et vérifiez son type.`);
+  }
+
+  changerTypeZone(z: ZoneReseau, type: TypeZone): void {
+    if (z.couleur === COULEURS_ZONES[z.type]) z.couleur = COULEURS_ZONES[type];
+    z.type = type;
+    this.zonesModifiees();
+  }
+
+  supprimerZone(id: string): void {
+    this.zones = this.zones.filter(z => z.id !== id);
+    if (this.zoneSelectionnee === id) this.zoneSelectionnee = null;
+    this.zonesModifiees();
+  }
+
+  viderZones(): void {
+    this.zones = [];
+    this.zoneSelectionnee = null;
+    this.avertissementsZones = [];
+    this.zonesModifiees();
+  }
+
+  selectionnerZone(id: string | null): void {
+    this.zoneSelectionnee = id;
+    if (id) this.cadrerZones$.next([id]);
+    this.rafraichirVue();
+  }
+
+  /** Une zone a changé : la densification qui en dépend est à recalculer. */
+  zonesModifiees(): void {
+    if (this.densification) this.densificationPerimee = true;
+    this.persoPointsModifies('densification');
+    this.rafraichirVue();
+  }
+
+  mesuresZone(z: ZoneReseau): { aire: number; perimetre: number; sommets: number } {
+    return mesurerZone(z.polygones, this.zone);
+  }
+
+  zonesActives(type: TypeZone): ZoneReseau[] { return this.zones.filter(z => z.active && z.type === type); }
+
+  /** Zones actives converties en Lambert pour le calcul de densification. */
+  zonesPourCalcul(): { zones_densification: number[][][][]; zones_levee: number[][][][] } {
+    const plan = (zs: ZoneReseau[]) => zs.flatMap(z => z.polygones.map(poly => poly.map(anneau =>
+      anneau.map(([lat, lon]) => wgs84VersLambert(lat, lon, this.zone).map(v => Math.round(v * 100) / 100)))));
+    return { zones_densification: plan(this.zonesActives('densification')), zones_levee: plan(this.zonesActives('levee')) };
+  }
+
+  /** Zones au format GeoJSON (WGS84, ordre lon/lat), avec leurs informations. */
+  exporterGeoJson(): string {
+    return JSON.stringify({
+      type: 'FeatureCollection',
+      features: this.zones.map(z => ({
+        type: 'Feature',
+        properties: { nom: z.nom, type: z.type, reference: z.reference, description: z.description,
+                      source: z.source, fichier: z.fichier || '', aire_m2: Math.round(this.mesuresZone(z).aire) },
+        geometry: {
+          type: 'MultiPolygon',
+          coordinates: z.polygones.map(poly => poly.map(anneau => {
+            const ferme = [...anneau, anneau[0]];
+            return ferme.map(([lat, lon]) => [lon, lat]);
+          })),
+        },
+      })),
+    }, null, 1);
+  }
+
+  /** Zones à recadrer sur la carte (import, sélection). */
+  readonly cadrerZones$ = new BehaviorSubject<string[] | null>(null);
+
+  // ================================================================== réseaux personnalisés
+
+  /** Points du réseau personnalisable, dans l'ordre envoyé au calcul. */
+  pointsContexte(ctx: ContexteReseau): PointReseau[] {
+    return ctx === 'controle'
+      ? this.anciensRetenus
+      : [...this.anciensDensification, ...this.nouveaux.filter(n => ReseauGpsStore.coordonneesValides(n))];
+  }
+
+  nomsContexte(ctx: ContexteReseau): string[] { return this.pointsContexte(ctx).map(p => p.nom_point); }
+
+  /** Démarre un réseau personnalisé à partir des lignes du réseau affiché. */
+  personnaliser(ctx: ContexteReseau): void {
+    let lignes: [string, string][] = [];
+    if (ctx === 'controle' && this.controle && !this.controlePerime) {
+      const code = this.varianteActive === 'parfaite' || this.varianteActive === 'personnalise'
+        ? (this.controle.recommandee || this.controle.variantes[0]?.code) : this.varianteActive;
+      const v = this.controle.variantes.find(x => x.code === code) || this.controle.variantes[0];
+      const noms = this.controle.points.map(p => p.nom_point);
+      lignes = (v?.lignes || []).map(l => [noms[l.de], noms[l.a]] as [string, string]);
+    } else if (ctx === 'densification' && this.densification && !this.densificationPerimee) {
+      const noms = this.densification.points.map(p => p.nom_point);
+      lignes = this.densification.reseau.lignes.map(l => [noms[l.de], noms[l.a]] as [string, string]);
+    }
+    this.perso[ctx] = { lignes, resultat: null, calcul: false, erreur: '' };
+    if (ctx === 'controle') this.varianteActive = 'personnalise';
+    this.evaluerPerso(ctx, true);
+    this.rafraichirVue();
+  }
+
+  abandonnerPerso(ctx: ContexteReseau): void {
+    this.perso[ctx] = null;
+    if (this.editionLignes === ctx) this.terminerEditionLignes();
+    if (ctx === 'controle' && this.varianteActive === 'personnalise') {
+      this.varianteActive = this.controle?.recommandee || this.controle?.variantes[0]?.code || '';
+    }
+    this.rafraichirVue();
+  }
+
+  commencerEditionLignes(ctx: ContexteReseau): void {
+    if (!this.perso[ctx]) this.personnaliser(ctx);
+    this.arreterModesCarte();
+    this.editionLignes = ctx;
+    if (ctx === 'controle') this.varianteActive = 'personnalise';
+    this.rafraichirVue();
+  }
+
+  terminerEditionLignes(): void {
+    this.editionLignes = null;
+    this.selectionLigne = null;
+    this.rafraichirVue();
+  }
+
+  private static cleLigne(a: string, b: string): string { return [a, b].sort().join('\u0000'); }
+
+  aLaLigne(ctx: ContexteReseau, a: string, b: string): boolean {
+    const cle = ReseauGpsStore.cleLigne(a, b);
+    return !!this.perso[ctx]?.lignes.some(([x, y]) => ReseauGpsStore.cleLigne(x, y) === cle);
+  }
+
+  /** Ajoute la ligne A–B si elle manque, la retire sinon. */
+  basculerLigne(ctx: ContexteReseau, a: string, b: string): void {
+    const p = this.perso[ctx];
+    if (!p || a === b) return;
+    const cle = ReseauGpsStore.cleLigne(a, b);
+    const avant = p.lignes.length;
+    p.lignes = p.lignes.filter(([x, y]) => ReseauGpsStore.cleLigne(x, y) !== cle);
+    if (p.lignes.length === avant) p.lignes = [...p.lignes, [a, b]];
+    this.lignesModifiees(ctx);
+  }
+
+  ajouterLigne(ctx: ContexteReseau, a: string, b: string): boolean {
+    const p = this.perso[ctx];
+    if (!p) return false;
+    if (!a || !b || a === b) { this.toast.error('Ligne de base', 'Choisissez deux points différents.'); return false; }
+    if (this.aLaLigne(ctx, a, b)) { this.toast.error('Ligne de base', `La ligne ${a} – ${b} existe déjà.`); return false; }
+    p.lignes = [...p.lignes, [a, b]];
+    this.lignesModifiees(ctx);
+    return true;
+  }
+
+  supprimerLigne(ctx: ContexteReseau, k: number): void {
+    const p = this.perso[ctx];
+    if (!p) return;
+    p.lignes = p.lignes.filter((_, i) => i !== k);
+    this.lignesModifiees(ctx);
+  }
+
+  /** Change une extrémité d'une ligne existante (refusé si la ligne obtenue existe déjà). */
+  modifierLigne(ctx: ContexteReseau, k: number, a: string, b: string): boolean {
+    const p = this.perso[ctx];
+    if (!p || !p.lignes[k]) return false;
+    if (a === b) { this.toast.error('Ligne de base', 'Une ligne relie deux points différents.'); return false; }
+    const cle = ReseauGpsStore.cleLigne(a, b);
+    if (p.lignes.some(([x, y], i) => i !== k && ReseauGpsStore.cleLigne(x, y) === cle)) {
+      this.toast.error('Ligne de base', `La ligne ${a} – ${b} existe déjà.`);
+      return false;
+    }
+    p.lignes = p.lignes.map((l, i) => (i === k ? [a, b] as [string, string] : l));
+    this.lignesModifiees(ctx);
+    return true;
+  }
+
+  /** Clic sur un point en mode édition : 1er clic = départ, 2e clic = bascule de la ligne. */
+  clicPointEdition(nom: string): void {
+    const ctx = this.editionLignes;
+    if (!ctx) return;
+    if (!this.selectionLigne) this.selectionLigne = nom;
+    else if (this.selectionLigne === nom) this.selectionLigne = null;
+    else {
+      this.basculerLigne(ctx, this.selectionLigne, nom);
+      this.selectionLigne = null;
+    }
+    this.rafraichirVue();
+  }
+
+  /** Clic sur une ligne en mode édition : elle est retirée. */
+  clicLigneEdition(a: string, b: string): void {
+    if (this.editionLignes) this.basculerLigne(this.editionLignes, a, b);
+  }
+
+  private lignesModifiees(ctx: ContexteReseau): void {
+    this.evaluerPerso(ctx);
+    this.rafraichirVue();
+  }
+
+  /** Points modifiés : les lignes vers un point disparu tombent, le réseau est réévalué. */
+  private persoPointsModifies(ctx: ContexteReseau): void {
+    const p = this.perso[ctx];
+    if (!p) return;
+    const noms = new Set(this.nomsContexte(ctx));
+    p.lignes = p.lignes.filter(([a, b]) => noms.has(a) && noms.has(b));
+    this.evaluerPerso(ctx);
+  }
+
+  evaluerPerso(ctx: ContexteReseau, immediat = false): void {
+    const p = this.perso[ctx];
+    if (!p) return;
+    clearTimeout(this.minuteurs[ctx]);
+    p.calcul = true;
+    const lancer = () => {
+      const pts = this.pointsContexte(ctx);
+      if (pts.length < 3) {
+        p.calcul = false;
+        p.resultat = null;
+        p.erreur = 'Il faut au moins 3 points actifs.';
+        return;
+      }
+      const fin = (r: ResultatPersonnalise | ResultatDensification) => {
+        if (this.perso[ctx] !== p) return;
+        p.resultat = r; p.calcul = false; p.erreur = '';
+        this.rafraichirVue();
+      };
+      const echec = (err: any) => {
+        if (this.perso[ctx] !== p) return;
+        p.calcul = false; p.resultat = null;
+        p.erreur = message(err, 'Évaluation du réseau personnalisé impossible.');
+        this.rafraichirVue();
+      };
+      if (ctx === 'controle') {
+        this.service.evaluer({
+          points: pts.map(x => this.versApi(x)), lignes: p.lignes.map(l => [...l]), type_reseau: 'anciens',
+          zone: this.zone, longueur_max_km: Number(this.longueurMaxKm),
+        }).subscribe({ next: fin, error: echec });
+      } else {
+        const index = new Map(pts.map((x, i) => [x.nom_point, i]));
+        const nbAnciens = this.anciensDensification.length;
+        this.service.densifier({
+          anciens: pts.slice(0, nbAnciens).map(x => this.versApi(x)),
+          nouveaux: pts.slice(nbAnciens).map(x => this.versApi({ ...x, statut: 'nouveau' })),
+          nb_nouveaux: 0, proposer: false, zone: this.zone, longueur_max_km: Number(this.longueurMaxKm),
+          rayon_couverture_km: Number(this.rayonCouvertureKm), points_couverture_min: Number(this.pointsCouvertureMin),
+          ...this.zonesPourCalcul(),
+          lignes: p.lignes.map(([a, b]) => [index.get(a)!, index.get(b)!]),
+        }).subscribe({ next: fin, error: echec });
+      }
+    };
+    if (immediat) lancer();
+    else this.minuteurs[ctx] = setTimeout(lancer, DELAI_EVALUATION_MS);
+  }
+
+  /** Score du réseau personnalisé (réseau seul pour le contrôle, densification sinon). */
+  scorePerso(ctx: ContexteReseau): number | null {
+    const r = this.perso[ctx]?.resultat;
+    if (!r) return null;
+    return 'score' in r && typeof (r as ResultatDensification).score === 'number' && ctx === 'densification'
+      ? (r as ResultatDensification).score : (r as ResultatPersonnalise).indicateurs?.score ?? null;
   }
 
   // ================================================================== 5. fonds de carte
@@ -400,26 +823,82 @@ export class ReseauGpsStore {
 
   construireVue(): VueCarte | null {
     const valides = this.anciens.filter(a => ReseauGpsStore.coordonneesValides(a));
+    let vue: VueCarte | null;
     switch (this.onglet) {
-      case 'controle': return this.vueControle(valides);
-      case 'ecarts': return this.vueEcarts();
-      case 'densification': return this.vueDensification();
+      case 'controle': vue = this.vueControle(valides); break;
+      case 'ecarts': vue = this.vueEcarts(); break;
+      case 'densification': vue = this.vueDensification(); break;
       default:
-        return valides.length ? {
+        vue = valides.length ? {
           points: valides.map(a => this.pointCarte(a, a.retenu ? 'ancien' : 'ecarte', { note: a.motifEcart })),
           lignes: [], triangles: [],
         } : null;
     }
+    const zones = this.zonesCarte();
+    if (!vue && !zones.length) return null;
+    vue = vue || { points: [], lignes: [], triangles: [] };
+    return { ...vue, zones, selection: this.selectionLigne || undefined };
+  }
+
+  private zonesCarte(): ZoneCarte[] {
+    if (!this.afficherZones) return [];
+    return this.zones.map(z => ({
+      id: z.id, nom: z.nom, type: z.type, couleur: z.couleur, polygones: z.polygones, active: z.active,
+      selectionnee: z.id === this.zoneSelectionnee,
+    }));
+  }
+
+  /** Lignes d'un réseau personnalisé : celles du résultat s'il est à jour, sinon provisoires. */
+  private lignesPerso(ctx: ContexteReseau, points: PointCarte[]): LigneCarte[] {
+    const p = this.perso[ctx];
+    if (!p) return [];
+    const index = new Map(points.map((pt, i) => [pt.nom_point, i]));
+    const r = p.resultat;
+    const resultatLignes: LigneBase[] | undefined = r ? ('reseau' in r ? r.reseau.lignes : r.lignes) : undefined;
+    const nomsResultat = r ? r.points.map(x => x.nom_point) : [];
+    const flags = new Map((resultatLignes || []).map(l =>
+      [ReseauGpsStore.cleLigne(nomsResultat[l.de], nomsResultat[l.a]), l]));
+    const maxM = Number(this.longueurMaxKm) * 1000;
+    return p.lignes.flatMap(([a, b]) => {
+      const i = index.get(a), j = index.get(b);
+      if (i === undefined || j === undefined) return [];
+      const d = Math.hypot(points[i].x_m - points[j].x_m, points[i].y_m - points[j].y_m);
+      const f = p.calcul ? undefined : flags.get(ReseauGpsStore.cleLigne(a, b));
+      const az = (Math.atan2(points[j].x_m - points[i].x_m, points[j].y_m - points[i].y_m) * 180 / Math.PI + 360) % 360;
+      return [{ de: i, a: j, distance_m: d, distance_km: d / 1000, azimut_deg: f?.azimut_deg ?? az,
+                en_boucle: f ? f.en_boucle : true, trop_longue: d > maxM, perso: true }];
+    });
+  }
+
+  private trianglesPerso(ctx: ContexteReseau, points: PointCarte[]) {
+    const p = this.perso[ctx];
+    const r = p?.resultat;
+    if (!r || p?.calcul) return [];
+    const tri = 'reseau' in r ? r.reseau.triangles : r.triangles;
+    const noms = r.points.map(x => x.nom_point);
+    const index = new Map(points.map((pt, i) => [pt.nom_point, i]));
+    return tri.map(t => ({ ...t, sommets: t.sommets.map(s => index.get(noms[s]) ?? -1) }))
+      .filter(t => t.sommets.every(s => s >= 0));
   }
 
   private vueControle(valides: PointAncien[]): VueCarte | null {
     const r = this.controle;
     const ecartes = valides.filter(a => !a.retenu).map(a => this.pointCarte(a, 'ecarte', { note: a.motifEcart }));
+    if (this.perso.controle && (this.varianteActive === 'personnalise' || !r || this.controlePerime)) {
+      const pts = valides.filter(a => a.retenu).map(a => this.pointCarte(a, 'ancien'));
+      return { points: [...pts, ...ecartes], lignes: this.lignesPerso('controle', pts),
+               triangles: this.trianglesPerso('controle', pts) };
+    }
     if (!r || this.controlePerime) {
       const pts = valides.filter(a => a.retenu).map(a => this.pointCarte(a, 'ancien'));
       return pts.length || ecartes.length ? { points: [...pts, ...ecartes], lignes: [], triangles: [] } : null;
     }
     const aEcarter = new Map((r.suppressions || []).map(s => [s.nom_point, s.motif]));
+    if (this.varianteActive === 'personnalise' && this.perso.controle) {
+      const pts = valides.filter(a => a.retenu).map(a => this.pointCarte(a, 'ancien'));
+      return { points: [...pts, ...ecartes], lignes: this.lignesPerso('controle', pts),
+               triangles: this.trianglesPerso('controle', pts) };
+    }
     if (this.varianteActive === 'parfaite') {
       const p = r.parfaite;
       return {
@@ -461,6 +940,14 @@ export class ReseauGpsStore {
 
   private vueDensification(): VueCarte | null {
     const r = this.densification;
+    if (this.perso.densification) {
+      const pts = this.pointsContexte('densification').map(p => this.pointCarte(p,
+        p.statut === 'nouveau' ? ((p as PointNouveau).origine === 'propose' ? 'propose' : 'nouveau') : 'homogene'));
+      const res = this.perso.densification.resultat as ResultatDensification | null;
+      return { points: pts, lignes: this.lignesPerso('densification', pts),
+               triangles: this.trianglesPerso('densification', pts),
+               nonCouverts: res && !this.perso.densification.calcul ? res.couverture.non_couverts : undefined };
+    }
     if (r && !this.densificationPerimee) {
       return {
         points: r.points.map(p => ({

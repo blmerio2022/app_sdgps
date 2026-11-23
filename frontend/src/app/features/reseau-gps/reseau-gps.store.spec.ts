@@ -42,7 +42,8 @@ describe('ReseauGpsStore', () => {
   beforeEach(() => {
     localStorage.removeItem(CLE_MES_FONDS);
     service = jasmine.createSpyObj('ReseauGpsService',
-      ['referentiel', 'generer', 'sourcesLpa', 'sourceLpa', 'analyserEcarts', 'sourcesRc', 'sourceRc', 'densifier']);
+      ['referentiel', 'generer', 'sourcesLpa', 'sourceLpa', 'analyserEcarts', 'sourcesRc', 'sourceRc', 'densifier',
+       'evaluer', 'importerZones']);
     service.referentiel.and.returnValue(of(REFERENTIEL));
     toast = jasmine.createSpyObj('ToastService', ['success', 'error']);
     store = new ReseauGpsStore(service, toast);
@@ -65,6 +66,14 @@ describe('ReseauGpsStore', () => {
     const vue = store.construireVue()!;
     expect(vue.points.length).toBe(4);
     expect(vue.points[0].lat).toBeCloseTo(34.0159, 3);
+  });
+
+  it('lit les coordonnées des pièces écrites avec espaces ou virgule (« 353 108.16 »)', () => {
+    store.definirAnciens([{ nom_point: 'A', x_m: '353 108.16' as any, y_m: '146\u00a0858,01' as any },
+                          { nom_point: 'B', x_m: 'x' as any, y_m: null }], 'lpa');
+    expect([store.anciens[0].x_m, store.anciens[0].y_m]).toEqual([353108.16, 146858.01]);
+    expect(store.anciens[1].x_m).toBeNull();
+    expect(store.anciensRetenus.length).toBe(1);
   });
 
   it('écarte un point ancien puis le réintègre', () => {
@@ -213,5 +222,178 @@ describe('ReseauGpsStore', () => {
     const avant = store.vue$.value;
     store.choisirOnglet('fonds');
     expect(store.vue$.value).toBe(avant);
+  });
+
+  // ------------------------------------------------------------------ activation des points
+
+  it('active, désactive ou inverse tous les points ; bascule depuis la carte', () => {
+    store.definirAnciens(pts3, 'x');
+    store.activerTous(false);
+    expect(store.anciensRetenus.length).toBe(0);
+    store.activerTous('inverser');
+    expect(store.anciensRetenus.length).toBe(4);
+    store.basculerRetenuParNom('B');
+    expect(store.anciens.find(a => a.nom_point === 'B')!.retenu).toBeFalse();
+    expect(store.anciens.find(a => a.nom_point === 'B')!.motifEcart).toContain('carte');
+    store.basculerRetenuParNom('inconnu');
+    expect(store.nbEcartes).toBe(1);
+  });
+
+  // ------------------------------------------------------------------ zones
+
+  const carre = [[34.0, -6.3], [34.0, -6.2], [34.05, -6.2], [34.05, -6.3]];
+
+  it('importe des zones (type par défaut, référence reprise des attributs) et prévient', () => {
+    service.importerZones.and.returnValue(of({
+      zones: [{ nom: 'Lot 1', type: 'levee', type_deduit: true, attributs: { REF: 'T-12', NOM: 'Lot 1' },
+                polygones: [[carre]], couche: 'lots', fichier: 'lots.shp' },
+              { nom: 'Lot 2', type: null, type_deduit: false, attributs: {}, polygones: [[carre]],
+                couche: 'secteurs', fichier: 'etude.gpkg' }],
+      projections: [{ couche: 'lots', code: 'nord', libelle: 'Lambert Nord', supposee: true }], avertissements: ['x'],
+    } as any));
+    const fichier = new File(['x'], 'lots.zip');
+    store.importerZones([fichier], 'densification');
+    expect(service.importerZones).toHaveBeenCalledWith([fichier], 'nord', 'densification');
+    expect(store.zones.map(z => [z.nom, z.type, z.reference])).toEqual([['Lot 1', 'levee', 'T-12'], ['Lot 2', 'densification', '']]);
+    expect(store.zones[1].fichier).toBe('etude.gpkg › secteurs');
+    expect(store.avertissementsZones.length).toBe(2);
+    expect(toast.success.calls.mostRecent().args[1]).toContain('1 dont le type est à vérifier');
+    expect(store.cadrerZones$.value?.length).toBe(2);
+    expect(store.construireVue()!.zones!.length).toBe(2);         // zones affichées même sans point
+  });
+
+  it('dessine une zone, change son type (et sa couleur), la mesure puis la supprime', () => {
+    store.typeDessin = 'levee';
+    store.commencerDessinZone();
+    expect(store.modeDessinZone).toBeTrue();
+    store.ajouterZoneDessinee(carre);
+    const z = store.zones[0];
+    expect([z.nom, z.type, z.couleur, store.onglet, store.modeDessinZone]).toEqual(['Zone 1', 'levee', '#f39c12', 'zones', false]);
+    expect(store.zoneSelectionnee).toBe(z.id);
+    store.changerTypeZone(z, 'densification');
+    expect(z.couleur).toBe('#8e44ad');
+    const m = store.mesuresZone(z);
+    expect(m.aire).toBeGreaterThan(40e6);                         // ~ 9,2 km × 5,5 km
+    expect(m.sommets).toBe(4);
+    store.ajouterZoneDessinee([[34, -6], [34.1, -6]]);           // moins de 3 sommets : ignorée
+    expect(store.zones.length).toBe(1);
+    store.supprimerZone(z.id);
+    expect(store.zones.length).toBe(0);
+  });
+
+  it('transmet les zones actives (en Lambert) à la densification et exporte en GeoJSON', () => {
+    store.ajouterZoneDessinee(carre);
+    store.typeDessin = 'levee';
+    store.ajouterZoneDessinee(carre);
+    store.zones[1].active = false;
+    const calc = store.zonesPourCalcul();
+    expect(calc.zones_densification.length).toBe(1);
+    expect(calc.zones_levee.length).toBe(0);
+    expect(calc.zones_densification[0][0][0][0]).toBeGreaterThan(300000);       // X Lambert
+    store.definirAnciens(pts3, 'x');
+    service.densifier.and.returnValue(of({ points: [], reseau: { lignes: [], triangles: [] }, couverture: {} } as any));
+    store.proposerNouveaux();
+    expect(service.densifier.calls.mostRecent().args[0].zones_densification!.length).toBe(1);
+    const geo = JSON.parse(store.exporterGeoJson());
+    expect(geo.features.length).toBe(2);
+    expect(geo.features[0].geometry.coordinates[0][0][0]).toEqual([-6.3, 34.0]);  // lon, lat ; anneau fermé
+    expect(geo.features[0].geometry.coordinates[0][0].length).toBe(5);
+  });
+
+  // ------------------------------------------------------------------ réseau personnalisé
+
+  it('personnalise le réseau de contrôle : lignes reprises, ajout / retrait / modification, évaluation différée', () => {
+    jasmine.clock().install();
+    try {
+      store.definirAnciens(pts3, 'x');
+      service.generer.and.returnValue(of({
+        points: pts3.map((p, i) => ({ ...p, index: i, lat: 34, lon: -6, degre: 2 })),
+        variantes: [variante('delaunay', 80)], recommandee: 'delaunay', justification: [], suppressions: [],
+        parfaite: { ...variante('parfaite', 90), points: [], suggestions: [], conclusion: '' },
+      } as unknown as ResultatReseau));
+      store.genererControle();
+      service.evaluer.and.returnValue(of({ ...variante('personnalise', 70), points: [] } as any));
+      store.personnaliser('controle');
+      expect(store.perso.controle!.lignes).toEqual([['A', 'B']]);
+      expect(store.varianteActive).toBe('personnalise');
+      expect(service.evaluer).toHaveBeenCalledTimes(1);                       // immédiat au démarrage
+      expect(store.scorePerso('controle')).toBe(70);
+
+      expect(store.ajouterLigne('controle', 'B', 'A')).toBeFalse();           // doublon (sens indifférent)
+      expect(store.ajouterLigne('controle', 'C', 'C')).toBeFalse();
+      expect(store.ajouterLigne('controle', 'B', 'C')).toBeTrue();
+      store.basculerLigne('controle', 'C', 'A');
+      expect(store.perso.controle!.lignes.length).toBe(3);
+      expect(store.modifierLigne('controle', 2, 'C', 'D')).toBeTrue();
+      expect(store.modifierLigne('controle', 2, 'A', 'B')).toBeFalse();       // existe déjà
+      store.supprimerLigne('controle', 0);
+      expect(store.perso.controle!.lignes).toEqual([['B', 'C'], ['C', 'D']]);
+      expect(service.evaluer).toHaveBeenCalledTimes(1);                       // regroupé…
+      jasmine.clock().tick(400);
+      expect(service.evaluer).toHaveBeenCalledTimes(2);                       // …en un seul calcul
+      expect(service.evaluer.calls.mostRecent().args[0].lignes).toEqual([['B', 'C'], ['C', 'D']]);
+
+      // Désactiver un point retire ses lignes.
+      store.basculerRetenu(store.anciens.find(a => a.nom_point === 'D')!);
+      expect(store.perso.controle!.lignes).toEqual([['B', 'C']]);
+      store.choisirOnglet('controle');
+      const vue = store.construireVue()!;
+      expect(vue.lignes.length).toBe(1);
+      expect(vue.lignes[0].perso).toBeTrue();
+
+      store.abandonnerPerso('controle');
+      expect(store.perso.controle).toBeNull();
+      expect(store.varianteActive).toBe('delaunay');
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
+  it('édition sur la carte : point A puis point B bascule la ligne ; clic sur une ligne la retire', () => {
+    store.definirAnciens(pts3, 'x');
+    service.evaluer.and.returnValue(of({ ...variante('personnalise', 50), points: [] } as any));
+    store.commencerEditionLignes('controle');
+    expect(store.editionLignes).toBe('controle');
+    expect(store.perso.controle!.lignes).toEqual([]);                         // pas de réseau calculé : vide
+    store.clicPointEdition('A');
+    expect(store.selectionLigne).toBe('A');
+    expect(store.construireVue()!.selection).toBe('A');
+    store.clicPointEdition('B');
+    expect(store.perso.controle!.lignes).toEqual([['A', 'B']]);
+    expect(store.selectionLigne).toBeNull();
+    store.clicLigneEdition('B', 'A');
+    expect(store.perso.controle!.lignes).toEqual([]);
+    store.choisirOnglet('points');                                            // changer d'onglet termine l'édition
+    expect(store.editionLignes).toBeNull();
+  });
+
+  it('réseau personnalisé de densification : indices dans anciens + nouveaux et zones transmis', () => {
+    jasmine.clock().install();
+    try {
+      store.definirAnciens(pts3, 'x');
+      store.ajouterNouveau(421000, 381500);
+      service.densifier.and.returnValue(of({ score: 77, points: [], reseau: { lignes: [], triangles: [] },
+                                             couverture: { non_couverts: [] } } as any));
+      store.personnaliser('densification');
+      store.ajouterLigne('densification', 'A', 'PN1');
+      jasmine.clock().tick(400);
+      const demande = service.densifier.calls.mostRecent().args[0];
+      expect(demande.proposer).toBeFalse();
+      expect(demande.lignes).toEqual([[0, 4]]);
+      expect(demande.nouveaux.length).toBe(1);
+      expect(store.scorePerso('densification')).toBe(77);
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
+  it('erreur d\'évaluation affichée, moins de 3 points signalés', () => {
+    store.definirAnciens(pts3.slice(0, 2), 'x');
+    store.personnaliser('controle');
+    expect(store.perso.controle!.erreur).toContain('au moins 3 points');
+    store.definirAnciens(pts3, 'x');
+    service.evaluer.and.returnValue(throwError(() => ({ error: { detail: 'Point inconnu.' } })));
+    store.personnaliser('controle');
+    expect(store.perso.controle!.erreur).toBe('Point inconnu.');
   });
 });

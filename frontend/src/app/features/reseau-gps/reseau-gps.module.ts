@@ -10,9 +10,11 @@ import { OngletControleComponent } from './onglets/onglet-controle.component';
 import { OngletEcartsComponent } from './onglets/onglet-ecarts.component';
 import { OngletDensificationComponent } from './onglets/onglet-densification.component';
 import { OngletFondsComponent } from './onglets/onglet-fonds.component';
+import { OngletZonesComponent } from './onglets/onglet-zones.component';
+import { RgReseauPersoComponent } from './onglets/rg-reseau-perso.component';
 
 /**
- * Module « Réseau de triangulation GPS » — indépendant du reste de l'application, ouvert à
+ * Module « Réseau de triangulation GNSS » — indépendant du reste de l'application, ouvert à
  * TOUS les rôles (monté hors AdminGuard côté opérateur : `/reseau-gps`, et dans le groupe
  * admin : `/admin/reseau-gps`). Chargé à la demande (Leaflet n'alourdit pas le bundle initial).
  */
@@ -24,7 +26,7 @@ const routes: Routes = [
   declarations: [
     ReseauGpsPageComponent, ReseauCarteComponent, RgSectionComponent,
     OngletPointsComponent, OngletControleComponent, OngletEcartsComponent,
-    OngletDensificationComponent, OngletFondsComponent,
+    OngletDensificationComponent, OngletFondsComponent, OngletZonesComponent, RgReseauPersoComponent,
   ],
   imports: [CommonModule, FormsModule, RouterModule.forChild(routes)],
 })

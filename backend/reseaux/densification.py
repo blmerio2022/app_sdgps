@@ -43,9 +43,26 @@ class ErreurDensification(ValueError):
     """Données inexploitables (message destiné à l'utilisateur)."""
 
 
-def _grille(poly, cible):
-    xs, ys = [p[0] for p in poly], [p[1] for p in poly]
-    xmin, xmax, ymin, ymax = min(xs), max(xs), min(ys), max(ys)
+class Region:
+    """Surface de travail : un ou plusieurs polygones (anneau extérieur puis trous), en
+    coordonnées Lambert. Remplace l'enveloppe convexe quand l'opérateur fournit des zones."""
+
+    def __init__(self, polygones):
+        self.polygones = [[[tuple(pt) for pt in a] for a in p if len(a) >= 3] for p in polygones]
+        self.polygones = [p for p in self.polygones if p]
+        pts = [pt for p in self.polygones for pt in p[0]]
+        if not pts:
+            raise ErreurDensification('Zone vide.')
+        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        self.bbox = (min(xs), max(xs), min(ys), max(ys))
+
+    def contient(self, c):
+        return any(dans_polygone(c, p[0]) and not any(dans_polygone(c, t) for t in p[1:])
+                   for p in self.polygones)
+
+
+def _grille(region, cible):
+    xmin, xmax, ymin, ymax = region.bbox
     aire = max((xmax - xmin) * (ymax - ymin), 1.0)
     pas = math.sqrt(aire / cible)
     pts = []
@@ -53,10 +70,12 @@ def _grille(poly, cible):
     while y < ymax:
         x = xmin + pas / 2
         while x < xmax:
-            if dans_polygone((x, y), poly):
+            if region.contient((x, y)):
                 pts.append((x, y))
             x += pas
         y += pas
+    if not pts:                         # zone plus petite qu'un pas : son centre
+        pts = [((xmin + xmax) / 2, (ymin + ymax) / 2)]
     return pts, pas
 
 
@@ -83,8 +102,10 @@ def couverture(echantillons, coords, rayon_m, points_min):
     return 1 - len(non) / len(echantillons), non, credit / len(echantillons)
 
 
-def _evaluer(coords, statuts, longueur_max_m, echantillons, rayon_m, points_min, avec_n8=False):
-    aretes = _variante_toleree(coords, longueur_max_m=longueur_max_m)
+def _evaluer(coords, statuts, longueur_max_m, echantillons, rayon_m, points_min, avec_n8=False,
+             aretes=None):
+    if aretes is None:
+        aretes = _variante_toleree(coords, longueur_max_m=longueur_max_m)
     ev = evaluer(coords, statuts, aretes, longueur_max_m, TYPE_MIXTE, avec_n8=avec_n8)
     taux, non, progressif = couverture(echantillons, coords, rayon_m, points_min)
     s = POIDS_RESEAU * ev['indicateurs']['score'] + POIDS_COUVERTURE * taux
@@ -97,7 +118,7 @@ def _objectif(r):
     return s + POIDS_COUVERTURE * progressif
 
 
-def _candidats(coords, poly, grille, echantillons, non_couverts, espacement_min, rayon_m, points_min):
+def _candidats(coords, region, grille, echantillons, non_couverts, espacement_min, rayon_m, points_min):
     """Candidats à évaluer complètement : centres des triangles mal conformés (qualité du
     réseau) + les candidats au meilleur gain de couverture (pré-filtre rapide)."""
     def libre(c):
@@ -107,7 +128,7 @@ def _candidats(coords, poly, grille, echantillons, non_couverts, espacement_min,
     for t in delaunay(coords):
         if not _qualite_triangle(coords, t)['conforme']:
             cc = centre_circonscrit(*(coords[i] for i in t))
-            if cc and dans_polygone(cc, poly) and libre(cc):
+            if cc and region.contient(cc) and libre(cc):
                 qualite.append(cc)
     pas = max(1, len(non_couverts) // 40)
     pool = [c for c in list(grille) + [echantillons[k] for k in non_couverts[::pas]] if libre(c)]
@@ -129,12 +150,19 @@ def _candidats(coords, poly, grille, echantillons, non_couverts, espacement_min,
 
 def densifier(anciens, nouveaux_fixes=(), nb_nouveaux=0, zone='nord',
               longueur_max_km=N.LONGUEUR_MAX_KM_DEFAUT, rayon_km=RAYON_KM_DEFAUT,
-              points_min=POINTS_MIN_DEFAUT, proposer=True):
+              points_min=POINTS_MIN_DEFAUT, proposer=True, zones_densification=(), zones_levee=(),
+              lignes=None):
     """Propose (ou seulement évalue) les points nouveaux.
 
     `anciens` / `nouveaux_fixes` : dicts au format LPA (x_m, y_m, nom_point…).
     `nb_nouveaux` : nombre de points à proposer EN PLUS des points fixés ; 0 = automatique
     (jusqu'à couverture complète et tant que le score progresse).
+    `zones_densification` / `zones_levee` : polygones de l'opérateur (anneaux de [x, y]
+    Lambert). Les points nouveaux sont placés dans les zones de DENSIFICATION ; la couverture
+    N11 porte sur les zones LEVÉES. Une seule sorte fournie sert aux deux ; aucune :
+    enveloppe convexe des points anciens.
+    `lignes` : réseau PERSONNALISÉ (paires d'indices dans anciens + nouveaux, dans cet ordre)
+    évalué tel quel, sans proposition (`proposer` ignoré).
     """
     anc = [{**p, 'statut': STATUT_ANCIEN} for p in anciens]
     nouv = [{**p, 'statut': STATUT_NOUVEAU, 'origine': p.get('origine') or 'manuel'}
@@ -150,16 +178,33 @@ def densifier(anciens, nouveaux_fixes=(), nb_nouveaux=0, zone='nord',
         p['nom_point'] = str(p.get('nom_point') or '').strip() or 'P'
     coords = [(p['x_m'], p['y_m']) for p in pts]
     statuts = [p['statut'] for p in pts]
-    sous = [coords[i] for i in range(len(anc))]
-    env = enveloppe_convexe(sous)
-    if len(env) < 3:
-        raise ErreurDensification('Les points anciens homogènes sont alignés : aucune zone à densifier.')
-    poly = [sous[i] for i in env]
+    zones_densification, zones_levee = list(zones_densification or []), list(zones_levee or [])
+    poly = None
+    if zones_densification or zones_levee:
+        placement = Region(zones_densification or zones_levee)
+        couverte = Region(zones_levee or zones_densification)
+    else:
+        sous = [coords[i] for i in range(len(anc))]
+        env = enveloppe_convexe(sous)
+        if len(env) < 3:
+            raise ErreurDensification('Les points anciens homogènes sont alignés : aucune zone à densifier.')
+        poly = [sous[i] for i in env]
+        placement = couverte = Region([[poly]])
+    aretes_perso = None
+    if lignes is not None:
+        n = len(pts)
+        aretes_perso = set()
+        for i, j in lignes:
+            i, j = int(i), int(j)
+            if not (0 <= i < n and 0 <= j < n) or i == j:
+                raise ErreurDensification("Ligne de base invalide (point inconnu ou relié à lui-même).")
+            aretes_perso.add((min(i, j), max(i, j)))
+        proposer = False
     longueur_max_m = float(longueur_max_km) * 1000
     rayon_m = float(rayon_km) * 1000
     points_min = int(points_min)
-    echantillons, pas_ech = _grille(poly, ECHANTILLONS_CIBLE)
-    grille, pas_grille = _grille(poly, CANDIDATS_GRILLE_CIBLE)
+    echantillons, pas_ech = _grille(couverte, ECHANTILLONS_CIBLE)
+    grille, pas_grille = _grille(placement, CANDIDATS_GRILLE_CIBLE)
     espacement_min = max(50.0, 0.35 * pas_grille)
 
     def evaluation(c):
@@ -175,7 +220,7 @@ def densifier(anciens, nouveaux_fixes=(), nb_nouveaux=0, zone='nord',
         limite = NOUVEAUX_MAX if auto else min(cible, NOUVEAUX_MAX)
         while len(proposes) < limite and len(coords) < N.POINTS_MAX:
             meilleur = None
-            for c in _candidats(coords, poly, grille, echantillons, courant[3], espacement_min,
+            for c in _candidats(coords, placement, grille, echantillons, courant[3], espacement_min,
                                 rayon_m, points_min):
                 r = evaluation(coords + [c])
                 if meilleur is None or _objectif(r) > _objectif(meilleur[0]):
@@ -199,7 +244,7 @@ def densifier(anciens, nouveaux_fixes=(), nb_nouveaux=0, zone='nord',
                 for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)):
                     x0, y0 = coords[idx]
                     c = (x0 + dx * pas, y0 + dy * pas)
-                    if not dans_polygone(c, poly):
+                    if not placement.contient(c):
                         continue
                     if min(distance(c, p) for k, p in enumerate(coords) if k != idx) < espacement_min:
                         continue
@@ -210,7 +255,7 @@ def densifier(anciens, nouveaux_fixes=(), nb_nouveaux=0, zone='nord',
                         coords, courant = essai, r
 
     score, ev, taux, non, _ = _evaluer(coords, statuts, longueur_max_m, echantillons, rayon_m,
-                                       points_min, avec_n8=True)
+                                       points_min, avec_n8=True, aretes=aretes_perso)
     for rang, idx in enumerate(proposes, start=1):
         nom = f'PN{len(nouv) + rang}'
         pts.append({'id': nom, 'nom_point': nom, 'x_m': coords[idx][0], 'y_m': coords[idx][1],
@@ -227,7 +272,7 @@ def densifier(anciens, nouveaux_fixes=(), nb_nouveaux=0, zone='nord',
                     f'{_fmt((1 - taux) * 100, 0)} % de la zone à plus de {_fmt(rayon_km, 0)} km '
                     f'de {points_min} points de densification.'),
     })
-    zone_ll = [list(lambert_vers_wgs84(x, y, zone)) for x, y in poly]
+    zone_ll = [list(lambert_vers_wgs84(x, y, zone)) for x, y in poly] if poly else []
     pas_aff = max(1, len(non) // 400)
     non_couverts = [list(lambert_vers_wgs84(*echantillons[k], zone)) for k in non[::pas_aff]]
     sortie_points = _sortie_points(pts, coords, ev['degres'], zone)
@@ -239,7 +284,8 @@ def densifier(anciens, nouveaux_fixes=(), nb_nouveaux=0, zone='nord',
     elif proposer:
         conclusion = "Aucun emplacement supplémentaire n'améliore le réseau."
     else:
-        conclusion = (f"Score de densification {_fmt(score)}/100, couverture N11 "
+        prefixe = 'Réseau personnalisé — score' if aretes_perso is not None else 'Score'
+        conclusion = (f"{prefixe} de densification {_fmt(score)}/100, couverture N11 "
                       f"{_fmt(taux * 100, 0)} %.")
     return {
         'zone': zone,
@@ -255,5 +301,7 @@ def densifier(anciens, nouveaux_fixes=(), nb_nouveaux=0, zone='nord',
             'non_couverts': non_couverts,
         },
         'zone_polygone': zone_ll,
+        'zones_utilisees': {'densification': len(zones_densification), 'levee': len(zones_levee)},
+        'personnalise': aretes_perso is not None,
         'conclusion': conclusion,
     }

@@ -1,8 +1,8 @@
-"""Routes du module « Réseau de triangulation GPS » — montées sous /api/v1/reseau-gps/."""
+"""Routes du module « Réseau de triangulation GNSS » — montées sous /api/v1/reseau-gps/."""
 from django.urls import path
 
 from .views import (
-    AnalyserEcartsView, DensifierView, GenererView, ReferentielView, SourceLpaDetailView,
+    AnalyserEcartsView, DensifierView, EvaluerView, GenererView, ImporterZonesView, ReferentielView, SourceLpaDetailView,
     SourceRcDetailView, SourcesLpaView, SourcesRcView,
 )
 
@@ -15,4 +15,6 @@ urlpatterns = [
     path('sources-rc/', SourcesRcView.as_view(), name='reseau-gps-sources-rc'),
     path('sources-rc/<uuid:ssdgps_id>/', SourceRcDetailView.as_view(), name='reseau-gps-source-rc'),
     path('densifier/', DensifierView.as_view(), name='reseau-gps-densifier'),
+    path('evaluer/', EvaluerView.as_view(), name='reseau-gps-evaluer'),
+    path('zones/importer/', ImporterZonesView.as_view(), name='reseau-gps-zones'),
 ]

@@ -794,3 +794,42 @@ def generer_reseau(points, type_reseau=TYPE_ANCIENS, zone='nord',
         'parfaite': parfaite,
         'suppressions': suppressions,
     }
+
+
+# --------------------------------------------------------------------------- réseau personnalisé
+
+def evaluer_personnalise(points, lignes, type_reseau=TYPE_ANCIENS, zone='nord',
+                         longueur_max_km=N.LONGUEUR_MAX_KM_DEFAUT):
+    """Évalue le réseau composé par l'opérateur : ses points et SES lignes de base.
+
+    `lignes` : paires de noms de points (`[["A", "B"], ...]`). Mêmes contrôles, mêmes
+    indicateurs et même score sur 100 que les variantes calculées : le réseau personnalisé
+    se compare directement à la recommandation."""
+    if type_reseau not in TYPES_RESEAU:
+        raise ErreurReseau('Type de réseau inconnu.')
+    pts = _normaliser_points(points, type_reseau)
+    index = {}
+    for i, p in enumerate(pts):
+        if p['nom_point'] in index:
+            raise ErreurReseau(f"Deux points portent le nom « {p['nom_point']} » : renommez-en un pour "
+                               "pouvoir désigner ses lignes de base.")
+        index[p['nom_point']] = i
+    aretes = set()
+    for paire in lignes:
+        if len(paire) != 2:
+            raise ErreurReseau('Ligne de base mal formée.')
+        a, b = (str(x).strip() for x in paire)
+        if a not in index or b not in index:
+            raise ErreurReseau(f'Ligne de base {a} – {b} : point inconnu.')
+        if a == b:
+            raise ErreurReseau(f'Ligne de base {a} – {b} : un point ne se relie pas à lui-même.')
+        aretes.add(_arete(index[a], index[b]))
+    coords = [(p['x_m'], p['y_m']) for p in pts]
+    statuts = [p['statut'] for p in pts]
+    ev = evaluer(coords, statuts, aretes, float(longueur_max_km) * 1000, type_reseau)
+    return {
+        'code': 'personnalise', 'nom': 'Réseau personnalisé',
+        'description': "Lignes de base choisies par l'opérateur, contrôlées et notées comme les variantes calculées.",
+        **ev, 'recommandee': False,
+        'points': _sortie_points(pts, coords, ev['degres'], zone),
+    }

@@ -39,6 +39,15 @@
         <span class="rg-badge warn" *ngIf="v.code === 'parfaite'"><i class="fas fa-magic"></i> {{ r.parfaite.suggestions.length }} point(s) à rechercher</span>
         <span class="rg-v-meta">{{ v.indicateurs.nb_lignes_base }} lignes · angle min {{ fr(v.indicateurs.angle_min) }}°</span>
       </button>
+      <button type="button" class="rg-variante perso" *ngIf="store.perso.controle as p"
+              [class.active]="store.varianteActive === 'personnalise'" (click)="store.choisirVariante('personnalise')">
+        <span class="rg-v-nom">Réseau personnalisé</span>
+        <span class="rg-v-score"><ng-container *ngIf="store.scorePerso('controle') !== null; else calcul">
+          {{ fr(store.scorePerso('controle')!) }}<small>/100</small></ng-container>
+          <ng-template #calcul><i class="fas fa-spinner fa-spin" *ngIf="p.calcul"></i><span *ngIf="!p.calcul">—</span></ng-template></span>
+        <span class="rg-badge violet"><i class="fas fa-pencil-ruler"></i> Vos lignes</span>
+        <span class="rg-v-meta">{{ p.lignes.length }} lignes</span>
+      </button>
     </div>
     <div class="rg-justif" *ngIf="r.justification.length">
       <h3><i class="fas fa-award"></i> Pourquoi cette recommandation ?</h3>
@@ -112,6 +121,8 @@
     </div>
   </app-rg-section>
 </ng-container>
+
+<app-rg-reseau-perso contexte="controle" [scoreReference]="scoreRecommande"></app-rg-reseau-perso>
 
 <app-rg-section titre="Normes appliquées" icone="fas fa-book" cle="controle.normes" [ouvert]="false"
                 [badge]="store.referentiel?.normes?.length || null">

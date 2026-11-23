@@ -126,6 +126,11 @@ export interface DemandeDensification {
   longueur_max_km: number;
   rayon_couverture_km: number;
   points_couverture_min: number;
+  /** Zones de l'opérateur : polygone = [extérieur, trous…], anneau = [[x, y]…] Lambert. */
+  zones_densification?: number[][][][];
+  zones_levee?: number[][][][];
+  /** Réseau personnalisé : paires d'indices dans anciens + nouveaux (dans cet ordre). */
+  lignes?: number[][] | null;
 }
 
 export interface ResultatDensification {
@@ -137,13 +142,49 @@ export interface ResultatDensification {
   score: number;
   couverture: { taux: number; rayon_km: number; points_min: number; nb_echantillons: number; pas_m: number; non_couverts: number[][] };
   zone_polygone: number[][];
+  zones_utilisees?: { densification: number; levee: number };
+  personnalise?: boolean;
   conclusion: string;
+}
+
+export type TypeZone = 'levee' | 'densification';
+
+/** Zone lue dans un shapefile / GeoPackage (backend `reseaux/zones.py`), en WGS84. */
+export interface ZoneImportee {
+  nom: string;
+  type: TypeZone | null;
+  type_deduit: boolean;
+  attributs: Record<string, string>;
+  /** Polygones : [anneau extérieur, trous…], anneau = [[lat, lon]…]. */
+  polygones: number[][][][];
+  couche: string;
+  fichier: string;
+}
+
+export interface ResultatImportZones {
+  zones: ZoneImportee[];
+  projections: { couche: string; code: string; libelle: string; supposee: boolean }[];
+  avertissements: string[];
+}
+
+/** Réseau personnalisé évalué (même forme qu'une variante calculée). */
+export interface ResultatPersonnalise extends VarianteReseau { points: PointResultat[]; }
+
+export interface DemandeEvaluation {
+  points: PointReseau[];
+  /** Paires de noms de points. */
+  lignes: string[][];
+  type_reseau: TypeReseau;
+  zone: string;
+  longueur_max_km: number;
 }
 
 /** Fond de carte du catalogue fourni par l'application. */
 export interface FondCatalogue {
   id: string; nom: string; categorie: string; type: 'xyz' | 'wms'; url: string; max_zoom?: number;
   attribution: string; licence: string; description: string; couches?: string; format?: string;
+  /** Sous-domaines substitués à {s} (ex. « 0123 » pour Google) ; défaut Leaflet « abc ». */
+  sous_domaines?: string;
 }
 
 export interface NormeReseau { code: string; titre: string; detail: string; source: string; }
@@ -179,7 +220,7 @@ export interface DemandeReseau {
   nb_suggestions_max: number;
 }
 
-/** Module « Réseau de triangulation GPS » (backend `reseaux/`, ouvert à tous les rôles). */
+/** Module « Réseau de triangulation GNSS » (backend `reseaux/`, ouvert à tous les rôles). */
 @Injectable({ providedIn: 'root' })
 export class ReseauGpsService {
   private url = `${environment.apiUrl}/v1/reseau-gps/`;
@@ -217,5 +258,19 @@ export class ReseauGpsService {
 
   densifier(demande: DemandeDensification): Observable<ResultatDensification> {
     return this.http.post<ResultatDensification>(`${this.url}densifier/`, demande);
+  }
+
+  /** Contrôle et note un réseau personnalisé (lignes de base de l'opérateur). */
+  evaluer(demande: DemandeEvaluation): Observable<ResultatPersonnalise> {
+    return this.http.post<ResultatPersonnalise>(`${this.url}evaluer/`, demande);
+  }
+
+  /** Zones d'un shapefile (.shp/.dbf/.shx/.prj/.cpg ou .zip) ou d'un GeoPackage (.gpkg). */
+  importerZones(fichiers: File[], zone: string, typeDefaut: TypeZone | null): Observable<ResultatImportZones> {
+    const fd = new FormData();
+    fichiers.forEach(f => fd.append('fichiers', f, f.name));
+    fd.append('zone', zone);
+    if (typeDefaut) fd.append('type_defaut', typeDefaut);
+    return this.http.post<ResultatImportZones>(`${this.url}zones/importer/`, fd);
   }
 }

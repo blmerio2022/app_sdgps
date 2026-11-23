@@ -150,13 +150,20 @@ class CatalogueFondsTests(SimpleTestCase):
                 self.assertIn(f['categorie'], cats)
                 self.assertTrue(f['attribution'] and f['licence'])
                 self.assertTrue(f['url'].startswith('https://'))
-                self.assertNotIn('google', f['url'].lower())
+                if 'google' in f['url']:
+                    # Tuiles non ouvertes : la licence affichée doit le rappeler.
+                    self.assertIn('Google Maps Platform', f['licence'])
+                    self.assertEqual(f['sous_domaines'], '0123')
                 if f['type'] == 'xyz':
                     self.assertTrue(all(k in f['url'] for k in ('{z}', '{x}', '{y}')))
                 else:
                     self.assertTrue(f['couches'])
         self.assertTrue(set(FONDS_PAR_DEFAUT) <= set(ids))
         self.assertTrue(any(f['categorie'] == 'satellitaire' for f in CATALOGUE))
+        # Google Satellite (normal) actif par défaut, hybride proposé.
+        self.assertEqual(FONDS_PAR_DEFAUT[:2], ['google-satellite', 'google-hybride'])
+        self.assertIn('lyrs=s', next(f for f in CATALOGUE if f['id'] == 'google-satellite')['url'])
+        self.assertIn('lyrs=y', next(f for f in CATALOGUE if f['id'] == 'google-hybride')['url'])
 
 
 class ApiDensificationTests(ApiTests):

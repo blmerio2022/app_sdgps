@@ -1,6 +1,6 @@
 import { FondCatalogue } from '../../core/services/reseau-gps.service';
 import {
-  CLE_MES_FONDS, MesFonds, ajouterDuCatalogue, chargerMesFonds, enregistrerMesFonds, listeMesFonds,
+  CLE_MES_FONDS, MesFonds, ajouterDuCatalogue, chargerMesFonds, depuisCatalogue, enregistrerMesFonds, listeMesFonds,
   nouveauFondPersonnel, retirerFond, validerFond,
 } from './fonds-carte';
 
@@ -80,5 +80,23 @@ describe('fonds-carte', () => {
     expect(f.nom).toBe('Ortho');
     expect(f.format).toBe('image/png');
     expect(f.id).toMatch(/^perso-/);
+  });
+
+  it('ajoute Google Satellite (actif) et hybride aux choix enregistrés avant leur arrivée', () => {
+    const memoire: Record<string, string> = {};
+    const stockage = { getItem: (k: string) => memoire[k] ?? null, setItem: (k: string, v: string) => { memoire[k] = v; } } as Storage;
+    memoire[CLE_MES_FONDS] = JSON.stringify({ ids: ['osm'], persos: [], actif: 'osm' });
+    const m = chargerMesFonds(['google-satellite', 'google-hybride', 'osm'], stockage);
+    expect(m.ids).toEqual(['google-satellite', 'google-hybride', 'osm']);
+    expect(m.actif).toBe('google-satellite');
+    enregistrerMesFonds({ ...m, actif: 'osm' }, stockage);
+    const relu = chargerMesFonds(['google-satellite', 'google-hybride', 'osm'], stockage);
+    expect(relu.actif).toBe('osm');                                // choix respecté une fois migré
+  });
+
+  it('reprend les sous-domaines du catalogue', () => {
+    const f = depuisCatalogue({ id: 'g', nom: 'G', categorie: 'satellitaire', type: 'xyz', url: 'https://mt{s}/{z}/{x}/{y}',
+      attribution: '', licence: '', description: '', sous_domaines: '0123' });
+    expect(f.sousDomaines).toBe('0123');
   });
 });

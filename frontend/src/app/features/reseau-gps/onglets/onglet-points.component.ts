@@ -24,7 +24,7 @@ export class OngletPointsComponent {
     if (s === 'lpa' && !this.sourcesChargees) {
       this.service.sourcesLpa().subscribe({
         next: l => { this.sourcesLpa = l; this.sourcesChargees = true; },
-        error: () => this.toast.error('Réseau GPS', 'Liste des LPA indisponible.'),
+        error: () => this.toast.error('Réseau GNSS', 'Liste des LPA indisponible.'),
       });
     }
   }
@@ -37,13 +37,13 @@ export class OngletPointsComponent {
     try {
       const pts = await lireFichierPoints(fichier);
       if (!pts.length) {
-        this.toast.error('Réseau GPS', 'Aucun point exploitable (colonnes X(m) et Y(m) attendues).');
+        this.toast.error('Réseau GNSS', 'Aucun point exploitable (colonnes X(m) et Y(m) attendues).');
       } else {
         this.store.definirAnciens(pts, fichier.name);
-        this.toast.success('Réseau GPS', `${pts.length} point(s) ancien(s) importé(s).`);
+        this.toast.success('Réseau GNSS', `${pts.length} point(s) ancien(s) importé(s).`);
       }
     } catch {
-      this.toast.error('Réseau GPS', 'Lecture du fichier impossible.');
+      this.toast.error('Réseau GNSS', 'Lecture du fichier impossible.');
     } finally {
       this.importEnCours = false;
       input.value = '';
@@ -56,9 +56,9 @@ export class OngletPointsComponent {
       next: d => {
         if (d.zone_proposee) this.store.zone = d.zone_proposee;
         this.store.definirAnciens(d.points, d.libelle);
-        this.toast.success('Réseau GPS', `${d.points.length} point(s) repris de la LPA.`);
+        this.toast.success('Réseau GNSS', `${d.points.length} point(s) repris de la LPA.`);
       },
-      error: () => this.toast.error('Réseau GPS', 'Reprise de la LPA impossible.'),
+      error: () => this.toast.error('Réseau GNSS', 'Reprise de la LPA impossible.'),
     });
   }
 

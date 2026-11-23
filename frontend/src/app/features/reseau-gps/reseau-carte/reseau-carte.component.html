@@ -1,1 +1,49 @@
-<div class="rg-carte" #conteneur [class.mode-ajout]="modeAjout"></div>
+<div class="rg-carte" #conteneur [class.mode-ajout]="modeAjout || captureActive !== 'aucun'"
+     [class.mode-lignes]="outil === 'lignes'"></div>
+
+<!-- Barre d'outils (navigation + mesures), façon QGIS -->
+<div class="rg-outils" role="toolbar" aria-label="Outils de la carte">
+  <div class="groupe">
+    <button type="button" (click)="zoomer(1)" title="Zoom avant" aria-label="Zoom avant"><i class="fas fa-search-plus"></i></button>
+    <button type="button" (click)="zoomer(-1)" title="Zoom arrière" aria-label="Zoom arrière"><i class="fas fa-search-minus"></i></button>
+    <button type="button" (click)="cadrer()" title="Zoom sur l'emprise (points et zones)" aria-label="Zoom sur l'emprise">
+      <i class="fas fa-expand-arrows-alt"></i></button>
+    <button type="button" (click)="vueHistorique(-1)" [disabled]="!peutReculer" title="Vue précédente" aria-label="Vue précédente">
+      <i class="fas fa-arrow-left"></i></button>
+    <button type="button" (click)="vueHistorique(1)" [disabled]="!peutAvancer" title="Vue suivante" aria-label="Vue suivante">
+      <i class="fas fa-arrow-right"></i></button>
+  </div>
+  <div class="groupe">
+    <button type="button" [class.actif]="outilMesure === 'aucun' && outil === 'aucun' && !modeAjout"
+            (click)="choisirMesure('aucun')" title="Déplacer / sélectionner" aria-label="Déplacer la carte">
+      <i class="fas fa-hand-paper"></i></button>
+    <button type="button" [class.actif]="outilMesure === 'distance'" (click)="choisirMesure('distance')"
+            title="Mesurer une distance" aria-label="Mesurer une distance"><i class="fas fa-ruler"></i></button>
+    <button type="button" [class.actif]="outilMesure === 'aire'" (click)="choisirMesure('aire')"
+            title="Mesurer une surface" aria-label="Mesurer une surface"><i class="fas fa-draw-polygon"></i></button>
+    <button type="button" [class.actif]="outilMesure === 'angle'" (click)="choisirMesure('angle')"
+            title="Mesurer un angle" aria-label="Mesurer un angle"><i class="fas fa-drafting-compass"></i></button>
+    <button type="button" (click)="effacerMesures()" [disabled]="!resultats.length && !sommets.length"
+            title="Effacer les mesures" aria-label="Effacer les mesures"><i class="fas fa-eraser"></i></button>
+  </div>
+  <div class="groupe">
+    <button type="button" (click)="basculerPleinEcran.emit()" [class.actif]="pleinEcran"
+            [title]="pleinEcran ? 'Quitter le plein écran (Échap)' : 'Carte en plein écran'"
+            [attr.aria-label]="pleinEcran ? 'Quitter le plein écran' : 'Carte en plein écran'">
+      <i class="fas" [ngClass]="pleinEcran ? 'fa-compress' : 'fa-expand'"></i></button>
+  </div>
+</div>
+
+<!-- Consigne de l'outil et résultats des mesures -->
+<div class="rg-panneau-mesure" *ngIf="captureActive !== 'aucun' || resultats.length">
+  <p class="consigne" *ngIf="consigne"><i class="fas fa-info-circle"></i> {{ consigne }}
+    <span class="touches">Échap : annuler</span></p>
+  <div class="resultat" *ngFor="let r of resultats; let premier = first" [class.recent]="premier">
+    <strong>{{ r.titre }}</strong>
+    <span *ngFor="let l of r.lignes">{{ l }}</span>
+  </div>
+  <p class="note" *ngIf="resultats.length">Calculs dans le plan Lambert de la zone choisie.</p>
+</div>
+
+<!-- Coordonnées du curseur (mises à jour hors détection de changements) -->
+<div class="rg-coords" #coords aria-live="off"></div>

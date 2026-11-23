@@ -1,0 +1,117 @@
+<p class="intro">Délimitez les <strong>zones levées</strong> (lever de détail : chaque point doit y être à moins de
+  {{ store.rayonCouvertureKm }} km de {{ store.pointsCouvertureMin }} points de densification — N11) et les
+  <strong>zones de densification</strong> (où placer les points nouveaux). Importez-les d'un fichier SIG ou dessinez-les
+  sur la carte : la densification s'en sert à la place de l'enveloppe des points anciens.</p>
+
+<div class="zn-resume">
+  <div class="zn-carte-type" *ngFor="let t of types" [style.--c]="couleurs[t]">
+    <span class="pastille"></span>
+    <div>
+      <strong>{{ nombre(t) }}</strong> {{ t === 'levee' ? 'zone(s) levée(s)' : 'zone(s) de densification' }}
+      <span class="hint" *ngIf="nombre(t)">{{ aire(surfaceTotale(t)) }} actives</span>
+    </div>
+  </div>
+</div>
+
+<app-rg-section titre="Importer des zones" icone="fas fa-file-import" cle="zones.import">
+  <div class="rg-grille">
+    <label class="field">
+      <span>Type si le fichier ne le précise pas</span>
+      <select [(ngModel)]="typeDefautImport">
+        <option value="">Déduire (sinon densification)</option>
+        <option value="levee">Zone levée</option>
+        <option value="densification">Zone de densification</option>
+      </select>
+    </label>
+  </div>
+  <label class="btn-ghost btn-sm rg-fichier" [class.desactive]="store.importZonesEnCours">
+    <i class="fas" [ngClass]="store.importZonesEnCours ? 'fa-spinner fa-spin' : 'fa-upload'"></i>
+    Choisir les fichiers
+    <input type="file" multiple [accept]="extensions" (change)="importer($event)" hidden [disabled]="store.importZonesEnCours">
+  </label>
+  <p class="hint"><strong>Shapefile</strong> : sélectionnez ensemble <code>.shp</code>, <code>.dbf</code>, <code>.shx</code>,
+    <code>.prj</code> (et <code>.cpg</code>), ou une archive <code>.zip</code> qui les contient. <strong>GeoPackage</strong> :
+    le fichier <code>.gpkg</code> (toutes ses couches de surfaces). Projection lue dans le fichier : Lambert Maroc (zones I à
+    IV), WGS84 ou Web Mercator. Le nom et le type sont repris des attributs (nom / libellé, type / nature : « levée »,
+    « densification »).</p>
+  <ul class="zn-avertissements" *ngIf="store.avertissementsZones.length">
+    <li *ngFor="let a of store.avertissementsZones"><i class="fas fa-exclamation-triangle"></i> {{ a }}</li>
+  </ul>
+</app-rg-section>
+
+<app-rg-section titre="Dessiner une zone" icone="fas fa-draw-polygon" cle="zones.dessin">
+  <div class="rg-actions">
+    <div class="segment rg-segment zn-segment">
+      <button type="button" [class.active]="store.typeDessin === 'levee'" (click)="store.typeDessin = 'levee'">
+        <i class="fas fa-square" [style.color]="couleurs.levee"></i> Zone levée</button>
+      <button type="button" [class.active]="store.typeDessin === 'densification'" (click)="store.typeDessin = 'densification'">
+        <i class="fas fa-square" [style.color]="couleurs.densification"></i> Zone de densification</button>
+    </div>
+    <button type="button" class="btn-primary" [class.actif]="store.modeDessinZone" (click)="basculerDessin()">
+      <i class="fas" [ngClass]="store.modeDessinZone ? 'fa-times' : 'fa-pen'"></i>
+      {{ store.modeDessinZone ? 'Annuler le tracé' : 'Dessiner sur la carte' }}</button>
+  </div>
+  <p class="rg-info" *ngIf="store.modeDessinZone"><i class="fas fa-mouse-pointer"></i>Cliquez les sommets de la zone sur la
+    carte, double-cliquez pour la fermer. Retour arrière retire le dernier sommet, Échap annule.</p>
+</app-rg-section>
+
+<app-rg-section titre="Zones" icone="fas fa-layer-group" cle="zones.liste" [badge]="store.zones.length || null">
+  <div class="rg-ligne-outils">
+    <label class="rg-case-inline"><input type="checkbox" [(ngModel)]="store.afficherZones" (ngModelChange)="store.rafraichirVue()">
+      Afficher sur la carte</label>
+    <span class="spacer"></span>
+    <button type="button" class="btn-ghost btn-sm" *ngIf="store.zones.length" (click)="exporter()" title="Exporter en GeoJSON">
+      <i class="fas fa-download"></i> GeoJSON</button>
+    <button type="button" class="btn-ghost btn-sm" *ngIf="store.zones.length" (click)="vider()" title="Supprimer toutes les zones">
+      <i class="fas fa-trash"></i></button>
+  </div>
+  <p class="hint" *ngIf="!store.zones.length">Aucune zone : la densification utilise l'enveloppe des points anciens homogènes.</p>
+
+  <article class="zn-zone" *ngFor="let z of store.zones; trackBy: trackId" [class.selectionnee]="z.id === store.zoneSelectionnee"
+           [class.inactive]="!z.active" [style.--c]="z.couleur" (click)="store.selectionnerZone(z.id)">
+    <header>
+      <input type="color" [(ngModel)]="z.couleur" (ngModelChange)="store.rafraichirVue()" (click)="$event.stopPropagation()"
+             [attr.aria-label]="'Couleur de ' + z.nom" title="Couleur">
+      <input class="zn-nom" [(ngModel)]="z.nom" (ngModelChange)="store.rafraichirVue()" (click)="$event.stopPropagation()"
+             maxlength="120" [attr.aria-label]="'Nom de la zone'" placeholder="Nom de la zone">
+      <label class="zn-actif" (click)="$event.stopPropagation()" title="Prise en compte dans la densification">
+        <input type="checkbox" [(ngModel)]="z.active" (ngModelChange)="store.zonesModifiees()"> Active</label>
+      <button type="button" class="rg-icone" (click)="store.selectionnerZone(z.id); $event.stopPropagation()" title="Centrer la carte">
+        <i class="fas fa-crosshairs"></i></button>
+      <button type="button" class="rg-icone" (click)="supprimer(z); $event.stopPropagation()" title="Supprimer la zone">
+        <i class="fas fa-times"></i></button>
+    </header>
+    <div class="zn-corps" (click)="$event.stopPropagation()">
+      <label class="field">
+        <span>Type</span>
+        <select [ngModel]="z.type" (ngModelChange)="store.changerTypeZone(z, $event)">
+          <option value="levee">Zone levée</option>
+          <option value="densification">Zone de densification</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Référence</span>
+        <input [(ngModel)]="z.reference" maxlength="120" placeholder="N° de titre, d'affaire, secteur…">
+      </label>
+      <label class="field zn-large">
+        <span>Description</span>
+        <textarea [(ngModel)]="z.description" rows="2" maxlength="1000" placeholder="Consignes, accès, observations…"></textarea>
+      </label>
+    </div>
+    <footer>
+      <ng-container *ngIf="store.mesuresZone(z) as m">
+        <span><i class="fas fa-draw-polygon"></i> {{ aire(m.aire) }}</span>
+        <span><i class="fas fa-ruler"></i> {{ distance(m.perimetre) }}</span>
+        <span><i class="fas fa-draw-polygon"></i> {{ m.sommets }} sommets<ng-container *ngIf="z.polygones.length > 1">
+          · {{ z.polygones.length }} parties</ng-container></span>
+      </ng-container>
+      <span class="zn-source"><i class="fas" [ngClass]="z.source === 'import' ? 'fa-file' : 'fa-pen'"></i>
+        {{ z.source === 'import' ? (z.fichier || 'Importée') : 'Dessinée' }}</span>
+      <button type="button" class="zn-lien" *ngIf="attributs(z).length" (click)="attributsOuverts[z.id] = !attributsOuverts[z.id]; $event.stopPropagation()">
+        {{ attributsOuverts[z.id] ? 'Masquer' : 'Voir' }} les {{ attributs(z).length }} attribut(s)</button>
+    </footer>
+    <dl class="zn-attributs" *ngIf="attributsOuverts[z.id]" (click)="$event.stopPropagation()">
+      <ng-container *ngFor="let a of attributs(z)"><dt>{{ a[0] }}</dt><dd>{{ a[1] || '—' }}</dd></ng-container>
+    </dl>
+  </article>
+</app-rg-section>
