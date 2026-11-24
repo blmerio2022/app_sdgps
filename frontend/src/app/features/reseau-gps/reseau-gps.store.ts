@@ -3,6 +3,7 @@ import { BehaviorSubject } from 'rxjs';
 import {
   AnalyseEcarts, FondCatalogue, LigneBase, LigneRc, PointReseau, ReferentielReseau, ReseauGpsService,
   ResultatDensification, ResultatPersonnalise, ResultatReseau, SuggestionSuppression, TypeZone, ZoneImportee,
+  EtudeReseau, ModeGenerationZone, ResultatGenerationZone,
 } from '../../core/services/reseau-gps.service';
 import { ToastService } from '../../core/services/toast.service';
 import {
@@ -58,6 +59,27 @@ export interface ReseauPerso {
 
 /** Délai avant l'évaluation d'un réseau personnalisé (plusieurs clics = un seul calcul). */
 export const DELAI_EVALUATION_MS = 350;
+/** Délai de l'enregistrement automatique d'une étude après la dernière modification. */
+export const DELAI_AUTOSAUVEGARDE_MS = 2500;
+export const CLE_AUTOSAUVEGARDE = 'reseauGps.autosauvegarde';
+export const VERSION_CONTENU = 1;
+
+/** Sélection faite sur la carte (outils ponctuel, rectangle, polygone, cercle, main levée). */
+export interface EvenementSelection {
+  points: string[];
+  lignes: [string, string][];
+  mode: 'remplacer' | 'ajouter' | 'retirer';
+}
+
+/** Paramètres de la génération d'un réseau pour une zone. */
+export interface ParametresZone {
+  zoneId: string | null;
+  mode: ModeGenerationZone;
+  source: 'actifs' | 'selection';
+  rayonRechercheKm: number;
+  anciensMax: number;
+  nbNouveaux: number;
+}
 
 export interface PointAncien extends PointReseau {
   /** Retenu dans le réseau (l'opérateur peut écarter un point, avec un motif). */
@@ -135,6 +157,27 @@ export class ReseauGpsStore {
   /** Édition des lignes sur la carte (clic point A puis point B ; clic sur une ligne = la retirer). */
   editionLignes: ContexteReseau | null = null;
   selectionLigne: string | null = null;
+
+  // --- Sélection sur la carte (clés « p:<nom> » et « l:<a>\u0000<b> »)
+  selection = new Set<string>();
+  readonly cadrerNoms$ = new BehaviorSubject<string[] | null>(null);
+
+  // --- Génération pour une zone
+  paramZone: ParametresZone = { zoneId: null, mode: 'densification', source: 'actifs', rayonRechercheKm: 5,
+                                anciensMax: 12, nbNouveaux: 0 };
+  resultatZone: ResultatGenerationZone | null = null;
+  calculZone = false;
+  erreurZone = '';
+
+  // --- Étude enregistrée
+  etude: EtudeReseau | null = null;
+  modifie = false;
+  autosauvegarde = localStorage.getItem(CLE_AUTOSAUVEGARDE) !== '0';
+  sauvegardeEnCours = false;
+  derniereSauvegarde: Date | null = null;
+  erreurSauvegarde = '';
+  private chargementEtude = false;
+  private minuteurSauvegarde?: ReturnType<typeof setTimeout>;
   private minuteurs: Partial<Record<ContexteReseau, ReturnType<typeof setTimeout>>> = {};
 
   readonly vue$ = new BehaviorSubject<VueCarte | null>(null);
@@ -726,13 +769,13 @@ export class ReseauGpsStore {
       const fin = (r: ResultatPersonnalise | ResultatDensification) => {
         if (this.perso[ctx] !== p) return;
         p.resultat = r; p.calcul = false; p.erreur = '';
-        this.rafraichirVue();
+        this.redessiner();
       };
       const echec = (err: any) => {
         if (this.perso[ctx] !== p) return;
         p.calcul = false; p.resultat = null;
         p.erreur = message(err, 'Évaluation du réseau personnalisé impossible.');
-        this.rafraichirVue();
+        this.redessiner();
       };
       if (ctx === 'controle') {
         this.service.evaluer({
@@ -762,6 +805,426 @@ export class ReseauGpsStore {
     if (!r) return null;
     return 'score' in r && typeof (r as ResultatDensification).score === 'number' && ctx === 'densification'
       ? (r as ResultatDensification).score : (r as ResultatPersonnalise).indicateurs?.score ?? null;
+  }
+
+
+  // ================================================================== sélection et actions en masse
+
+  static cleLigneSel(a: string, b: string): string { return 'l:' + [a, b].sort().join('\u0000'); }
+
+  appliquerSelection(e: EvenementSelection): void {
+    const cles = [...e.points.map(n => 'p:' + n), ...e.lignes.map(([a, b]) => ReseauGpsStore.cleLigneSel(a, b))];
+    if (e.mode === 'remplacer') this.selection = new Set(cles);
+    else if (e.mode === 'ajouter') cles.forEach(k => this.selection.add(k));
+    else cles.forEach(k => this.selection.delete(k));
+    this.selection = new Set(this.selection);
+    this.vue$.next(this.construireVue());
+  }
+
+  viderSelection(): void {
+    if (!this.selection.size) return;
+    this.selection = new Set();
+    this.vue$.next(this.construireVue());
+  }
+
+  /** Tous les points affichés (ou inverse la sélection des points). */
+  selectionnerTout(inverser = false): void {
+    const noms = (this.vue$.value?.points || []).map(p => p.nom_point);
+    const pts = new Set(noms.map(n => 'p:' + n));
+    const garde = [...this.selection].filter(k => !k.startsWith('p:'));
+    const choisis = inverser ? [...pts].filter(k => !this.selection.has(k)) : [...pts];
+    this.selection = new Set([...garde, ...choisis]);
+    this.vue$.next(this.construireVue());
+  }
+
+  get nomsSelectionnes(): string[] {
+    return [...this.selection].filter(k => k.startsWith('p:')).map(k => k.slice(2));
+  }
+
+  get anciensSelectionnes(): PointAncien[] {
+    const noms = new Set(this.nomsSelectionnes);
+    return this.anciens.filter(a => noms.has(a.nom_point));
+  }
+
+  get nouveauxSelectionnes(): PointNouveau[] {
+    const noms = new Set(this.nomsSelectionnes);
+    return this.nouveaux.filter(n => noms.has(n.nom_point));
+  }
+
+  get lignesSelectionnees(): [string, string][] {
+    return [...this.selection].filter(k => k.startsWith('l:'))
+      .map(k => k.slice(2).split('\u0000') as [string, string]);
+  }
+
+  /** Les éléments disparus (point supprimé, réseau recalculé) quittent la sélection. */
+  private nettoyerSelection(): void {
+    if (!this.selection.size) return;
+    const noms = new Set([...this.anciens, ...this.nouveaux].map(p => p.nom_point));
+    for (const k of [...this.selection]) {
+      if (k.startsWith('p:') && !noms.has(k.slice(2))) this.selection.delete(k);
+      if (k.startsWith('l:') && k.slice(2).split('\u0000').some(n => !noms.has(n))) this.selection.delete(k);
+    }
+  }
+
+  activerSelection(actif: boolean): void {
+    let n = 0;
+    this.anciensSelectionnes.forEach(a => {
+      if (a.retenu !== actif) {
+        a.retenu = actif;
+        a.motifEcart = actif ? '' : 'Désactivé (sélection sur la carte)';
+        n++;
+      }
+    });
+    if (n) this.toutInvalider();
+    this.toast.success('Sélection', `${n} point(s) ${actif ? 'activé(s)' : 'désactivé(s)'}.`);
+  }
+
+  marquerHomogeneSelection(homogene: boolean): void {
+    this.anciensSelectionnes.forEach(a => { a.homogene = homogene; });
+    if (this.densification) this.densificationPerimee = true;
+    this.rafraichirVue();
+  }
+
+  /** Retire de la liste les points anciens et nouveaux sélectionnés. */
+  supprimerSelection(): number {
+    const noms = new Set(this.nomsSelectionnes);
+    const avant = this.anciens.length + this.nouveaux.length;
+    this.anciens = this.anciens.filter(a => !noms.has(a.nom_point));
+    this.nouveaux = this.nouveaux.filter(p => !noms.has(p.nom_point));
+    const n = avant - this.anciens.length - this.nouveaux.length;
+    this.selection = new Set([...this.selection].filter(k => !k.startsWith('p:')));
+    this.toutInvalider();
+    return n;
+  }
+
+  /** Retire du réseau les lignes sélectionnées (le réseau devient personnalisé si besoin). */
+  retirerLignesSelection(): number {
+    const ctx: ContexteReseau = this.onglet === 'densification' ? 'densification' : 'controle';
+    const cles = new Set(this.lignesSelectionnees.map(([a, b]) => ReseauGpsStore.cleLigne(a, b)));
+    if (!cles.size) return 0;
+    if (!this.perso[ctx]) this.personnaliser(ctx);
+    const p = this.perso[ctx]!;
+    const avant = p.lignes.length;
+    p.lignes = p.lignes.filter(([a, b]) => !cles.has(ReseauGpsStore.cleLigne(a, b)));
+    this.selection = new Set([...this.selection].filter(k => !k.startsWith('l:')));
+    this.lignesModifiees(ctx);
+    return avant - p.lignes.length;
+  }
+
+  /** Relie deux à deux les points sélectionnés les plus proches (au plus 3 voisins chacun). */
+  relierSelection(): number {
+    const ctx: ContexteReseau = this.onglet === 'densification' ? 'densification' : 'controle';
+    const pts = this.pointsContexte(ctx).filter(p => this.selection.has('p:' + p.nom_point));
+    if (pts.length < 2) return 0;
+    if (!this.perso[ctx]) this.personnaliser(ctx);
+    const p = this.perso[ctx]!;
+    let n = 0;
+    for (const a of pts) {
+      const voisins = pts.filter(b => b !== a)
+        .sort((u, v) => Math.hypot(Number(u.x_m) - Number(a.x_m), Number(u.y_m) - Number(a.y_m))
+          - Math.hypot(Number(v.x_m) - Number(a.x_m), Number(v.y_m) - Number(a.y_m))).slice(0, 3);
+      for (const b of voisins) {
+        if (!this.aLaLigne(ctx, a.nom_point, b.nom_point)) {
+          p.lignes = [...p.lignes, [a.nom_point, b.nom_point]];
+          n++;
+        }
+      }
+    }
+    if (ctx === 'controle') this.varianteActive = 'personnalise';
+    this.lignesModifiees(ctx);
+    return n;
+  }
+
+  cadrerSurSelection(): void { this.cadrerNoms$.next(this.nomsSelectionnes); }
+
+  /** Points sélectionnés au format LPA (CSV Excel : « ; », BOM). */
+  selectionEnCsv(): string {
+    const lignes = [...this.anciensSelectionnes, ...this.nouveauxSelectionnes].map(p => [
+      p.nom_point, p.x_m ?? '', p.y_m ?? '', p.reference || '', p.nature_materialisation || '',
+      p.nature_signalisation || '', p.statut === 'nouveau' ? 'nouveau' : 'ancien',
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(';'));
+    return '\uFEFF' + ['Nom Point;X(m);Y(m);Référence;Matérialisation;Signalisation;Statut', ...lignes].join('\r\n');
+  }
+
+  // ================================================================== génération pour une zone
+
+  get zoneGeneration(): ZoneReseau | undefined {
+    return this.zones.find(z => z.id === this.paramZone.zoneId);
+  }
+
+  /** Points anciens soumis à la génération : actifs, ou seulement la sélection. */
+  get anciensPourZone(): PointAncien[] {
+    const base = this.paramZone.source === 'selection' ? this.anciensSelectionnes : this.anciensRetenus;
+    return base.filter(a => ReseauGpsStore.coordonneesValides(a));
+  }
+
+  get blocageZone(): string | null {
+    if (!this.zoneGeneration) return 'Choisissez la zone à traiter (dessinez-la ou importez-la d’abord).';
+    if (this.paramZone.source === 'selection' && !this.anciensSelectionnes.length) {
+      return 'Aucun point ancien sélectionné sur la carte.';
+    }
+    if (this.anciensPourZone.length < 3) return 'Il faut au moins 3 points anciens.';
+    return null;
+  }
+
+  preparerGenerationZone(zoneId: string): void {
+    this.paramZone = { ...this.paramZone, zoneId };
+    this.resultatZone = null;
+    this.erreurZone = '';
+    if (this.onglet !== 'zones') this.choisirOnglet('zones');
+    this.cadrerZones$.next([zoneId]);
+  }
+
+  genererPourZone(): void {
+    const z = this.zoneGeneration;
+    if (this.blocageZone || this.calculZone || !z) return;
+    this.calculZone = true;
+    this.erreurZone = '';
+    const plan = z.polygones.map(poly => poly.map(anneau =>
+      anneau.map(([lat, lon]) => wgs84VersLambert(lat, lon, this.zone).map(v => Math.round(v * 100) / 100))));
+    this.service.genererZone({
+      anciens: this.anciensPourZone.map(p => this.versApi(p)), zones: plan, nom_zone: z.nom,
+      mode: this.paramZone.mode, zone: this.zone, rayon_recherche_km: Number(this.paramZone.rayonRechercheKm),
+      anciens_max: Number(this.paramZone.anciensMax), longueur_max_km: Number(this.longueurMaxKm),
+      rayon_couverture_km: Number(this.rayonCouvertureKm), points_couverture_min: Number(this.pointsCouvertureMin),
+      nb_nouveaux: Number(this.paramZone.nbNouveaux) || 0, nb_suggestions_max: Number(this.nbSuggestionsMax),
+    }).subscribe({
+      next: r => { this.resultatZone = r; this.calculZone = false; this.rafraichirVue(); },
+      error: err => { this.calculZone = false; this.erreurZone = message(err, 'Génération du réseau impossible.'); },
+    });
+  }
+
+  /** Aperçu du réseau généré pour la zone (onglet Zones). */
+  private vueResultatZone(): VueCarte | null {
+    const r = this.resultatZone;
+    if (!r) return null;
+    const retenus = new Set(r.anciens_retenus);
+    const nonRetenus = this.anciens.filter(a => ReseauGpsStore.coordonneesValides(a) && !retenus.has(a.nom_point))
+      .map(a => this.pointCarte(a, 'ecarte', { note: r.details.find(d => d.nom_point === a.nom_point)?.motif }));
+    if (r.mode === 'triangulation' && r.reseau) {
+      const v = r.reseau.variantes.find(x => x.recommandee) || r.reseau.variantes[0];
+      return {
+        points: [...r.reseau.points.map((pt, i) => ({ ...pt, x_m: Number(pt.x_m), y_m: Number(pt.y_m),
+                                                     style: 'ancien' as StylePoint, degre: v.degres[i] })), ...nonRetenus],
+        lignes: v.lignes, triangles: v.triangles,
+      };
+    }
+    const d = r.densification!;
+    return {
+      points: [...d.points.map(p => ({ ...p, x_m: Number(p.x_m), y_m: Number(p.y_m),
+        style: (p.statut !== 'nouveau' ? 'homogene' : 'propose') as StylePoint })), ...nonRetenus],
+      lignes: d.reseau.lignes, triangles: d.reseau.triangles, nonCouverts: d.couverture.non_couverts,
+    };
+  }
+
+  /** Applique le résultat : seuls les points retenus restent actifs, puis le réseau s'ouvre
+   *  dans l'onglet correspondant (contrôle ou densification). */
+  appliquerResultatZone(): void {
+    const r = this.resultatZone;
+    if (!r) return;
+    const retenus = new Set(r.anciens_retenus);
+    const sources = new Set(this.anciensPourZone.map(a => a.nom_point));
+    this.anciens.forEach(a => {
+      if (retenus.has(a.nom_point)) { a.retenu = true; a.motifEcart = ''; }
+      else if (sources.has(a.nom_point) || a.retenu) {
+        a.retenu = false;
+        a.motifEcart = r.details.find(d => d.nom_point === a.nom_point)?.motif || `Non retenu pour ${r.nom_zone}`;
+      }
+    });
+    if (r.mode === 'triangulation' && r.reseau) {
+      this.controle = r.reseau;
+      this.controlePerime = false;
+      this.varianteActive = r.reseau.recommandee || r.reseau.variantes[0]?.code || 'parfaite';
+      this.perso.controle = null;
+      this.resultatZone = null;
+      this.choisirOnglet('controle');
+    } else if (r.densification) {
+      const d = r.densification;
+      this.densification = d;
+      this.nouveaux = d.points.filter(p => p.statut === 'nouveau').map(p => ({
+        ...p, statut: 'nouveau', origine: 'propose',
+        x_m: Math.round(Number(p.x_m) * 100) / 100, y_m: Math.round(Number(p.y_m) * 100) / 100,
+      })) as PointNouveau[];
+      this.anciens.forEach(a => { if (retenus.has(a.nom_point) && a.homogene === false) a.homogene = null; });
+      this.densificationPerimee = false;
+      this.perso.densification = null;
+      this.resultatZone = null;
+      this.choisirOnglet('densification');
+    }
+    this.toast.success('Réseau GNSS', `Réseau de la zone « ${r.nom_zone} » appliqué.`);
+  }
+
+  abandonnerResultatZone(): void {
+    this.resultatZone = null;
+    this.rafraichirVue();
+  }
+
+  // ================================================================== études enregistrées
+
+  /** État complet du module, tel qu'il est enregistré dans une étude. */
+  serialiser(): Record<string, any> {
+    return {
+      version: VERSION_CONTENU,
+      onglet: this.onglet, zone: this.zone, longueurMaxKm: this.longueurMaxKm,
+      anciens: this.anciens, libelleSource: this.libelleSource,
+      nbSuggestionsMax: this.nbSuggestionsMax, controle: this.controle, controlePerime: this.controlePerime,
+      varianteActive: this.varianteActive,
+      lignesRc: this.lignesRc, libelleRc: this.libelleRc, toleranceCm: this.toleranceCm, analyse: this.analyse,
+      nouveaux: this.nouveaux, nbNouveaux: this.nbNouveaux, rayonCouvertureKm: this.rayonCouvertureKm,
+      pointsCouvertureMin: this.pointsCouvertureMin, densification: this.densification,
+      densificationPerimee: this.densificationPerimee,
+      zones: this.zones, typeDessin: this.typeDessin, afficherZones: this.afficherZones,
+      perso: { controle: this.perso.controle?.lignes ?? null, densification: this.perso.densification?.lignes ?? null },
+      paramZone: this.paramZone, mesFonds: this.mesFonds,
+    };
+  }
+
+  /** Recharge un état enregistré (champs absents : valeurs par défaut). */
+  restaurer(c: Record<string, any>): void {
+    this.chargementEtude = true;
+    try {
+      this.arreterModesCarte();
+      this.zone = c['zone'] || this.zone;
+      this.longueurMaxKm = c['longueurMaxKm'] ?? this.longueurMaxKm;
+      this.anciens = (c['anciens'] || []).map((a: any) => ({ ...a, x_m: ReseauGpsStore.nombre(a.x_m),
+                                                            y_m: ReseauGpsStore.nombre(a.y_m) }));
+      this.libelleSource = c['libelleSource'] || '';
+      this.nbSuggestionsMax = c['nbSuggestionsMax'] ?? this.nbSuggestionsMax;
+      this.controle = c['controle'] || null;
+      this.controlePerime = !!c['controlePerime'];
+      this.varianteActive = c['varianteActive'] || '';
+      this.lignesRc = c['lignesRc'] || [];
+      this.libelleRc = c['libelleRc'] || '';
+      this.toleranceCm = c['toleranceCm'] ?? this.toleranceCm;
+      this.analyse = c['analyse'] || null;
+      this.nouveaux = c['nouveaux'] || [];
+      this.nbNouveaux = c['nbNouveaux'] ?? 0;
+      this.rayonCouvertureKm = c['rayonCouvertureKm'] ?? this.rayonCouvertureKm;
+      this.pointsCouvertureMin = c['pointsCouvertureMin'] ?? this.pointsCouvertureMin;
+      this.densification = c['densification'] || null;
+      this.densificationPerimee = !!c['densificationPerimee'];
+      this.zones = c['zones'] || [];
+      this.typeDessin = c['typeDessin'] || 'densification';
+      this.afficherZones = c['afficherZones'] ?? true;
+      this.paramZone = { ...this.paramZone, ...(c['paramZone'] || {}) };
+      this.resultatZone = null;
+      this.selection = new Set();
+      this.zoneSelectionnee = null;
+      const perso = c['perso'] || {};
+      (['controle', 'densification'] as ContexteReseau[]).forEach(ctx => {
+        this.perso[ctx] = Array.isArray(perso[ctx]) ? { lignes: perso[ctx], resultat: null, calcul: false, erreur: '' } : null;
+      });
+      if (c['mesFonds']) this.fusionnerFonds(c['mesFonds']);
+      this.onglet = c['onglet'] && c['onglet'] !== 'fonds' ? c['onglet'] : 'points';
+    } finally {
+      this.chargementEtude = false;
+    }
+    (['controle', 'densification'] as ContexteReseau[]).forEach(ctx => { if (this.perso[ctx]) this.evaluerPerso(ctx, true); });
+    this.vue$.next(this.construireVue());
+    this.modifie = false;
+    const ids = this.zones.map(z => z.id);
+    if (ids.length && !this.anciens.length) this.cadrerZones$.next(ids);
+  }
+
+  /** Fonds de l'étude ajoutés à « Mes fonds » (fonds personnalisés compris), sans rien retirer. */
+  private fusionnerFonds(m: MesFonds): void {
+    let courant = this.mesFonds;
+    (m.ids || []).forEach(id => { courant = ajouterDuCatalogue(courant, id); });
+    const connus = new Set(courant.persos.map(f => f.url));
+    const persos = [...courant.persos, ...(m.persos || []).filter(f => !connus.has(f.url))];
+    courant = { ...courant, persos, actif: m.actif && [...courant.ids, ...persos.map(f => f.id)].includes(m.actif) ? m.actif : courant.actif };
+    this.majFonds(courant);
+  }
+
+  private marquerModifie(): void {
+    if (this.chargementEtude) return;
+    this.modifie = true;
+    if (this.etude && this.autosauvegarde) {
+      clearTimeout(this.minuteurSauvegarde);
+      this.minuteurSauvegarde = setTimeout(() => this.enregistrer(), DELAI_AUTOSAUVEGARDE_MS);
+    }
+  }
+
+  basculerAutosauvegarde(actif: boolean): void {
+    this.autosauvegarde = actif;
+    localStorage.setItem(CLE_AUTOSAUVEGARDE, actif ? '1' : '0');
+    if (actif && this.modifie && this.etude) this.enregistrer();
+  }
+
+  /** Enregistre l'étude ouverte (ou en crée une si `meta` est fourni). */
+  enregistrer(meta?: { nom: string; dossier?: string; description?: string }): void {
+    clearTimeout(this.minuteurSauvegarde);
+    if (this.sauvegardeEnCours) return;
+    const contenu = this.serialiser();
+    const creation = !this.etude || !!meta;
+    if (creation && !meta) return;
+    this.sauvegardeEnCours = true;
+    this.erreurSauvegarde = '';
+    const requete = creation
+      ? this.service.creerEtude({ nom: meta!.nom, dossier: meta!.dossier || '', description: meta!.description || '', contenu })
+      : this.service.modifierEtude(this.etude!.id, { contenu });
+    requete.subscribe({
+      next: e => {
+        this.etude = { ...(this.etude || {}), ...e } as EtudeReseau;
+        this.sauvegardeEnCours = false;
+        this.modifie = false;
+        this.derniereSauvegarde = new Date();
+        if (creation) this.toast.success('Étude', `« ${e.nom} » enregistrée.`);
+      },
+      error: err => {
+        this.sauvegardeEnCours = false;
+        this.erreurSauvegarde = message(err, 'Enregistrement impossible.');
+        this.toast.error('Étude', this.erreurSauvegarde);
+      },
+    });
+  }
+
+  ouvrirEtude(id: string): void {
+    this.service.etude(id).subscribe({
+      next: e => {
+        this.restaurer(e.contenu || {});
+        this.etude = { ...e, contenu: undefined };
+        this.derniereSauvegarde = new Date(e.updated_at);
+        this.toast.success('Étude', `« ${e.nom} » ouverte.`);
+      },
+      error: err => this.toast.error('Étude', message(err, 'Ouverture impossible.')),
+    });
+  }
+
+  /** Repart d'un espace vide (l'étude ouverte est fermée, rien n'est supprimé). */
+  nouvelleEtude(): void {
+    this.etude = null;
+    this.restaurer({});
+    this.controle = null;
+    this.derniereSauvegarde = null;
+  }
+
+  /** L'étude ouverte a été supprimée, renommée ou rangée ailleurs. */
+  majEtudeOuverte(e: EtudeReseau | null): void {
+    if (!this.etude) return;
+    if (!e) { this.etude = null; this.modifie = true; return; }
+    if (e.id === this.etude.id) this.etude = { ...this.etude, ...e, contenu: undefined };
+  }
+
+  /** Fichier JSON autonome (sauvegarde locale, échange entre opérateurs). */
+  exporterEtude(): string {
+    return JSON.stringify({ format: 'sdgps-reseau-gnss', version: VERSION_CONTENU, nom: this.etude?.nom || 'Étude',
+                            contenu: this.serialiser() });
+  }
+
+  importerEtude(texte: string): boolean {
+    try {
+      const d = JSON.parse(texte);
+      if (d?.format !== 'sdgps-reseau-gnss' || typeof d.contenu !== 'object') throw new Error();
+      this.etude = null;
+      this.restaurer(d.contenu);
+      this.modifie = true;
+      this.toast.success('Étude', `« ${d.nom || 'Étude'} » chargée : enregistrez-la pour la conserver.`);
+      return true;
+    } catch {
+      this.toast.error('Étude', 'Fichier non reconnu (export d’une étude du module Réseau GNSS attendu).');
+      return false;
+    }
   }
 
   // ================================================================== 5. fonds de carte
@@ -817,8 +1280,15 @@ export class ReseauGpsStore {
 
   /** Recompose ce que la carte affiche pour l'onglet courant. */
   rafraichirVue(): void {
+    this.nettoyerSelection();
+    this.marquerModifie();
     if (this.onglet === 'fonds') return; // la carte garde la vue de l'onglet précédent
     this.vue$.next(this.construireVue());
+  }
+
+  /** Redessine sans compter une modification (résultat d'un calcul arrivé, sélection). */
+  redessiner(): void {
+    if (this.onglet !== 'fonds') this.vue$.next(this.construireVue());
   }
 
   construireVue(): VueCarte | null {
@@ -828,6 +1298,9 @@ export class ReseauGpsStore {
       case 'controle': vue = this.vueControle(valides); break;
       case 'ecarts': vue = this.vueEcarts(); break;
       case 'densification': vue = this.vueDensification(); break;
+      case 'zones': vue = this.resultatZone ? this.vueResultatZone() : (valides.length ? {
+        points: valides.map(a => this.pointCarte(a, a.retenu ? 'ancien' : 'ecarte', { note: a.motifEcart })),
+        lignes: [], triangles: [] } : null); break;
       default:
         vue = valides.length ? {
           points: valides.map(a => this.pointCarte(a, a.retenu ? 'ancien' : 'ecarte', { note: a.motifEcart })),
@@ -837,7 +1310,11 @@ export class ReseauGpsStore {
     const zones = this.zonesCarte();
     if (!vue && !zones.length) return null;
     vue = vue || { points: [], lignes: [], triangles: [] };
-    return { ...vue, zones, selection: this.selectionLigne || undefined };
+    return {
+      ...vue, zones, selection: this.selectionLigne || undefined,
+      selectionnes: [...this.selection].filter(k => k.startsWith('p:')).map(k => k.slice(2)),
+      lignesSelectionnees: [...this.selection].filter(k => k.startsWith('l:')).map(k => k.slice(2)),
+    };
   }
 
   private zonesCarte(): ZoneCarte[] {

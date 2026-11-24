@@ -41,3 +41,8 @@ footer { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; mar
   border-top: 1px dashed var(--border-color); font-size: 12px; cursor: default;
   dt { color: var(--text-muted); } dd { margin: 0; color: var(--text-color); overflow-wrap: anywhere; } }
 @media (max-width: 560px) { .zn-corps { grid-template-columns: 1fr; } }
+
+.zn-choix { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; .rg-segment { margin-bottom: 0; } }
+.zn-resultat { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color); }
+.zn-ok { color: #27ae60; }
+.zn-motif { font-size: 12px; color: var(--text-muted); white-space: normal; min-width: 220px; }

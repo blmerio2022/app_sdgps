@@ -5,6 +5,8 @@
       et nouveaux le plus optimisé possible, selon les normes de triangulation et de réseaux GNSS.</p>
   </header>
 
+  <app-rg-etudes class="rg-etudes"></app-rg-etudes>
+
   <nav class="rg-onglets" role="tablist">
     <button type="button" role="tab" *ngFor="let o of onglets" class="rg-onglet" [class.actif]="store.onglet === o.code"
             [class.termine]="termine(o.code)" [class.annexe]="o.etape === null" [attr.aria-selected]="store.onglet === o.code"
@@ -59,8 +61,11 @@
                           [pleinEcran]="pleinEcran" (basculerPleinEcran)="basculerPleinEcran()"
                           (clicCarte)="clicCarte($event)" (zoneDessinee)="store.ajouterZoneDessinee($event)"
                           (clicPoint)="store.clicPointEdition($event)" (clicLigne)="store.clicLigneEdition($event.a, $event.b)"
-                          (actionPoint)="store.basculerRetenuParNom($event)" (annulerOutil)="store.arreterModesCarte(); store.rafraichirVue()">
+                          (actionPoint)="store.basculerRetenuParNom($event)" (annulerOutil)="store.arreterModesCarte(); store.rafraichirVue()"
+                          (selection)="store.appliquerSelection($event)" (viderSelection)="store.viderSelection()"
+                          (toutSelectionner)="store.selectionnerTout()">
         </app-reseau-carte>
+        <app-rg-selection></app-rg-selection>
         <div class="rg-vide" *ngIf="!(store.vue$ | async)">
           <i class="fas fa-map-marked-alt"></i>
           Importez la liste des points anciens ou des zones pour commencer.

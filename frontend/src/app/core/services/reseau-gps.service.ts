@@ -170,6 +170,58 @@ export interface ResultatImportZones {
 /** Réseau personnalisé évalué (même forme qu'une variante calculée). */
 export interface ResultatPersonnalise extends VarianteReseau { points: PointResultat[]; }
 
+export type ModeGenerationZone = 'triangulation' | 'densification';
+
+export interface DemandeGenerationZone {
+  anciens: PointReseau[];
+  /** Polygones Lambert : [extérieur, trous…], anneau = [[x, y]…]. */
+  zones: number[][][][];
+  nom_zone?: string;
+  mode: ModeGenerationZone;
+  zone: string;
+  rayon_recherche_km: number;
+  anciens_max: number;
+  longueur_max_km: number;
+  rayon_couverture_km: number;
+  points_couverture_min: number;
+  nb_nouveaux: number;
+  nb_suggestions_max: number;
+}
+
+export interface DetailPointZone {
+  nom_point: string; retenu: boolean; motif: string; distance_zone_m: number; dans_zone: boolean;
+}
+
+export interface ResultatGenerationZone {
+  mode: ModeGenerationZone;
+  nom_zone: string;
+  anciens_retenus: string[];
+  details: DetailPointZone[];
+  nb_candidats: number;
+  ignores: string[];
+  quadrants: string[];
+  part_zone_encadree: number;
+  score_anciens: number;
+  score: number;
+  conclusion: string;
+  reseau?: ResultatReseau;
+  densification?: ResultatDensification;
+}
+
+/** Étude enregistrée (espace de travail du module) — strictement personnelle. */
+export interface EtudeReseau {
+  id: string;
+  nom: string;
+  description: string;
+  dossier: string;
+  epinglee: boolean;
+  contenu?: Record<string, any>;
+  version_schema: number;
+  nb_points: number; nb_zones: number; nb_nouveaux: number; taille: number;
+  created_at: string; updated_at: string;
+  created_by_email: string | null; updated_by_email: string | null;
+}
+
 export interface DemandeEvaluation {
   points: PointReseau[];
   /** Paires de noms de points. */
@@ -263,6 +315,35 @@ export class ReseauGpsService {
   /** Contrôle et note un réseau personnalisé (lignes de base de l'opérateur). */
   evaluer(demande: DemandeEvaluation): Observable<ResultatPersonnalise> {
     return this.http.post<ResultatPersonnalise>(`${this.url}evaluer/`, demande);
+  }
+
+  /** Réseau de triangulation ou de densification pour une zone. */
+  genererZone(demande: DemandeGenerationZone): Observable<ResultatGenerationZone> {
+    return this.http.post<ResultatGenerationZone>(`${this.url}generer-zone/`, demande);
+  }
+
+  // --- Études enregistrées
+  etudes(q = '', dossier: string | null = null): Observable<{ etudes: EtudeReseau[]; dossiers: string[] }> {
+    const params: Record<string, string> = {};
+    if (q) params['q'] = q;
+    if (dossier !== null) params['dossier'] = dossier;
+    return this.http.get<{ etudes: EtudeReseau[]; dossiers: string[] }>(`${this.url}etudes/`, { params });
+  }
+
+  etude(id: string): Observable<EtudeReseau> { return this.http.get<EtudeReseau>(`${this.url}etudes/${id}/`); }
+
+  creerEtude(e: Partial<EtudeReseau>): Observable<EtudeReseau> {
+    return this.http.post<EtudeReseau>(`${this.url}etudes/`, e);
+  }
+
+  modifierEtude(id: string, e: Partial<EtudeReseau>): Observable<EtudeReseau> {
+    return this.http.patch<EtudeReseau>(`${this.url}etudes/${id}/`, e);
+  }
+
+  supprimerEtude(id: string): Observable<void> { return this.http.delete<void>(`${this.url}etudes/${id}/`); }
+
+  dupliquerEtude(id: string): Observable<EtudeReseau> {
+    return this.http.post<EtudeReseau>(`${this.url}etudes/${id}/dupliquer/`, {});
   }
 
   /** Zones d'un shapefile (.shp/.dbf/.shx/.prj/.cpg ou .zip) ou d'un GeoPackage (.gpkg). */

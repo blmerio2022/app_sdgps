@@ -81,3 +81,44 @@ describe('ReseauGpsService — écarts et densification', () => {
     req.flush({});
   });
 });
+
+describe('ReseauGpsService — zones, génération par zone, études', () => {
+  let svc: ReseauGpsService;
+  let http: HttpTestingController;
+  const base = `${environment.apiUrl}/v1/reseau-gps/`;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({ imports: [HttpClientTestingModule] });
+    svc = TestBed.inject(ReseauGpsService);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  it('génération par zone, évaluation, import de zones', () => {
+    svc.genererZone({ anciens: [], zones: [], mode: 'densification', zone: 'nord', rayon_recherche_km: 5, anciens_max: 12,
+                      longueur_max_km: 10, rayon_couverture_km: 5, points_couverture_min: 3, nb_nouveaux: 0, nb_suggestions_max: 5 }).subscribe();
+    expect(http.expectOne(`${base}generer-zone/`).request.body.mode).toBe('densification');
+    svc.evaluer({ points: [], lignes: [['A', 'B']], type_reseau: 'anciens', zone: 'nord', longueur_max_km: 10 }).subscribe();
+    expect(http.expectOne(`${base}evaluer/`).request.body.lignes).toEqual([['A', 'B']]);
+    svc.importerZones([new File(['x'], 'z.zip')], 'sud', 'levee').subscribe();
+    const fd = http.expectOne(`${base}zones/importer/`).request.body as FormData;
+    expect([fd.get('zone'), fd.get('type_defaut'), (fd.get('fichiers') as File).name]).toEqual(['sud', 'levee', 'z.zip']);
+  });
+
+  it('études : liste filtrée, lecture, création, modification, duplication, suppression', () => {
+    svc.etudes('azi', 'Nord').subscribe();
+    const l = http.expectOne(r => r.url === `${base}etudes/`);
+    expect([l.request.params.get('q'), l.request.params.get('dossier')]).toEqual(['azi', 'Nord']);
+    svc.etude('e1').subscribe();
+    http.expectOne(`${base}etudes/e1/`);
+    svc.creerEtude({ nom: 'X', contenu: {} }).subscribe();
+    expect(http.expectOne(`${base}etudes/`).request.method).toBe('POST');
+    svc.modifierEtude('e1', { epinglee: true }).subscribe();
+    expect(http.expectOne(`${base}etudes/e1/`).request.method).toBe('PATCH');
+    svc.dupliquerEtude('e1').subscribe();
+    http.expectOne(`${base}etudes/e1/dupliquer/`);
+    svc.supprimerEtude('e1').subscribe();
+    expect(http.expectOne(`${base}etudes/e1/`).request.method).toBe('DELETE');
+  });
+});

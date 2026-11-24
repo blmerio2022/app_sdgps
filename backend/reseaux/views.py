@@ -21,6 +21,7 @@ from . import normes as N
 from .ecarts import TOLERANCE_MAX_M, TOLERANCE_MIN_M, ErreurEcarts, analyser_ecarts
 from .generation import TYPES_RESEAU, VARIANTES, ErreurReseau, evaluer_personnalise, generer_reseau
 from .zones import TAILLE_MAX as ZONES_TAILLE_MAX, TYPES_ZONE, ErreurZones, importer_zones
+from . import zone_reseau as ZR
 from .projection import ZONE_DEFAUT, ZONES, deviner_zone
 
 CHAMPS_RC = ('id', 'nom_point_fixe', 'nom_point_calcule', 'x_m_fixe', 'y_m_fixe', 'x_m_calcule',
@@ -334,4 +335,46 @@ class ImporterZonesView(APIView):
         try:
             return Response(importer_zones([(f.name, f.read()) for f in fichiers], zone, type_defaut))
         except ErreurZones as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class GenerationZoneSerializer(serializers.Serializer):
+    anciens = PointSerializer(many=True)
+    zones = serializers.ListField(max_length=200)
+    nom_zone = serializers.CharField(required=False, allow_blank=True, max_length=120, default='')
+    mode = serializers.ChoiceField(choices=list(ZR.MODES), default='densification')
+    zone = serializers.ChoiceField(choices=list(ZONES), default=ZONE_DEFAUT)
+    rayon_recherche_km = serializers.FloatField(min_value=0, max_value=100, default=ZR.RAYON_RECHERCHE_KM_DEFAUT)
+    anciens_max = serializers.IntegerField(min_value=3, max_value=ZR.ANCIENS_MAX_LIMITE, default=ZR.ANCIENS_MAX_DEFAUT)
+    longueur_max_km = serializers.FloatField(
+        min_value=0.1, max_value=N.LONGUEUR_MAX_KM_LIMITE, default=N.LONGUEUR_MAX_KM_DEFAUT)
+    rayon_couverture_km = serializers.FloatField(min_value=0.1, max_value=50, default=D.RAYON_KM_DEFAUT)
+    points_couverture_min = serializers.IntegerField(min_value=1, max_value=10, default=D.POINTS_MIN_DEFAUT)
+    nb_nouveaux = serializers.IntegerField(min_value=0, max_value=D.NOUVEAUX_MAX, default=0)
+    nb_suggestions_max = serializers.IntegerField(min_value=0, max_value=N.SUGGESTIONS_MAX,
+                                                  default=N.SUGGESTIONS_MAX_DEFAUT)
+
+    def validate_anciens(self, value):
+        if len(value) > N.POINTS_MAX:
+            raise serializers.ValidationError(f'Au plus {N.POINTS_MAX} points.')
+        return value
+
+
+class GenererZoneView(APIView):
+    """`POST` : réseau de triangulation ou de densification pour une zone (points anciens dans
+    la zone et autour, optimisés selon les normes)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        ser = GenerationZoneSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        d = ser.validated_data
+        try:
+            zones = _polygones(d['zones'])
+            return Response(ZR.generer_pour_zone(
+                d['anciens'], zones, mode=d['mode'], zone=d['zone'], rayon_recherche_km=d['rayon_recherche_km'],
+                anciens_max=d['anciens_max'], longueur_max_km=d['longueur_max_km'],
+                rayon_couverture_km=d['rayon_couverture_km'], points_min=d['points_couverture_min'],
+                nb_nouveaux=d['nb_nouveaux'], nb_suggestions_max=d['nb_suggestions_max'], nom_zone=d['nom_zone']))
+        except (ErreurReseau, D.ErreurDensification) as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

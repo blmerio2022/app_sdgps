@@ -1,0 +1,95 @@
+<!-- Barre d'état de l'étude -->
+<div class="et-barre">
+  <i class="fas fa-folder-open et-icone"></i>
+  <div class="et-titre">
+    <span class="et-nom">{{ store.etude ? store.etude.nom : 'Étude non enregistrée' }}</span>
+    <span class="et-statut" [class.alerte]="store.modifie && !store.sauvegardeEnCours" [class.erreur]="store.erreurSauvegarde">
+      <i class="fas fa-spinner fa-spin" *ngIf="store.sauvegardeEnCours"></i> {{ statut }}
+      <ng-container *ngIf="store.etude?.dossier"> · {{ store.etude?.dossier }}</ng-container></span>
+  </div>
+  <label class="et-auto" *ngIf="store.etude" title="Enregistre automatiquement chaque modification">
+    <input type="checkbox" [ngModel]="store.autosauvegarde" (ngModelChange)="store.basculerAutosauvegarde($event)"> Auto</label>
+  <button type="button" class="btn-primary btn-sm" (click)="enregistrer()" [disabled]="store.sauvegardeEnCours || (!!store.etude && !store.modifie)">
+    <i class="fas fa-floppy-disk"></i> {{ store.etude ? 'Enregistrer' : 'Enregistrer…' }}</button>
+  <button type="button" class="btn-ghost btn-sm" (click)="ouvrirPanneau()"><i class="fas fa-layer-group"></i> Mes études</button>
+</div>
+
+<!-- Panneau « Mes études » -->
+<div class="et-fond" *ngIf="ouvert" (click)="$event.target === $event.currentTarget && (ouvert = false)">
+  <aside class="et-panneau" role="dialog" aria-modal="true" aria-label="Mes études">
+    <header>
+      <h2><i class="fas fa-layer-group"></i> Mes études</h2>
+      <button type="button" class="et-fermer" (click)="ouvert = false" aria-label="Fermer"><i class="fas fa-xmark"></i></button>
+    </header>
+    <p class="et-aide">Une étude enregistre tout le travail de l'outil : points et leur activation, zones, points nouveaux,
+      rapport de contrôle, réseaux personnalisés, paramètres, fonds de carte et derniers calculs. Elle n'est visible que
+      de vous.</p>
+
+    <div class="et-outils">
+      <input type="search" [(ngModel)]="recherche" (keyup.enter)="charger()" (search)="charger()"
+             placeholder="Rechercher (nom, dossier, description)" aria-label="Rechercher une étude">
+      <button type="button" class="btn-ghost btn-sm" (click)="nouvelle()" title="Repartir d'un espace vide"><i class="fas fa-plus"></i> Nouvelle</button>
+      <button type="button" class="btn-ghost btn-sm" (click)="nouveauFormulaire()"><i class="fas fa-copy"></i> Enregistrer sous…</button>
+    </div>
+
+    <form class="et-form" *ngIf="formulaire as f" (ngSubmit)="validerFormulaire()">
+      <h3>Enregistrer le travail en cours</h3>
+      <label class="field"><span>Nom</span><input name="nom" [(ngModel)]="f.nom" maxlength="150" required></label>
+      <label class="field"><span>Dossier</span>
+        <input name="dossier" [(ngModel)]="f.dossier" maxlength="100" list="et-dossiers" placeholder="Commune, projet, campagne…"></label>
+      <label class="field"><span>Description</span><textarea name="description" [(ngModel)]="f.description" rows="2"></textarea></label>
+      <div class="et-boutons">
+        <button type="button" class="btn-primary btn-sm" [disabled]="!f.nom.trim()" (click)="validerFormulaire()">
+          <i class="fas fa-floppy-disk"></i> Enregistrer</button>
+        <button type="button" class="btn-ghost btn-sm" (click)="formulaire = null">Annuler</button>
+      </div>
+    </form>
+    <datalist id="et-dossiers"><option *ngFor="let d of dossiers" [value]="d"></option></datalist>
+
+    <div class="et-liste">
+      <p class="et-vide" *ngIf="chargement"><i class="fas fa-spinner fa-spin"></i> Chargement…</p>
+      <p class="et-vide" *ngIf="!chargement && !etudes.length">{{ recherche ? 'Aucune étude ne correspond.' : 'Aucune étude enregistrée.' }}</p>
+      <section *ngFor="let g of groupes">
+        <h4><i class="fas" [ngClass]="g.dossier ? 'fa-folder' : 'fa-inbox'"></i> {{ g.dossier || 'Sans dossier' }}
+          <span>{{ g.etudes.length }}</span></h4>
+        <article class="et-etude" *ngFor="let e of g.etudes" [class.courante]="store.etude?.id === e.id">
+          <ng-container *ngIf="edition?.id !== e.id; else formEdition">
+            <button type="button" class="et-ouvrir" (click)="ouvrir(e)" [title]="'Ouvrir « ' + e.nom + ' »'">
+              <span class="nom"><i class="fas fa-thumbtack et-epingle" *ngIf="e.epinglee"></i>{{ e.nom }}
+                <span class="et-badge" *ngIf="store.etude?.id === e.id">ouverte</span></span>
+              <span class="meta">{{ e.nb_points }} point(s) · {{ e.nb_zones }} zone(s) · {{ e.nb_nouveaux }} nouveau(x)
+                · {{ taille(e.taille) }} · modifiée le {{ e.updated_at | date:'dd/MM/yyyy HH:mm' }}</span>
+              <span class="desc" *ngIf="e.description">{{ e.description }}</span>
+            </button>
+            <div class="et-actions">
+              <button type="button" (click)="epingler(e)" [title]="e.epinglee ? 'Désépingler' : 'Épingler en tête'">
+                <i class="fas fa-thumbtack" [class.actif]="e.epinglee"></i></button>
+              <button type="button" (click)="commencerEdition(e)" title="Renommer / ranger"><i class="fas fa-pen"></i></button>
+              <button type="button" (click)="dupliquer(e)" title="Dupliquer"><i class="fas fa-copy"></i></button>
+              <button type="button" class="danger" (click)="supprimer(e)" title="Supprimer"><i class="fas fa-trash"></i></button>
+            </div>
+          </ng-container>
+          <ng-template #formEdition>
+            <form class="et-form et-form-inline" *ngIf="edition as ed" (ngSubmit)="validerEdition()">
+              <input name="nom" [(ngModel)]="ed.nom" maxlength="150" aria-label="Nom" required>
+              <input name="dossier" [(ngModel)]="ed.dossier" maxlength="100" list="et-dossiers" placeholder="Dossier" aria-label="Dossier">
+              <textarea name="description" [(ngModel)]="ed.description" rows="2" placeholder="Description" aria-label="Description"></textarea>
+              <div class="et-boutons">
+                <button type="button" class="btn-primary btn-sm" [disabled]="!ed.nom.trim()" (click)="validerEdition()">Valider</button>
+                <button type="button" class="btn-ghost btn-sm" (click)="edition = null">Annuler</button>
+              </div>
+            </form>
+          </ng-template>
+        </article>
+      </section>
+    </div>
+
+    <footer>
+      <button type="button" class="btn-ghost btn-sm" (click)="exporter()" title="Fichier JSON du travail en cours">
+        <i class="fas fa-file-export"></i> Exporter (fichier)</button>
+      <label class="btn-ghost btn-sm" title="Charger un fichier exporté">
+        <i class="fas fa-file-import"></i> Importer un fichier
+        <input type="file" accept=".json,application/json" hidden (change)="importer($event)"></label>
+    </footer>
+  </aside>
+</div>

@@ -1,0 +1,48 @@
+<div class="sel" *ngIf="total" role="region" aria-label="Sélection">
+  <header>
+    <span class="compte"><i class="fas fa-object-group"></i> {{ total }} sélectionné(s)</span>
+    <span class="detail">
+      <ng-container *ngIf="nbAnciens">{{ nbAnciens }} ancien(s)</ng-container>
+      <ng-container *ngIf="nbNouveaux"> · {{ nbNouveaux }} nouveau(x)</ng-container>
+      <ng-container *ngIf="nbLignes"> · {{ nbLignes }} ligne(s)</ng-container>
+    </span>
+    <button type="button" class="ico" (click)="replie = !replie" [attr.aria-expanded]="!replie"
+            [title]="replie ? 'Afficher les actions' : 'Masquer les actions'">
+      <i class="fas" [ngClass]="replie ? 'fa-chevron-down' : 'fa-chevron-up'"></i></button>
+    <button type="button" class="ico" (click)="store.viderSelection()" title="Désélectionner tout"><i class="fas fa-xmark"></i></button>
+  </header>
+
+  <div class="actions" *ngIf="!replie">
+    <div class="groupe" *ngIf="nbAnciens">
+      <span class="titre">Points anciens</span>
+      <button type="button" (click)="store.activerSelection(true)"><i class="fas fa-check"></i> Activer</button>
+      <button type="button" (click)="store.activerSelection(false)"><i class="fas fa-ban"></i> Désactiver</button>
+      <button type="button" (click)="garderSeulement()" title="Activer la sélection et désactiver tous les autres">
+        <i class="fas fa-filter"></i> Ne garder qu'eux</button>
+      <ng-container *ngIf="store.analyse || store.onglet === 'ecarts' || store.onglet === 'densification'">
+        <button type="button" (click)="store.marquerHomogeneSelection(true)"><i class="fas fa-circle-check"></i> Homogènes</button>
+        <button type="button" (click)="store.marquerHomogeneSelection(false)"><i class="fas fa-circle-xmark"></i> Non homogènes</button>
+      </ng-container>
+      <button type="button" class="principal" (click)="genererDepuisSelection()" [disabled]="nbAnciens < 3"
+              title="Générer un réseau pour une zone avec ces seuls points">
+        <i class="fas fa-wand-magic-sparkles"></i> Générer un réseau avec la sélection</button>
+    </div>
+
+    <div class="groupe" *ngIf="reseauEditable && (nbLignes || nbAnciens + nbNouveaux >= 2)">
+      <span class="titre">Lignes de base</span>
+      <button type="button" *ngIf="nbLignes" (click)="retirerLignes()"><i class="fas fa-scissors"></i> Retirer les lignes</button>
+      <button type="button" *ngIf="nbAnciens + nbNouveaux >= 2" (click)="relier()"
+              title="Relie chaque point sélectionné à ses 3 voisins sélectionnés les plus proches">
+        <i class="fas fa-link"></i> Relier les points</button>
+    </div>
+
+    <div class="groupe">
+      <span class="titre">Sélection</span>
+      <button type="button" *ngIf="nbAnciens + nbNouveaux" (click)="store.cadrerSurSelection()"><i class="fas fa-crosshairs"></i> Recadrer</button>
+      <button type="button" (click)="store.selectionnerTout(true)"><i class="fas fa-right-left"></i> Inverser</button>
+      <button type="button" *ngIf="nbAnciens + nbNouveaux" (click)="exporter()"><i class="fas fa-file-export"></i> CSV</button>
+      <button type="button" class="danger" *ngIf="nbAnciens + nbNouveaux" (click)="supprimer()">
+        <i class="fas fa-trash"></i> Retirer de la liste</button>
+    </div>
+  </div>
+</div>

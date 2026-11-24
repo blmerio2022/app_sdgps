@@ -52,6 +52,7 @@ export class ReseauGpsPageComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.store.init();
     this.abonnement = this.store.cadrerZones$.subscribe(ids => { if (ids?.length) setTimeout(() => this.carte?.cadrerSurZones(ids)); });
+    this.abonnement.add(this.store.cadrerNoms$.subscribe(noms => { if (noms?.length) this.carte?.cadrerSurNoms(noms); }));
   }
 
   ngOnDestroy(): void { this.abonnement?.unsubscribe(); }
@@ -62,6 +63,12 @@ export class ReseauGpsPageComponent implements OnInit, OnDestroy {
   }
 
   basculerPleinEcran(): void { this.pleinEcran = !this.pleinEcran; }
+
+  /** Quitter la page avec du travail non enregistré : le navigateur demande confirmation. */
+  @HostListener('window:beforeunload', ['$event'])
+  avantDeQuitter(e: BeforeUnloadEvent): void {
+    if (this.store.modifie && (this.store.anciens.length || this.store.zones.length)) { e.preventDefault(); e.returnValue = ''; }
+  }
 
   @HostListener('document:keydown.escape')
   quitterPleinEcran(): void {

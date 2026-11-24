@@ -1,0 +1,25 @@
+:host { position: absolute; top: 10px; right: 10px; z-index: 860; max-width: min(380px, calc(100% - 70px)); }
+.sel {
+  border-radius: 12px; background: var(--secondary-color); color: var(--text-color);
+  border: 1px solid var(--border-color); border-top: 3px solid #f1c40f; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  font-size: 12px;
+}
+header { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px;
+  .compte { font-weight: 700; i { color: #f1c40f; margin-right: 4px; } }
+  .detail { flex: 1; color: var(--text-muted); font-size: 11.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+.ico { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px 6px; border-radius: 6px;
+  &:hover { color: var(--text-color); background: var(--hover-bg); } }
+.actions { padding: 0 10px 10px; display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow-y: auto; }
+.groupe { display: flex; flex-wrap: wrap; gap: 5px; padding-top: 8px; border-top: 1px solid var(--border-color);
+  .titre { width: 100%; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+  button {
+    padding: 5px 9px; border-radius: 7px; cursor: pointer; font-size: 12px; white-space: nowrap;
+    border: 1px solid var(--border-color); background: var(--primary-color); color: var(--text-color);
+    i { margin-right: 4px; opacity: 0.85; }
+    &:hover:not(:disabled) { border-color: var(--accent-color); color: var(--accent-color); }
+    &:disabled { opacity: 0.45; cursor: default; }
+    &.principal { background: var(--accent-color); border-color: var(--accent-color); color: #fff; &:hover:not(:disabled) { color: #fff; filter: brightness(1.08); } }
+    &.danger { color: #e74c3c; }
+  }
+}

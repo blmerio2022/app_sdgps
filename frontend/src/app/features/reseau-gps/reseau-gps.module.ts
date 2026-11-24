@@ -12,6 +12,8 @@ import { OngletDensificationComponent } from './onglets/onglet-densification.com
 import { OngletFondsComponent } from './onglets/onglet-fonds.component';
 import { OngletZonesComponent } from './onglets/onglet-zones.component';
 import { RgReseauPersoComponent } from './onglets/rg-reseau-perso.component';
+import { RgSelectionComponent } from './onglets/rg-selection.component';
+import { RgEtudesComponent } from './onglets/rg-etudes.component';
 
 /**
  * Module « Réseau de triangulation GNSS » — indépendant du reste de l'application, ouvert à
@@ -27,6 +29,7 @@ const routes: Routes = [
     ReseauGpsPageComponent, ReseauCarteComponent, RgSectionComponent,
     OngletPointsComponent, OngletControleComponent, OngletEcartsComponent,
     OngletDensificationComponent, OngletFondsComponent, OngletZonesComponent, RgReseauPersoComponent,
+    RgSelectionComponent, RgEtudesComponent,
   ],
   imports: [CommonModule, FormsModule, RouterModule.forChild(routes)],
 })

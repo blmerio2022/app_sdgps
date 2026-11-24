@@ -4,10 +4,12 @@
 :host ::ng-deep .rg-carte.mode-ajout.leaflet-container,
 :host ::ng-deep .mode-ajout.leaflet-container { cursor: crosshair; }
 :host ::ng-deep .mode-lignes.leaflet-container .leaflet-interactive { cursor: pointer; }
+:host ::ng-deep .mode-selection.leaflet-container { cursor: default; }
 
 /* Barre d'outils verticale, en haut à gauche (style des contrôles de la carte). */
 .rg-outils {
   position: absolute; top: 10px; left: 10px; z-index: 800; display: flex; flex-direction: column; gap: 6px;
+  max-height: calc(100% - 44px); overflow-y: auto; padding-right: 2px;
   .groupe {
     display: flex; flex-direction: column; border-radius: 9px; overflow: hidden;
     background: var(--secondary-color); border: 1px solid var(--border-color); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);

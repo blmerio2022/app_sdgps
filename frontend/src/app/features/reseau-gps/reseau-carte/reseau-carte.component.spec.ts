@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { SimpleChange } from '@angular/core';
 import {
   PointCarte, ReseauCarteComponent, VueCarte, echapper, popupLigne, popupPoint, popupTriangle, texteMesure,
+  dansPolygonePixels, distanceSegmentPixels, modeSelection,
 } from './reseau-carte.component';
 import { wgs84VersLambert } from '../lambert-maroc';
 import * as Leaflet from 'leaflet';
@@ -186,6 +187,58 @@ describe('ReseauCarteComponent', () => {
     expect(texteMesure('angle', [[1, 0], [0, 0], [0, 1]])[0]).toContain('90,0000°');
     expect(texteMesure('distance', [p(34, -6)])).toEqual([]);
   });
+
+  it("outils de sélection : rectangle (glisser), ponctuel (Maj ajoute), polygone (double-clic), surlignage", () => {
+    comp.carte!.setView([34.02, -6.25], 13, { animate: false });
+    afficher(VUE);
+    const recues: any[] = [];
+    comp.selection.subscribe(s => recues.push(s));
+    comp.choisirSelection('rectangle');
+    expect(comp.carte!.dragging.enabled()).toBeFalse();
+    comp.carte!.fire('mousedown', { latlng: L_(34.05, -6.30), originalEvent: {} });
+    comp.carte!.fire('mousemove', { latlng: L_(34.005, -6.245) });
+    comp.carte!.fire('mouseup', { latlng: L_(34.005, -6.245), originalEvent: { shiftKey: false } });
+    expect(recues[0].points).toEqual(['A<1>', 'S1']);
+    expect(recues[0].lignes).toEqual([['A<1>', 'S1']]);
+    expect(recues[0].mode).toBe('remplacer');
+    comp.choisirSelection('point');
+    expect(comp.carte!.dragging.enabled()).toBeTrue();
+    comp.carte!.fire('click', { latlng: L_(34.01, -6.24), originalEvent: { shiftKey: true } });
+    expect(recues[1]).toEqual({ points: ['B'], lignes: [], mode: 'ajouter' });
+    comp.choisirSelection('polygone');
+    [[34.04, -6.27], [34.04, -6.23], [34.0, -6.25]].forEach(([la, lo]) => comp.carte!.fire('click', { latlng: L_(la, lo) }));
+    comp.carte!.fire('dblclick', { latlng: L_(34.0, -6.25), originalEvent: { ctrlKey: true } });
+    expect(recues[2].points).toEqual(['S1']);
+    expect(recues[2].mode).toBe('retirer');
+    const avant = comp.coucheReseau!.getLayers().length;
+    afficher({ ...VUE, selectionnes: ['B'], lignesSelectionnees: ['A<1>\u0000B'] });
+    expect(comp.coucheReseau!.getLayers().length).toBe(avant + 2);   // halo du point + surlignage de la ligne
+  });
+
+  it('un clic dans le vide vide la sélection ; cercle ; utilitaires', () => {
+    comp.carte!.setView([34.02, -6.25], 13, { animate: false });
+    afficher(VUE);
+    let vide = 0;
+    comp.viderSelection.subscribe(() => vide++);
+    comp.choisirSelection('point');
+    comp.carte!.fire('click', { latlng: L_(33.9, -6.0), originalEvent: {} });
+    expect(vide).toBe(1);
+    const recues: any[] = [];
+    comp.selection.subscribe(s => recues.push(s));
+    comp.choisirSelection('cercle');
+    comp.carte!.fire('mousedown', { latlng: L_(34.01, -6.26), originalEvent: {} });
+    comp.carte!.fire('mouseup', { latlng: L_(34.01, -6.255), originalEvent: {} });
+    expect(recues[0].points).toEqual(['A<1>']);
+    expect(modeSelection({ shiftKey: true })).toBe('ajouter');
+    expect(modeSelection({ metaKey: true })).toBe('retirer');
+    expect(modeSelection(null)).toBe('remplacer');
+    expect(dansPolygonePixels({ x: 1, y: 1 }, [{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 2 }, { x: 0, y: 2 }])).toBeTrue();
+    expect(dansPolygonePixels({ x: 3, y: 1 }, [{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 2 }])).toBeFalse();
+    expect(distanceSegmentPixels({ x: 1, y: 1 }, { x: 0, y: 0 }, { x: 2, y: 0 })).toBe(1);
+    comp.choisirSelection('cercle');
+    expect(comp.outilSelection).toBe('aucun');
+  });
+
 });
 
 function L_(lat: number, lng: number): Leaflet.LatLng { return Leaflet.latLng(lat, lng); }

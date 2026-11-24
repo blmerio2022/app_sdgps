@@ -1,5 +1,5 @@
 <div class="rg-carte" #conteneur [class.mode-ajout]="modeAjout || captureActive !== 'aucun'"
-     [class.mode-lignes]="outil === 'lignes'"></div>
+     [class.mode-lignes]="outil === 'lignes'" [class.mode-selection]="outilSelection !== 'aucun'"></div>
 
 <!-- Barre d'outils (navigation + mesures), façon QGIS -->
 <div class="rg-outils" role="toolbar" aria-label="Outils de la carte">
@@ -20,11 +20,28 @@
     <button type="button" [class.actif]="outilMesure === 'distance'" (click)="choisirMesure('distance')"
             title="Mesurer une distance" aria-label="Mesurer une distance"><i class="fas fa-ruler"></i></button>
     <button type="button" [class.actif]="outilMesure === 'aire'" (click)="choisirMesure('aire')"
-            title="Mesurer une surface" aria-label="Mesurer une surface"><i class="fas fa-draw-polygon"></i></button>
+            title="Mesurer une surface" aria-label="Mesurer une surface"><i class="fas fa-ruler-combined"></i></button>
     <button type="button" [class.actif]="outilMesure === 'angle'" (click)="choisirMesure('angle')"
             title="Mesurer un angle" aria-label="Mesurer un angle"><i class="fas fa-drafting-compass"></i></button>
     <button type="button" (click)="effacerMesures()" [disabled]="!resultats.length && !sommets.length"
             title="Effacer les mesures" aria-label="Effacer les mesures"><i class="fas fa-eraser"></i></button>
+  </div>
+  <div class="groupe" role="group" aria-label="Sélection">
+    <button type="button" [class.actif]="outilSelection === 'point'" (click)="choisirSelection('point')"
+            title="Sélection ponctuelle (Maj : ajouter, Ctrl : retirer)" aria-label="Sélection ponctuelle">
+      <i class="fas fa-arrow-pointer"></i></button>
+    <button type="button" [class.actif]="outilSelection === 'rectangle'" (click)="choisirSelection('rectangle')"
+            title="Sélection par rectangle" aria-label="Sélection par rectangle"><i class="far fa-square"></i></button>
+    <button type="button" [class.actif]="outilSelection === 'polygone'" (click)="choisirSelection('polygone')"
+            title="Sélection par polygone" aria-label="Sélection par polygone"><i class="fas fa-draw-polygon"></i></button>
+    <button type="button" [class.actif]="outilSelection === 'cercle'" (click)="choisirSelection('cercle')"
+            title="Sélection par cercle" aria-label="Sélection par cercle"><i class="fas fa-circle-dot"></i></button>
+    <button type="button" [class.actif]="outilSelection === 'lasso'" (click)="choisirSelection('lasso')"
+            title="Sélection à main levée" aria-label="Sélection à main levée"><i class="fas fa-bezier-curve"></i></button>
+    <button type="button" (click)="toutSelectionner.emit()" title="Sélectionner tous les points" aria-label="Tout sélectionner">
+      <i class="fas fa-object-group"></i></button>
+    <button type="button" (click)="viderSelection.emit()" [disabled]="!(vue?.selectionnes?.length || vue?.lignesSelectionnees?.length)"
+            title="Désélectionner tout" aria-label="Désélectionner tout"><i class="fas fa-object-ungroup"></i></button>
   </div>
   <div class="groupe">
     <button type="button" (click)="basculerPleinEcran.emit()" [class.actif]="pleinEcran"
@@ -35,9 +52,9 @@
 </div>
 
 <!-- Consigne de l'outil et résultats des mesures -->
-<div class="rg-panneau-mesure" *ngIf="captureActive !== 'aucun' || resultats.length">
+<div class="rg-panneau-mesure" *ngIf="captureActive !== 'aucun' || outilSelection !== 'aucun' || resultats.length">
   <p class="consigne" *ngIf="consigne"><i class="fas fa-info-circle"></i> {{ consigne }}
-    <span class="touches">Échap : annuler</span></p>
+    <span class="touches">Échap : {{ outilSelection !== 'aucun' ? 'quitter l’outil' : 'annuler' }}</span></p>
   <div class="resultat" *ngFor="let r of resultats; let premier = first" [class.recent]="premier">
     <strong>{{ r.titre }}</strong>
     <span *ngFor="let l of r.lignes">{{ l }}</span>

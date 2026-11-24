@@ -2,6 +2,7 @@ import { Component } from '@angular/core';
 import { TypeZone } from '../../../core/services/reseau-gps.service';
 import { formatAire, formatDistance } from '../mesures.util';
 import { COULEURS_ZONES, LIBELLES_ZONES, ReseauGpsStore, ZoneReseau } from '../reseau-gps.store';
+import { fr } from './onglet-controle.component';
 
 /** Extensions acceptées à l'import (shapefile éclaté, archive, GeoPackage). */
 export const EXTENSIONS_ZONES = '.zip,.shp,.dbf,.shx,.prj,.cpg,.gpkg';
@@ -24,6 +25,7 @@ export class OngletZonesComponent {
   readonly types: TypeZone[] = ['levee', 'densification'];
   readonly aire = formatAire;
   readonly distance = formatDistance;
+  readonly fr = fr;
   typeDefautImport: TypeZone | '' = '';
   attributsOuverts: Record<string, boolean> = {};
 

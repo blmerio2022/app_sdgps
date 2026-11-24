@@ -6,8 +6,9 @@
 
 .rg-page { height: 100%; box-sizing: border-box; display: flex; flex-direction: column; padding: 16px 22px; min-height: 0; }
 
+.rg-etudes { flex-shrink: 0; margin-bottom: 10px; }
 .page-header {
-  margin-bottom: 12px; flex-shrink: 0;
+  margin-bottom: 10px; flex-shrink: 0;
   h1 { margin: 0; font-size: 20px; color: var(--text-color); display: flex; align-items: center; gap: 10px;
     i { color: var(--accent-color); } }
   .subtitle { margin: 5px 0 0; font-size: 13px; color: var(--text-muted); max-width: 980px; }

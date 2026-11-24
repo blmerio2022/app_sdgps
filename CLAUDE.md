@@ -640,6 +640,35 @@ homogènes à ΔD ≤ 15 cm). L'écran suit le **workflow de densification** en 
 - **points actifs** : case « Actif » de la liste + Tout activer / désactiver / inverser + bouton
   de la fiche du point sur la carte. Les coordonnées des pièces (« 353 108.16 ») sont
   converties en nombres au chargement (`ReseauGpsStore.nombre`) ;
+- **génération pour une zone** (`reseaux/zone_reseau.py`, `POST generer-zone/` : `anciens`,
+  `zones` Lambert, `mode` `triangulation`|`densification`, `rayon_recherche_km`, `anciens_max`…) :
+  candidats = anciens dans la zone ou à moins du rayon de son contour ; encadrement N9 (le plus
+  proche dans chaque quadrant autour du centre de la zone) + points dedans ; ajouts / retraits
+  gloutons sur l'objectif « score du meilleur réseau épuré + 20 × part de la zone dans
+  l'enveloppe des retenus » ; puis `generer_reseau` (triangulation) ou `densifier` avec la zone
+  en densification ET en levée. Chaque point reçoit un motif (retenu / écarté). Source côté
+  écran : points actifs OU la seule sélection de la carte. « Appliquer » active les seuls retenus
+  et ouvre le réseau dans l'onglet Contrôle ou Densification ;
+- **sélection en masse** (carte) : ponctuelle, rectangle, polygone, cercle, main levée (Maj =
+  ajouter, Ctrl = retirer, Échap), tout sélectionner / désélectionner ; une ligne est prise si
+  ses deux extrémités le sont. Clés dans `ReseauGpsStore.selection` (`p:<nom>`,
+  `l:<a>\u0000<b>`). Actions (`<app-rg-selection>`) : activer / désactiver / ne garder qu'eux,
+  homogènes ou non, retirer de la liste, retirer les lignes / relier les points (réseau
+  personnalisé), recadrer, inverser, CSV, générer un réseau avec la sélection ;
+- **études enregistrées** (`reseaux/models.py::EtudeReseau`, `views_etudes.py`, API
+  `etudes/` : liste sans contenu + dossiers, `?q=&dossier=`, CRUD, `<id>/dupliquer/`) : tout
+  l'espace de travail sérialisé par `ReseauGpsStore.serialiser()` (points + activation, zones,
+  nouveaux, RC, analyse, réseaux personnalisés, paramètres, derniers résultats, « Mes fonds »)
+  dans `contenu` (≤ 8 Mo, `version_schema`), compteurs dénormalisés pour la liste.
+  **Strictement personnelles** (404 sinon, admins compris), rangées par `dossier`, épinglables,
+  suppression logique. Écran : barre d'état (étude ouverte, « modifications non enregistrées »,
+  autosauvegarde différée de `DELAI_AUTOSAUVEGARDE_MS`, préférence dans le navigateur) +
+  panneau « Mes études » (`<app-rg-etudes>` : recherche, groupes par dossier, ouvrir, enregistrer
+  sous, renommer / ranger, épingler, dupliquer, supprimer, export / import JSON). Les fonds
+  d'une étude s'AJOUTENT à « Mes fonds » à l'ouverture. Les résultats de calcul qui arrivent
+  (`redessiner()`) ne comptent pas comme des modifications. ⚠ Boutons d'enregistrement en
+  `type="button"` + `(click)` : un clic sur un bouton `submit` ne déclenchait pas l'envoi du
+  formulaire dans cette page ;
 - **carte** : barre d'outils façon QGIS (zoom ±, emprise, vues précédente / suivante, mesure de
   distance / surface / angle en ° et gon dans le plan Lambert, effacer), coordonnées du curseur
   (WGS84 + Lambert), **plein écran** (Échap) ;
@@ -654,8 +683,8 @@ homogènes à ΔD ≤ 15 cm). L'écran suit le **workflow de densification** en 
   `GET sources-rc/` + `sources-rc/<ssdgps>/` (pièce RC, **portée RBAC**), `POST densifier/`
   (`proposer=true` propose, `false` évalue les points tels que l'opérateur les a modifiés),
   `generer/` renvoie aussi `suppressions` ; le référentiel expose `fonds` et les défauts ;
-- backend : app **`reseaux/`**, **sans modèle ni migration** (rien n'est enregistré, tout est
-  recalculé). `normes.py` (seuils — modifier ici modifie l'algorithme ET les contrôles),
+- backend : app **`reseaux/`** — calcul **sans état** (tout est recalculé) ; seul modèle :
+  `EtudeReseau` (études enregistrées, ci-dessous). `normes.py` (seuils — modifier ici modifie l'algorithme ET les contrôles),
   `geometrie.py` (Delaunay Bowyer-Watson en Python pur), `generation.py` (variantes
   `delaunay`, `delaunay_toleree`, `delaunay_stricte`, `quadrilateres`, + `rattachement` en
   réseau mixte ; contrôles par norme avec gravité bloquant/majeur/mineur ; `score` sur 100 ;
@@ -687,7 +716,8 @@ homogènes à ΔD ≤ 15 cm). L'écran suit le **workflow de densification** en 
 - tests : `backend/reseaux/tests.py` (projection vs PROJ, Delaunay, algorithme, API, RBAC) +
   `tests_densification.py` (suppressions, écarts/homogènes, couverture N11, catalogue, API) +
   `tests_zones.py` (shapefile / GeoPackage synthétiques, projections, réseau personnalisé,
-  densification dans les zones, API) ; specs `reseau-gps.service`, `points-import.util`,
+  densification dans les zones, API) + `tests_zone_etudes.py` (génération pour une zone,
+  études : CRUD, dossiers, épinglage, duplication, confidentialité) ; spec `selection-etudes` ; specs `reseau-gps.service`, `points-import.util`,
   `fonds-carte`, `lambert-maroc`, `mesures.util`, `reseau-gps.store`, `reseau-carte`,
   `reseau-gps-page`, `onglets`, `zones-perso`, `menu.config`.
 
