@@ -703,9 +703,13 @@ se fait pour l'instant hors de l'application) → 5 Points nouveaux (densificati
   sous, renommer / ranger, épingler, dupliquer, supprimer, export / import JSON) — zone d'étude,
   itérations, qualifications, groupe homogène, ancres et rayons compris. Les fonds
   d'une étude s'AJOUTENT à « Mes fonds » à l'ouverture. Les résultats de calcul qui arrivent
-  (`redessiner()`) ne comptent pas comme des modifications. ⚠ Boutons d'enregistrement en
-  `type="button"` + `(click)` : un clic sur un bouton `submit` ne déclenchait pas l'envoi du
-  formulaire dans cette page ;
+  (`redessiner()`) ne comptent pas comme des modifications. ⚠ Liste des études : les groupes
+  sont calculés UNE FOIS par chargement (`RgEtudesComponent.groupes`) et les lignes suivies par
+  identifiant (`trackBy`) — un accesseur qui recréait les groupes à chaque détection de
+  changements reconstruisait les lignes entre l'appui et le relâchement : ouvrir, renommer,
+  épingler, supprimer restaient sans effet. Suppression confirmée SUR PLACE, export d'une étude
+  de la liste sans l'ouvrir ; boutons du composant stylés par lui-même (la page n'a pas de style
+  global « ghost ») ;
 - **carte** : barre d'outils façon QGIS (zoom ±, emprise, vues précédente / suivante, mesure de
   distance / surface / angle en ° et gon dans le plan Lambert, effacer), coordonnées du curseur
   (WGS84 + Lambert), **plein écran** (Échap) ;

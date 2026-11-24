@@ -1435,21 +1435,32 @@ export class ReseauGpsStore {
     });
   }
 
-  ouvrirEtude(id: string): void {
+  /** Ouvre une étude enregistrée ; `fin(ok)` est appelé une fois l'ouverture terminée. */
+  ouvrirEtude(id: string, fin?: (ok: boolean) => void): void {
     this.service.etude(id).subscribe({
       next: e => {
-        this.restaurer(e.contenu || {});
-        this.etude = { ...e, contenu: undefined };
-        this.derniereSauvegarde = new Date(e.updated_at);
-        this.toast.success('Étude', `« ${e.nom} » ouverte.`);
+        try {
+          clearTimeout(this.minuteurSauvegarde);
+          this.restaurer(e.contenu || {});
+          this.etude = { ...e, contenu: undefined };
+          this.derniereSauvegarde = new Date(e.updated_at);
+          this.erreurSauvegarde = '';
+          this.toast.success('Étude', `« ${e.nom} » ouverte.`);
+          fin?.(true);
+        } catch {
+          this.toast.error('Étude', 'Contenu de l’étude illisible.');
+          fin?.(false);
+        }
       },
-      error: err => this.toast.error('Étude', message(err, 'Ouverture impossible.')),
+      error: err => { this.toast.error('Étude', message(err, 'Ouverture impossible.')); fin?.(false); },
     });
   }
 
   /** Repart d'un espace vide (l'étude ouverte est fermée, rien n'est supprimé). */
   nouvelleEtude(): void {
+    clearTimeout(this.minuteurSauvegarde);
     this.etude = null;
+    this.erreurSauvegarde = '';
     this.restaurer({});
     this.controle = null;
     this.derniereSauvegarde = null;

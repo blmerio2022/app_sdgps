@@ -4,7 +4,7 @@ import { ToastService } from '../../core/services/toast.service';
 import { CLE_AUTOSAUVEGARDE, ReseauGpsStore } from './reseau-gps.store';
 import { CLE_MES_FONDS } from './fonds-carte';
 import { RgSelectionComponent } from './onglets/rg-selection.component';
-import { RgEtudesComponent, grouperEtudes } from './onglets/rg-etudes.component';
+import { RgEtudesComponent, grouperEtudes, nomDeFichier } from './onglets/rg-etudes.component';
 
 const pts = [
   { nom_point: 'A', x_m: 420000, y_m: 380000 }, { nom_point: 'B', x_m: 423000, y_m: 380000 },
@@ -282,6 +282,66 @@ describe('Études enregistrées', () => {
     cmp.validerFormulaire();
     expect(service.creerEtude.calls.mostRecent().args[0].nom).toBe('Mon étude');
     expect(cmp.statut).toContain('Enregistrée');
+    expect(cmp.etat).toBe('ok');
+  });
+
+  it('panneau : liste STABLE entre deux rafraîchissements (sinon le clic se perd)', () => {
+    service.etudes.and.returnValue(of({ etudes: [{ ...etude }, { ...etude, id: 'e2', nom: 'B', dossier: '' }] as any, dossiers: ['Nord'] }));
+    const cmp = new RgEtudesComponent(store, service, jasmine.createSpyObj('ToastService', ['success', 'error']));
+    cmp.ouvrirPanneau();
+    const premiers = cmp.groupes;
+    expect(cmp.groupes).toBe(premiers);                          // même tableau, mêmes objets
+    expect(cmp.groupes[0].etudes[0]).toBe(premiers[0].etudes[0]);
+    expect(cmp.trackEtude(0, cmp.etudes[0])).toBe('e1');
+    expect(cmp.trackGroupe(0, cmp.groupes[0])).toBe('Nord');
+  });
+
+  it('panneau : ouvrir, renommer, épingler, dupliquer, supprimer (confirmation sur place), exporter', () => {
+    const toast = jasmine.createSpyObj('ToastService', ['success', 'error']);
+    service.etudes.and.returnValue(of({ etudes: [{ ...etude }] as any, dossiers: [] }));
+    service.etude.and.returnValue(of({ ...etude, contenu: { anciens: pts, zones: [] } } as any));
+    const cmp = new RgEtudesComponent(store, service, toast);
+    cmp.ouvrirPanneau();
+    cmp.ouvrir(cmp.etudes[0]);
+    expect(store.etude!.id).toBe('e1');
+    expect(store.anciens.length).toBe(4);
+    expect(cmp.ouvert).toBeFalse();                             // fermé une fois l'étude chargée
+    // Ouverture en échec : le panneau reste ouvert.
+    cmp.ouvrirPanneau();
+    service.etude.and.returnValue(throwError(() => ({ error: { detail: 'Étude introuvable.' } })));
+    store.etude = null; store.modifie = false;
+    cmp.ouvrir(cmp.etudes[0]);
+    expect(cmp.ouvert).toBeTrue();
+    // Renommer / ranger
+    service.modifierEtude.and.returnValue(of({ ...etude, nom: 'Azilal 2', dossier: 'Sud' } as any));
+    store.etude = { ...etude } as any;
+    cmp.commencerEdition(cmp.etudes[0]);
+    cmp.edition!.nom = ' Azilal 2 '; cmp.edition!.dossier = 'Sud';
+    cmp.validerEdition();
+    expect(service.modifierEtude).toHaveBeenCalledWith('e1', { nom: 'Azilal 2', dossier: 'Sud', description: '' });
+    expect(store.etude!.nom).toBe('Azilal 2');
+    expect(cmp.edition).toBeNull();
+    // Épingler, dupliquer
+    cmp.epingler(cmp.etudes[0]);
+    expect(service.modifierEtude.calls.mostRecent().args[1]).toEqual({ epinglee: true });
+    service.dupliquerEtude.and.returnValue(of({ ...etude, id: 'e3', nom: 'Azilal (copie)' } as any));
+    cmp.dupliquer(cmp.etudes[0]);
+    expect(service.dupliquerEtude).toHaveBeenCalledWith('e1');
+    // Supprimer : d'abord une confirmation sur place, puis la suppression ; l'étude ouverte est fermée.
+    service.supprimerEtude.and.returnValue(of(undefined as any));
+    cmp.demanderSuppression(cmp.etudes[0]);
+    expect(cmp.aSupprimer).toBe('e1');
+    expect(service.supprimerEtude).not.toHaveBeenCalled();
+    cmp.supprimer(cmp.etudes[0]);
+    expect(service.supprimerEtude).toHaveBeenCalledWith('e1');
+    expect(cmp.aSupprimer).toBeNull();
+    expect(store.etude).toBeNull();
+    // Exporter une étude de la liste sans l'ouvrir
+    service.etude.and.returnValue(of({ ...etude, nom: 'Étude Aït-Ali', contenu: { anciens: [] } } as any));
+    const clic = spyOn(HTMLAnchorElement.prototype, 'click');
+    cmp.exporterEtude(cmp.etudes[0]);
+    expect(clic).toHaveBeenCalled();
+    expect(nomDeFichier('Étude Aït-Ali / 2026')).toBe('Etude_Ait-Ali_2026');
   });
 });
 
