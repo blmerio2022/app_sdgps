@@ -19,13 +19,13 @@
       <button type="button" (click)="store.activerSelection(false)"><i class="fas fa-ban"></i> Désactiver</button>
       <button type="button" (click)="garderSeulement()" title="Activer la sélection et désactiver tous les autres">
         <i class="fas fa-filter"></i> Ne garder qu'eux</button>
-      <ng-container *ngIf="store.analyse || store.onglet === 'ecarts' || store.onglet === 'densification'">
-        <button type="button" (click)="store.marquerHomogeneSelection(true)"><i class="fas fa-circle-check"></i> Homogènes</button>
-        <button type="button" (click)="store.marquerHomogeneSelection(false)"><i class="fas fa-circle-xmark"></i> Non homogènes</button>
-      </ng-container>
+      <button type="button" (click)="store.marquerHomogeneSelection(true)" title="Qualifier : homogènes et stables">
+        <i class="fas fa-circle-check"></i> Homogènes</button>
+      <button type="button" (click)="store.marquerHomogeneSelection(false)" title="Qualifier : non homogènes">
+        <i class="fas fa-circle-xmark"></i> Non homogènes</button>
       <button type="button" class="principal" (click)="genererDepuisSelection()" [disabled]="nbAnciens < 3"
-              title="Générer un réseau pour une zone avec ces seuls points">
-        <i class="fas fa-wand-magic-sparkles"></i> Générer un réseau avec la sélection</button>
+              title="Générer le réseau de contrôle de la zone avec ces seuls points">
+        <i class="fas fa-wand-magic-sparkles"></i> Réseau de contrôle avec la sélection</button>
     </div>
 
     <div class="groupe" *ngIf="reseauEditable && (nbLignes || nbAnciens + nbNouveaux >= 2)">

@@ -239,6 +239,32 @@ describe('ReseauCarteComponent', () => {
     expect(comp.outilSelection).toBe('aucun');
   });
 
+
+  it('points nouveaux déplaçables (glisser-déposer émis), cercles des rayons et lignes à observer', () => {
+    comp.carte!.setView([34.02, -6.25], 13, { animate: false });
+    const recus: any[] = [];
+    comp.deplacementPoint.subscribe(e => recus.push(e));
+    afficher({ ...VUE, deplacables: ['B'], lignesAObserver: ['A<1> B'],
+               cercles: [{ nom: 'B', lat: 34.01, lon: -6.24, rayon_m: 200, depasse: true }] });
+    const couches = comp.coucheReseau!.getLayers() as any[];
+    const marqueur = couches.find(c => c.options?.className === 'rg-deplacable');
+    expect(marqueur).toBeTruthy();
+    marqueur.fire('mousedown', { latlng: L_(34.01, -6.24), originalEvent: new MouseEvent('mousedown') });
+    expect(comp.carte!.dragging.enabled()).toBeFalse();
+    comp.carte!.fire('mousemove', { latlng: L_(34.02, -6.23) });
+    expect(marqueur.getLatLng().lat).toBeCloseTo(34.02, 6);
+    comp.carte!.fire('mouseup', { latlng: L_(34.02, -6.23), originalEvent: {} });
+    expect(recus).toEqual([{ nom: 'B', lat: 34.02, lon: -6.23 }]);
+    expect(comp.carte!.dragging.enabled()).toBeTrue();
+    // Relâché hors de la carte : abandon, le point revient.
+    marqueur.fire('mousedown', { latlng: L_(34.02, -6.23), originalEvent: new MouseEvent('mousedown') });
+    comp.carte!.fire('mousemove', { latlng: L_(34.03, -6.22) });
+    comp.surRelacheDocument();
+    expect(marqueur.getLatLng().lat).toBeCloseTo(34.02, 6);
+    expect(recus.length).toBe(1);
+    expect(couches.some(c => c instanceof Leaflet.Circle && c.getRadius() === 200)).toBeTrue();
+    expect(couches.some(c => c.options?.dashArray === '2 8')).toBeTrue();     // halo « à observer »
+  });
 });
 
 function L_(lat: number, lng: number): Leaflet.LatLng { return Leaflet.latLng(lat, lng); }

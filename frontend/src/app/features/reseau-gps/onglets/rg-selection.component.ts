@@ -56,8 +56,9 @@ export class RgSelectionComponent {
   }
 
   genererDepuisSelection(): void {
-    this.store.paramZone = { ...this.store.paramZone, source: 'selection' };
-    this.store.choisirOnglet('zones');
+    this.store.paramZone = { ...this.store.paramZone, source: 'selection', mode: 'triangulation',
+                             zoneId: this.store.paramZone.zoneId || this.store.zoneEtudeId };
+    this.store.choisirOnglet('controle');
   }
 
   exporter(): void {

@@ -58,6 +58,12 @@ export interface VueCarte {
   /** Points sélectionnés (noms) et lignes sélectionnées (« a\u0000b », noms triés). */
   selectionnes?: string[];
   lignesSelectionnees?: string[];
+  /** Lignes jamais observées (« a\u0000b ») : observations complémentaires à faire. */
+  lignesAObserver?: string[];
+  /** Rayons de déplacement des points nouveaux (centrés sur l'emplacement proposé). */
+  cercles?: { nom: string; lat: number; lon: number; rayon_m: number; depasse: boolean }[];
+  /** Points déplaçables à la souris (points nouveaux de la densification). */
+  deplacables?: string[];
 }
 
 /** Outils de sélection (comme QGIS) : ponctuelle, rectangle, polygone, cercle, main levée. */
@@ -253,6 +259,7 @@ export class ReseauCarteComponent implements AfterViewInit, OnChanges, OnDestroy
   @Output() selection = new EventEmitter<SelectionCarte>();
   @Output() viderSelection = new EventEmitter<void>();
   @Output() toutSelectionner = new EventEmitter<void>();
+  @Output() deplacementPoint = new EventEmitter<{ nom: string; lat: number; lon: number }>();
 
   @ViewChild('conteneur', { static: true }) conteneur!: ElementRef<HTMLDivElement>;
   @ViewChild('coords', { static: true }) coords!: ElementRef<HTMLDivElement>;
@@ -269,6 +276,9 @@ export class ReseauCarteComponent implements AfterViewInit, OnChanges, OnDestroy
   outilMesure: OutilCapture = 'aucun';
   outilSelection: OutilSelection = 'aucun';
   private glisse: { depart: L.LatLng; chemin: L.LatLng[] } | null = null;
+  /** Point nouveau en cours de déplacement à la souris. */
+  private glissePoint: { nom: string; marqueur: L.CircleMarker; depart: L.LatLng; bouge: boolean } | null = null;
+  private glisseVientDeFinir = false;
   sommets: L.LatLng[] = [];
   resultats: { titre: string; lignes: string[] }[] = [];
   /** Historique des vues (précédente / suivante). */
@@ -337,6 +347,16 @@ export class ReseauCarteComponent implements AfterViewInit, OnChanges, OnDestroy
     this.observateur?.disconnect();
     this.carte?.remove();
     this.carte = null;
+  }
+
+  /** Bouton relâché hors de la carte : le déplacement en cours est abandonné proprement. */
+  @HostListener('document:mouseup')
+  surRelacheDocument(): void {
+    if (!this.glissePoint) return;
+    const gp = this.glissePoint;
+    this.glissePoint = null;
+    this.carte?.dragging.enable();
+    gp.marqueur.setLatLng(gp.depart);
   }
 
   @HostListener('document:keydown', ['$event'])
@@ -422,6 +442,15 @@ export class ReseauCarteComponent implements AfterViewInit, OnChanges, OnDestroy
         color: COULEURS.zone, weight: 1.5, dashArray: '8 6', fill: false, interactive: false,
       }).addTo(couche);
     }
+    (v.cercles || []).forEach(c => {
+      L.circle([c.lat, c.lon], {
+        radius: c.rayon_m, color: c.depasse ? COULEURS.marque : COULEURS_POINTS.propose, weight: 1.5, dashArray: '5 5',
+        fillColor: COULEURS_POINTS.propose, fillOpacity: 0.06, interactive: interactif,
+      }).bindTooltip(`${echapper(c.nom)} — rayon de déplacement : ${nombreFr(c.rayon_m, 0)} m${c.depasse ? ' (point sorti du rayon)' : ''}`,
+        { sticky: true, className: 'rg-etiquette' }).addTo(couche);
+      L.circleMarker([c.lat, c.lon], { radius: 2.5, stroke: false, fillColor: COULEURS_POINTS.propose, fillOpacity: 0.9,
+                                       interactive: false }).addTo(couche);
+    });
     (v.nonCouverts || []).forEach(c => L.circleMarker(c as L.LatLngTuple, {
       radius: 3, stroke: false, fillColor: COULEURS.nonCouvert, fillOpacity: 0.55, interactive: false,
     }).addTo(couche));
@@ -436,9 +465,15 @@ export class ReseauCarteComponent implements AfterViewInit, OnChanges, OnDestroy
     }
 
     const lignesChoisies = new Set(v.lignesSelectionnees || []);
+    const aObserver = new Set(v.lignesAObserver || []);
     v.lignes.forEach(l => {
       const a = v.points[l.de]?.nom_point, b = v.points[l.a]?.nom_point;
-      if (a && b && lignesChoisies.has([a, b].sort().join('\u0000'))) {
+      const cle = a && b ? [a, b].sort().join('\u0000') : '';
+      if (cle && aObserver.has(cle)) {
+        L.polyline([pos(l.de), pos(l.a)], { color: COULEURS.marque, weight: 8, opacity: 0.45, dashArray: '2 8',
+                                            interactive: false }).addTo(couche);
+      }
+      if (cle && lignesChoisies.has(cle)) {
         L.polyline([pos(l.de), pos(l.a)], { color: COULEURS.choix, weight: 9, opacity: 0.55, interactive: false }).addTo(couche);
       }
     });
@@ -478,6 +513,7 @@ export class ReseauCarteComponent implements AfterViewInit, OnChanges, OnDestroy
     });
 
     const choisis = new Set(v.selectionnes || []);
+    const deplacables = new Set(v.deplacables || []);
     v.points.forEach(p => {
       if (choisis.has(p.nom_point)) {
         L.circleMarker([p.lat, p.lon], { radius: 11, weight: 3, color: COULEURS.choix, fillColor: COULEURS.choix,
@@ -490,6 +526,21 @@ export class ReseauCarteComponent implements AfterViewInit, OnChanges, OnDestroy
       if (v.selection && v.selection === p.nom_point) {
         L.circleMarker([p.lat, p.lon], { radius: 14, weight: 3, color: COULEURS.selection, fill: false, interactive: false })
           .addTo(couche);
+      }
+      if (deplacables.has(p.nom_point) && interactif) {
+        // Glisser-déposer géré ici (le glisser des marqueurs Leaflet échoue dans cette page).
+        const m = L.circleMarker([p.lat, p.lon], {
+          radius: 8, weight: 3, color: '#ffffff', fillColor: COULEURS_POINTS[p.style] || COULEURS_POINTS.nouveau,
+          fillOpacity: 1, className: 'rg-deplacable',
+        }).bindTooltip(echapper(p.nom_point), { permanent: true, direction: 'top', offset: [0, -8], className: 'rg-nom' });
+        m.on('mousedown', (e: L.LeafletMouseEvent) => {
+          L.DomEvent.stop(e);
+          this.carte?.dragging.disable();
+          this.glissePoint = { nom: p.nom_point, marqueur: m, depart: e.latlng, bouge: false };
+        });
+        m.on('click', () => { if (!this.glisseVientDeFinir) m.bindPopup(popupPoint(p)).openPopup(); });
+        m.addTo(couche);
+        return;
       }
       const marqueur = L.circleMarker([p.lat, p.lon], {
         radius: edition ? 8 : (p.style === 'suggere' || p.style === 'propose' ? 7 : 6), weight: 2, color: '#ffffff',
@@ -511,8 +562,10 @@ export class ReseauCarteComponent implements AfterViewInit, OnChanges, OnDestroy
   }
 
   private cadrerSiNouveau(v: VueCarte): void {
+    // Recadrer quand l'ENSEMBLE des points change (import, autre onglet), pas quand un point
+    // est déplacé ou un calcul rafraîchi : l'opérateur garderait sinon sa vue rarement.
     const signature = [
-      ...v.points.map(p => `${p.lat.toFixed(5)},${p.lon.toFixed(5)}`).sort(),
+      ...v.points.map(p => p.nom_point).sort(),
       ...(v.points.length ? [] : (v.zones || []).map(z => z.id)),
     ].join(';');
     if (signature && signature !== this.signatureCadrage) {
@@ -687,6 +740,18 @@ export class ReseauCarteComponent implements AfterViewInit, OnChanges, OnDestroy
   }
 
   private finGlisse(e: L.LeafletMouseEvent): void {
+    if (this.glissePoint) {
+      const gp = this.glissePoint;
+      this.glissePoint = null;
+      this.carte?.dragging.enable();
+      if (gp.bouge && this.carte
+        && this.carte.latLngToContainerPoint(gp.depart).distanceTo(this.carte.latLngToContainerPoint(e.latlng)) >= 3) {
+        this.glisseVientDeFinir = true;
+        setTimeout(() => { this.glisseVientDeFinir = false; });
+        this.zone.run(() => this.deplacementPoint.emit({ nom: gp.nom, lat: e.latlng.lat, lon: e.latlng.lng }));
+      }
+      return;
+    }
     const g = this.glisse, c = this.carte;
     if (!g || !c) return;
     this.glisse = null;
@@ -711,6 +776,7 @@ export class ReseauCarteComponent implements AfterViewInit, OnChanges, OnDestroy
   }
 
   private surClic(e: L.LeafletMouseEvent): void {
+    if (this.glisseVientDeFinir) return;                 // fin d'un glisser-déposer de point
     if (this.outilSelection === 'point') { this.selectionPonctuelle(e); return; }
     if (['rectangle', 'cercle', 'lasso'].includes(this.outilSelection)) return;   // traité au relâchement
     if (this.outilSelection === 'polygone') {
@@ -742,6 +808,11 @@ export class ReseauCarteComponent implements AfterViewInit, OnChanges, OnDestroy
       const [x, y] = wgs84VersLambert(e.latlng.lat, e.latlng.lng, this.zoneLambert);
       this.coords.nativeElement.textContent =
         `${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}  ·  X ${nombreFr(x, 2)}  Y ${nombreFr(y, 2)}`;
+    }
+    if (this.glissePoint) {
+      this.glissePoint.marqueur.setLatLng(e.latlng);
+      this.glissePoint.bouge = true;
+      return;
     }
     if (this.glisse) { this.dessinerGlisse(e.latlng); return; }
     if (this.sommets.length && (this.captureActive !== 'aucun' || this.outilSelection === 'polygone')) this.dessinerCapture(e.latlng);

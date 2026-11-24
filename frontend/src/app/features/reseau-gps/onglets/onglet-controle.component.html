@@ -1,8 +1,76 @@
-<p class="intro">Construisez le <strong>réseau de contrôle de stabilité</strong> des points anciens retenus. L'application
-  compare plusieurs variantes, recommande la meilleure et propose d'<strong>écarter</strong> les points inutiles ou de
-  <strong>rechercher</strong> d'autres points anciens pour se rapprocher d'un score de 100.</p>
+<p class="intro"><strong>Étape 3 — réseau de contrôle de stabilité et d'homogénéité.</strong> Il ne contient que des
+  points anciens, dans la zone d'étude et autour. Cycle : <strong>générer</strong> → activer / désactiver les points
+  encore matérialisés → <strong>arrêter</strong> le réseau et l'<strong>observer</strong> sur le terrain → analyser les
+  écarts (hors de l'application pour l'instant) → <strong>qualifier</strong> les points → écarter les non homogènes,
+  ajouter d'autres points et régénérer… jusqu'à un <strong>groupe de points homogènes et stables</strong>.</p>
 
-<app-rg-section titre="Paramètres et calcul" icone="fas fa-sliders-h" cle="controle.parametres">
+<app-rg-section titre="1. Générer le réseau de contrôle pour la zone" icone="fas fa-wand-magic-sparkles" cle="controle.zone">
+  <p class="hint">Points anciens dans la zone et autour (rayon de recherche), encadrement dans les quatre quadrants (N9),
+    choix optimisé selon les normes N1…N10. Source : tous les points actifs, ou la seule sélection faite sur la carte.</p>
+  <div class="rg-grille">
+    <label class="field">
+      <span>Zone</span>
+      <select [(ngModel)]="store.paramZone.zoneId" (ngModelChange)="store.resultatZone = null">
+        <option [ngValue]="null">— Choisir —</option>
+        <option *ngFor="let z of store.zones" [ngValue]="z.id">{{ z.nom }}{{ z.id === store.zoneEtudeId ? ' (zone d’étude)' : '' }}</option>
+      </select>
+      <span class="hint" *ngIf="!store.zones.length">Dessinez ou importez d'abord la zone (étape 2).</span>
+    </label>
+    <label class="field">
+      <span>Rayon de recherche autour (km)</span>
+      <input type="number" min="0" max="100" step="0.5" [(ngModel)]="store.paramZone.rayonRechercheKm">
+    </label>
+    <label class="field">
+      <span>Points anciens retenus (max.)</span>
+      <input type="number" min="3" max="40" [(ngModel)]="store.paramZone.anciensMax">
+    </label>
+  </div>
+  <div class="segment rg-segment">
+    <button type="button" [class.active]="store.paramZone.source === 'actifs'" (click)="store.paramZone.source = 'actifs'">
+      Points actifs ({{ store.anciensRetenus.length }})</button>
+    <button type="button" [class.active]="store.paramZone.source === 'selection'" (click)="store.paramZone.source = 'selection'"
+            title="Sélectionnez des points sur la carte avec les outils de sélection">
+      <i class="fas fa-object-group"></i> Sélection ({{ store.anciensSelectionnes.length }})</button>
+  </div>
+  <div class="rg-actions">
+    <button type="button" class="btn-primary" [disabled]="!!store.blocageZone || store.calculZone"
+            (click)="store.paramZone.mode = 'triangulation'; store.genererPourZone()">
+      <i class="fas" [ngClass]="store.calculZone ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'"></i> Générer le réseau de contrôle</button>
+    <span class="hint" *ngIf="store.blocageZone">{{ store.blocageZone }}</span>
+    <span class="hint" *ngIf="store.calculZone">Analyse des points et optimisation…</span>
+  </div>
+  <div class="rg-erreur" *ngIf="store.erreurZone">{{ store.erreurZone }}</div>
+
+  <div class="ct-resultat" *ngIf="store.resultatZone as r">
+    <div class="rg-kpis">
+      <div class="rg-kpi"><div class="val">{{ fr(r.score) }}<small>/100</small></div><div class="lib">Score du réseau</div></div>
+      <div class="rg-kpi"><div class="val">{{ r.anciens_retenus.length }}<small> / {{ r.nb_candidats }}</small></div><div class="lib">Points retenus</div></div>
+      <div class="rg-kpi"><div class="val">{{ fr(r.part_zone_encadree * 100, 0) }}<small> %</small></div><div class="lib">Zone encadrée</div></div>
+      <div class="rg-kpi"><div class="val">{{ r.quadrants.length }}<small>/4</small></div><div class="lib">Quadrants (N9)</div></div>
+    </div>
+    <p class="rg-info"><i class="fas fa-info-circle"></i>{{ r.conclusion }}</p>
+    <div class="rg-table-wrap">
+      <table class="rg-table">
+        <thead><tr><th></th><th>Point</th><th class="num">Distance à la zone</th><th>Motif</th></tr></thead>
+        <tbody>
+          <tr *ngFor="let d of r.details" [class.attenue]="!d.retenu">
+            <td><i class="fas" [ngClass]="d.retenu ? 'fa-check ct-ok' : 'fa-minus'"></i></td>
+            <td><strong>{{ d.nom_point }}</strong></td>
+            <td class="num">{{ d.dans_zone ? 'dedans' : fr(d.distance_zone_m / 1000, 2) + ' km' }}</td>
+            <td class="ct-motif">{{ d.motif }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="rg-actions">
+      <button type="button" class="btn-primary" (click)="store.appliquerResultatZone()"><i class="fas fa-check"></i> Appliquer ce réseau</button>
+      <button type="button" class="btn-ghost btn-sm" (click)="store.abandonnerResultatZone()">Abandonner</button>
+      <span class="hint">Seuls les points retenus restent actifs ; vous pourrez ensuite en activer / désactiver et personnaliser les lignes.</span>
+    </div>
+  </div>
+</app-rg-section>
+
+<app-rg-section titre="Réseau sur tous les points actifs (sans zone)" icone="fas fa-sliders-h" cle="controle.parametres" [ouvert]="false">
   <div class="rg-grille">
     <label class="field">
       <span>Ligne de base max. (km) — N7</span>
@@ -123,6 +191,90 @@
 </ng-container>
 
 <app-rg-reseau-perso contexte="controle" [scoreReference]="scoreRecommande"></app-rg-reseau-perso>
+
+<app-rg-section titre="2. Arrêter le réseau et l'observer (itérations)" icone="fas fa-flag-checkered" cle="controle.iterations"
+                [badge]="store.iterations.length || null">
+  <p class="hint">Arrêter le réseau en fige une version (points, lignes de base, score) à observer sur le terrain. Une
+    itération suivante ne demande que les <strong>observations complémentaires</strong> : les lignes jamais observées.</p>
+  <div class="rg-actions">
+    <input class="ct-note" [(ngModel)]="noteIteration" placeholder="Note (campagne, équipe, date d'observation…)" maxlength="300"
+           aria-label="Note de l'itération">
+    <button type="button" class="btn-primary" [disabled]="!!store.blocageArret" (click)="arreter()">
+      <i class="fas fa-flag-checkered"></i> Arrêter ce réseau (itération n°{{ store.iterations.length + 1 }})</button>
+    <span class="hint" *ngIf="store.blocageArret">{{ store.blocageArret }}</span>
+  </div>
+  <ol class="ct-iterations" *ngIf="store.iterations.length">
+    <li *ngFor="let it of store.iterations.slice().reverse()" [class.observee]="it.statut === 'observe'">
+      <div class="tete">
+        <strong>Itération n°{{ it.numero }}</strong>
+        <span class="rg-badge" [ngClass]="it.statut === 'observe' ? 'ok' : 'warn'">
+          {{ it.statut === 'observe' ? 'Observée' : 'À observer' }}</span>
+        <span class="hint">{{ it.date | date:'dd/MM/yyyy HH:mm' }} · {{ it.variante }}<ng-container *ngIf="it.score !== null"> · {{ fr(it.score) }}/100</ng-container></span>
+      </div>
+      <div class="corps">
+        {{ it.points.length }} point(s) · {{ it.lignes.length }} ligne(s) de base
+        <ng-container *ngIf="it.numero > 1"> · <strong>{{ store.lignesComplementaires(it).length }}</strong> à observer en complément</ng-container>
+        <em *ngIf="it.note"> — {{ it.note }}</em>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn-ghost btn-sm" (click)="exporter(it, 'points')"><i class="fas fa-file-export"></i> Points (CSV)</button>
+        <button type="button" class="btn-ghost btn-sm" (click)="exporter(it, 'lignes')"><i class="fas fa-file-export"></i> Lignes à observer (CSV)</button>
+        <button type="button" class="btn-ghost btn-sm" (click)="store.marquerObservee(it, it.statut !== 'observe')">
+          <i class="fas" [ngClass]="it.statut === 'observe' ? 'fa-rotate-left' : 'fa-check'"></i>
+          {{ it.statut === 'observe' ? 'Remettre à observer' : 'Marquer observée' }}</button>
+        <button type="button" class="rg-icone" title="Supprimer l'itération" (click)="supprimer(it)"><i class="fas fa-trash"></i></button>
+      </div>
+    </li>
+  </ol>
+</app-rg-section>
+
+<app-rg-section titre="3. Qualifier les points après analyse des écarts" icone="fas fa-clipboard-check" cle="controle.qualification"
+                [badge]="store.anciensHomogenes.length ? store.anciensHomogenes.length + ' homogène(s)' : null">
+  <p class="hint">Reportez le résultat de votre analyse des écarts (faite hors de l'application, ou à l'étape 4
+    facultative) : chaque point actif est homogène et stable, non homogène, instable ou non retrouvé.</p>
+  <div class="ct-compteurs">
+    <span *ngFor="let q of qualites" class="rg-badge" [ngClass]="classeQualite(q)">{{ libelles[q] }} : {{ comptes[q] }}</span>
+  </div>
+  <p class="hint" *ngIf="!store.anciensRetenus.length">Aucun point actif.</p>
+  <div class="rg-table-wrap" *ngIf="store.anciensRetenus.length">
+    <table class="rg-table">
+      <thead><tr><th>Point</th><th>Qualification</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr *ngFor="let a of store.anciensRetenus; trackBy: trackNom">
+          <td><strong>{{ a.nom_point }}</strong></td>
+          <td><select [ngModel]="store.qualiteDe(a)" (ngModelChange)="store.qualifier(a, $event)" [attr.aria-label]="'Qualification de ' + a.nom_point">
+            <option *ngFor="let q of qualites" [value]="q">{{ libelles[q] }}</option></select></td>
+          <td><input [(ngModel)]="a.noteQualite" maxlength="200" placeholder="ΔD, observation…" (ngModelChange)="store.rafraichirVue()"></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="rg-actions">
+    <button type="button" class="btn-ghost btn-sm" [disabled]="!aEcarter" (click)="desactiverNonConformes()">
+      <i class="fas fa-ban"></i> Désactiver les non homogènes / instables / non retrouvés ({{ aEcarter }})</button>
+    <span class="hint">Puis ajoutez d'autres points (étape 1) et régénérez le réseau : nouvelle itération.</span>
+  </div>
+  <div class="ct-groupe">
+    <ng-container *ngIf="store.groupeHomogene as g; else nonValide">
+      <p class="rg-info ok"><i class="fas fa-check-circle"></i>Groupe homogène validé le {{ g.date | date:'dd/MM/yyyy HH:mm' }} :
+        <strong>{{ g.points.join(', ') }}</strong>.</p>
+      <p class="rg-perime" *ngIf="store.groupeAltere.length"><i class="fas fa-exclamation-triangle"></i>
+        Qualification modifiée depuis pour : {{ store.groupeAltere.join(', ') }} — revalidez le groupe.</p>
+      <div class="rg-actions">
+        <button type="button" class="btn-primary" (click)="store.choisirOnglet('densification')"><i class="fas fa-arrow-right"></i> Points nouveaux</button>
+        <button type="button" class="btn-ghost btn-sm" [disabled]="!!store.blocageGroupe" (click)="store.validerGroupeHomogene()">Revalider</button>
+        <button type="button" class="btn-ghost btn-sm" (click)="store.annulerGroupeHomogene()">Annuler la validation</button>
+      </div>
+    </ng-container>
+    <ng-template #nonValide>
+      <div class="rg-actions">
+        <button type="button" class="btn-primary" [disabled]="!!store.blocageGroupe" (click)="store.validerGroupeHomogene()">
+          <i class="fas fa-check-double"></i> Valider le groupe homogène ({{ store.anciensHomogenes.length }} point(s))</button>
+        <span class="hint" *ngIf="store.blocageGroupe">{{ store.blocageGroupe }}</span>
+      </div>
+    </ng-template>
+  </div>
+</app-rg-section>
 
 <app-rg-section titre="Normes appliquées" icone="fas fa-book" cle="controle.normes" [ouvert]="false"
                 [badge]="store.referentiel?.normes?.length || null">

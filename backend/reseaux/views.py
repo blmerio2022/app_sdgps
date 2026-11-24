@@ -244,6 +244,8 @@ class DensificationSerializer(serializers.Serializer):
     # Zones de l'opérateur : polygone = [anneau extérieur, trous…], anneau = [[x, y], …] Lambert.
     zones_densification = serializers.ListField(required=False, default=list, max_length=200)
     zones_levee = serializers.ListField(required=False, default=list, max_length=200)
+    # Rayon de déplacement des points nouveaux (défaut : lors d'une proposition seulement).
+    rayons = serializers.BooleanField(required=False, allow_null=True, default=None)
     # Réseau personnalisé : paires d'indices dans anciens + nouveaux (dans cet ordre).
     lignes = serializers.ListField(child=serializers.ListField(child=serializers.IntegerField(min_value=0),
                                                                min_length=2, max_length=2),
@@ -285,7 +287,7 @@ class DensifierView(APIView):
                 longueur_max_km=d['longueur_max_km'], rayon_km=d['rayon_couverture_km'],
                 points_min=d['points_couverture_min'], proposer=d['proposer'],
                 zones_densification=_polygones(d.get('zones_densification')),
-                zones_levee=_polygones(d.get('zones_levee')), lignes=d.get('lignes')))
+                zones_levee=_polygones(d.get('zones_levee')), lignes=d.get('lignes'), rayons=d.get('rayons')))
         except D.ErreurDensification as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 

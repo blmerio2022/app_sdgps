@@ -81,15 +81,43 @@ export interface ParametresZone {
   nbNouveaux: number;
 }
 
+/** Qualification d'un point ancien après observation et analyse des écarts. */
+export type QualitePoint = 'a_controler' | 'homogene' | 'non_homogene' | 'instable' | 'non_retrouve';
+export const LIBELLES_QUALITE: Record<QualitePoint, string> = {
+  a_controler: 'À contrôler', homogene: 'Homogène et stable', non_homogene: 'Non homogène',
+  instable: 'Instable', non_retrouve: 'Non retrouvé / détruit',
+};
+/** Qualités qui excluent un point du groupe d'appui. */
+export const QUALITES_A_ECARTER: QualitePoint[] = ['non_homogene', 'instable', 'non_retrouve'];
+
 export interface PointAncien extends PointReseau {
   /** Retenu dans le réseau (l'opérateur peut écarter un point, avec un motif). */
   retenu: boolean;
   motifEcart?: string;
   /** Homogène d'après le contrôle des écarts ; null = pas (encore) contrôlé. */
   homogene: boolean | null;
+  qualite?: QualitePoint;
+  noteQualite?: string;
 }
 
-export interface PointNouveau extends PointReseau { origine: 'manuel' | 'propose'; }
+export interface PointNouveau extends PointReseau {
+  origine: 'manuel' | 'propose';
+  /** Emplacement de référence (proposé) et rayon dans lequel déplacer le point sans dégrader le réseau. */
+  ancre?: { x_m: number; y_m: number };
+  rayon_m?: number;
+}
+
+/** Version arrêtée du réseau de contrôle, à observer sur le terrain. */
+export interface IterationControle {
+  numero: number;
+  date: string;
+  points: string[];
+  lignes: [string, string][];
+  score: number | null;
+  variante: string;
+  statut: 'a_observer' | 'observe';
+  note: string;
+}
 
 const CATALOGUE_VIDE: FondCatalogue[] = [];
 
@@ -163,11 +191,19 @@ export class ReseauGpsStore {
   readonly cadrerNoms$ = new BehaviorSubject<string[] | null>(null);
 
   // --- Génération pour une zone
-  paramZone: ParametresZone = { zoneId: null, mode: 'densification', source: 'actifs', rayonRechercheKm: 5,
+  paramZone: ParametresZone = { zoneId: null, mode: 'triangulation', source: 'actifs', rayonRechercheKm: 5,
                                 anciensMax: 12, nbNouveaux: 0 };
   resultatZone: ResultatGenerationZone | null = null;
   calculZone = false;
   erreurZone = '';
+
+  // --- Cycle de contrôle de stabilité et d'homogénéité
+  zoneEtudeId: string | null = null;
+  iterations: IterationControle[] = [];
+  groupeHomogene: { date: string; points: string[] } | null = null;
+  /** Recalcule le score après chaque déplacement d'un point nouveau sur la carte. */
+  recalculAuto = true;
+  private minuteurDeplacement?: ReturnType<typeof setTimeout>;
 
   // --- Étude enregistrée
   etude: EtudeReseau | null = null;
@@ -381,6 +417,7 @@ export class ReseauGpsStore {
     const controles = new Set(this.analyse.points.map(p => p.nom_point));
     this.anciens.forEach(a => {
       a.homogene = controles.has(a.nom_point) ? homogenes.has(a.nom_point) : null;
+      if (a.homogene !== null) a.qualite = a.homogene ? 'homogene' : 'non_homogene';
     });
     if (this.densification) this.densificationPerimee = true;
     this.rafraichirVue();
@@ -388,6 +425,7 @@ export class ReseauGpsStore {
 
   basculerHomogene(a: PointAncien): void {
     a.homogene = !a.homogene;
+    a.qualite = a.homogene ? 'homogene' : 'non_homogene';
     if (this.densification) this.densificationPerimee = true;
     this.rafraichirVue();
   }
@@ -400,6 +438,10 @@ export class ReseauGpsStore {
    *  écarts, tous les anciens retenus (signalé à l'écran). */
   get anciensDensification(): PointAncien[] {
     const retenus = this.anciensRetenus;
+    if (this.groupeHomogene) {
+      const groupe = new Set(this.groupeHomogene.points);
+      return retenus.filter(a => groupe.has(a.nom_point));
+    }
     return this.sansControleEcarts ? retenus : retenus.filter(a => a.homogene === true);
   }
 
@@ -420,7 +462,10 @@ export class ReseauGpsStore {
 
   recalculerDensification(): void { this.lancerDensification(false); }
 
-  private lancerDensification(proposer: boolean): void {
+  /** Rayon de déplacement de chaque point nouveau autour de sa position actuelle. */
+  calculerRayons(): void { this.lancerDensification(false, true); }
+
+  private lancerDensification(proposer: boolean, rayons?: boolean): void {
     if (this.blocageDensification || this.calculDensification) return;
     this.calculDensification = true;
     this.erreurDensification = '';
@@ -431,15 +476,24 @@ export class ReseauGpsStore {
       nb_nouveaux: Number(this.nbNouveaux) || 0, proposer, zone: this.zone,
       longueur_max_km: Number(this.longueurMaxKm), rayon_couverture_km: Number(this.rayonCouvertureKm),
       points_couverture_min: Number(this.pointsCouvertureMin), ...this.zonesPourCalcul(),
+      ...(rayons !== undefined ? { rayons } : {}),
     }).subscribe({
       next: r => {
         this.densification = r;
         this.densificationPerimee = false;
         this.calculDensification = false;
-        this.nouveaux = r.points.filter(p => p.statut === 'nouveau').map(p => ({
-          ...p, statut: 'nouveau', origine: p.origine === 'propose' ? 'propose' : 'manuel',
-          x_m: Math.round(Number(p.x_m) * 100) / 100, y_m: Math.round(Number(p.y_m) * 100) / 100,
-        }));
+        const avant = new Map(this.nouveaux.map(n => [n.nom_point, n]));
+        this.nouveaux = r.points.filter(p => p.statut === 'nouveau').map(p => {
+          const x = Math.round(Number(p.x_m) * 100) / 100, y = Math.round(Number(p.y_m) * 100) / 100;
+          const prec = avant.get(p.nom_point);
+          const rayon = p.rayon_deplacement_m;
+          // Nouveau rayon calculé : l'emplacement actuel devient la référence ; sinon on garde l'ancienne.
+          const ancre = rayon !== undefined ? { x_m: x, y_m: y } : prec?.ancre;
+          return {
+            ...p, statut: 'nouveau', origine: p.origine === 'propose' ? 'propose' : 'manuel', x_m: x, y_m: y,
+            ancre, rayon_m: rayon !== undefined ? rayon : prec?.rayon_m,
+          } as PointNouveau;
+        });
         this.rafraichirVue();
       },
       error: err => {
@@ -501,6 +555,7 @@ export class ReseauGpsStore {
         this.importZonesEnCours = false;
         const nouvelles = r.zones.map(z => this.depuisImport(z, typeDefaut));
         this.zones = [...this.zones, ...nouvelles];
+        if (!this.zoneEtude && nouvelles.length) this.definirZoneEtude(nouvelles[0].id);
         const supposees = r.projections.filter(p => p.supposee)
           .map(p => `« ${p.couche} » : projection non indiquée, ${p.libelle} supposée.`);
         this.avertissementsZones = [...r.avertissements, ...supposees];
@@ -546,6 +601,7 @@ export class ReseauGpsStore {
     };
     this.zones = [...this.zones, zone];
     this.zoneSelectionnee = zone.id;
+    if (!this.zoneEtude) this.definirZoneEtude(zone.id);
     this.onglet = 'zones';
     this.zonesModifiees();
     this.toast.success('Réseau GNSS', `${zone.nom} ajoutée : nommez-la et vérifiez son type.`);
@@ -559,12 +615,14 @@ export class ReseauGpsStore {
 
   supprimerZone(id: string): void {
     this.zones = this.zones.filter(z => z.id !== id);
+    if (this.zoneEtudeId === id) this.zoneEtudeId = this.zones[0]?.id ?? null;
     if (this.zoneSelectionnee === id) this.zoneSelectionnee = null;
     this.zonesModifiees();
   }
 
   viderZones(): void {
     this.zones = [];
+    this.zoneEtudeId = null;
     this.zoneSelectionnee = null;
     this.avertissementsZones = [];
     this.zonesModifiees();
@@ -808,6 +866,197 @@ export class ReseauGpsStore {
   }
 
 
+
+  // ================================================================== cycle de contrôle
+
+  get zoneEtude(): ZoneReseau | undefined { return this.zones.find(z => z.id === this.zoneEtudeId); }
+
+  /** Zone de l'étude : celle du réseau de contrôle et de la densification. */
+  definirZoneEtude(id: string | null): void {
+    this.zoneEtudeId = id;
+    if (id) this.paramZone = { ...this.paramZone, zoneId: id };
+    this.rafraichirVue();
+  }
+
+  /** Qualifie un point après analyse des écarts (synchronise `homogene`). */
+  qualifier(a: PointAncien, q: QualitePoint): void {
+    a.qualite = q;
+    a.homogene = q === 'homogene' ? true : q === 'a_controler' ? null : false;
+    if (this.densification) this.densificationPerimee = true;
+    this.rafraichirVue();
+  }
+
+  qualiteDe(a: PointAncien): QualitePoint {
+    if (a.qualite) return a.qualite;
+    return a.homogene === true ? 'homogene' : a.homogene === false ? 'non_homogene' : 'a_controler';
+  }
+
+  compteQualites(): Record<QualitePoint, number> {
+    const c: Record<QualitePoint, number> = { a_controler: 0, homogene: 0, non_homogene: 0, instable: 0, non_retrouve: 0 };
+    this.anciensRetenus.forEach(a => c[this.qualiteDe(a)]++);
+    return c;
+  }
+
+  /** Désactive les points actifs non homogènes, instables ou non retrouvés. */
+  desactiverNonConformes(): number {
+    let n = 0;
+    this.anciens.forEach(a => {
+      const q = this.qualiteDe(a);
+      if (a.retenu && QUALITES_A_ECARTER.includes(q)) {
+        a.retenu = false;
+        a.motifEcart = `${LIBELLES_QUALITE[q]}${a.noteQualite ? ' — ' + a.noteQualite : ''}`;
+        n++;
+      }
+    });
+    if (n) this.toutInvalider();
+    return n;
+  }
+
+  /** Lignes (noms) du réseau de contrôle affiché : personnalisé ou variante choisie. */
+  lignesReseauControle(): { lignes: [string, string][]; score: number | null; variante: string } {
+    if (this.varianteActive === 'personnalise' && this.perso.controle) {
+      return { lignes: [...this.perso.controle.lignes], score: this.scorePerso('controle'), variante: 'Réseau personnalisé' };
+    }
+    const r = this.controle;
+    if (!r || this.controlePerime) return { lignes: [], score: null, variante: '' };
+    const v = r.variantes.find(x => x.code === this.varianteActive) || r.variantes.find(x => x.recommandee) || r.variantes[0];
+    const noms = r.points.map(p => p.nom_point);
+    return { lignes: v.lignes.map(l => [noms[l.de], noms[l.a]] as [string, string]), score: v.indicateurs.score, variante: v.nom };
+  }
+
+  get blocageArret(): string | null {
+    if (this.varianteActive === 'parfaite') return 'La variante parfaite contient des emplacements à rechercher : choisissez une autre variante.';
+    return this.lignesReseauControle().lignes.length ? null : 'Générez (ou personnalisez) d’abord le réseau de contrôle.';
+  }
+
+  /** Arrête le réseau affiché : nouvelle itération à observer sur le terrain. */
+  arreterReseau(note = ''): IterationControle | null {
+    if (this.blocageArret) return null;
+    const { lignes, score, variante } = this.lignesReseauControle();
+    const noms = new Set(lignes.flat());
+    const it: IterationControle = {
+      numero: this.iterations.length + 1, date: new Date().toISOString(), lignes, score, variante,
+      points: this.anciensRetenus.map(a => a.nom_point).filter(n => noms.has(n)), statut: 'a_observer', note,
+    };
+    this.iterations = [...this.iterations, it];
+    this.rafraichirVue();
+    this.toast.success('Réseau de contrôle', `Itération n°${it.numero} arrêtée : ${it.lignes.length} ligne(s) de base à observer.`);
+    return it;
+  }
+
+  marquerObservee(it: IterationControle, observee = true): void {
+    it.statut = observee ? 'observe' : 'a_observer';
+    this.iterations = [...this.iterations];
+    this.rafraichirVue();
+  }
+
+  supprimerIteration(it: IterationControle): void {
+    this.iterations = this.iterations.filter(x => x !== it).map((x, k) => ({ ...x, numero: k + 1 }));
+    this.rafraichirVue();
+  }
+
+  /** Lignes déjà observées lors des itérations précédant `numero` (toutes si omis). */
+  lignesObservees(avant?: number): Set<string> {
+    return new Set(this.iterations.filter(it => it.statut === 'observe' && (avant === undefined || it.numero < avant))
+      .flatMap(it => it.lignes.map(([a, b]) => ReseauGpsStore.cleLigne(a, b))));
+  }
+
+  /** Observations complémentaires d'une itération : ses lignes jamais observées auparavant. */
+  lignesComplementaires(it: IterationControle): [string, string][] {
+    const vues = this.lignesObservees(it.numero);
+    return it.lignes.filter(([a, b]) => !vues.has(ReseauGpsStore.cleLigne(a, b)));
+  }
+
+  /** CSV terrain (Excel FR) : points ou lignes de base d'une itération. */
+  csvIteration(it: IterationControle, quoi: 'points' | 'lignes'): string {
+    const q = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    if (quoi === 'points') {
+      const par = new Map(this.anciens.map(a => [a.nom_point, a]));
+      return '\uFEFF' + ['Nom Point;X(m);Y(m);Référence;Matérialisation;Signalisation;Qualité',
+        ...it.points.map(n => par.get(n)).filter((a): a is PointAncien => !!a).map(a => [a.nom_point, a.x_m, a.y_m,
+          a.reference, a.nature_materialisation, a.nature_signalisation, LIBELLES_QUALITE[this.qualiteDe(a)]].map(q).join(';')),
+      ].join('\r\n');
+    }
+    const xy = new Map(this.anciens.map(a => [a.nom_point, a]));
+    const comp = new Set(this.lignesComplementaires(it).map(([a, b]) => ReseauGpsStore.cleLigne(a, b)));
+    return '\uFEFF' + ['De;Vers;Distance (km);À observer',
+      ...it.lignes.map(([a, b]) => {
+        const p = xy.get(a), r = xy.get(b);
+        const d = p && r ? Math.hypot(Number(p.x_m) - Number(r.x_m), Number(p.y_m) - Number(r.y_m)) / 1000 : null;
+        return [a, b, d === null ? '' : d.toFixed(3).replace('.', ','),
+                comp.has(ReseauGpsStore.cleLigne(a, b)) ? 'Oui' : 'Non (déjà observée)'].map(q).join(';');
+      }),
+    ].join('\r\n');
+  }
+
+  /** Points actifs homogènes et stables (candidats au groupe d'appui). */
+  get anciensHomogenes(): PointAncien[] {
+    return this.anciensRetenus.filter(a => this.qualiteDe(a) === 'homogene');
+  }
+
+  get blocageGroupe(): string | null {
+    return this.anciensHomogenes.length < 3 ? 'Il faut au moins 3 points actifs qualifiés « homogènes et stables ».' : null;
+  }
+
+  /** Arrête le groupe de points anciens homogènes : appui de la densification. */
+  validerGroupeHomogene(): void {
+    if (this.blocageGroupe) return;
+    this.groupeHomogene = { date: new Date().toISOString(), points: this.anciensHomogenes.map(a => a.nom_point) };
+    if (this.densification) this.densificationPerimee = true;
+    this.toast.success('Réseau GNSS', `Groupe de ${this.groupeHomogene.points.length} points homogènes validé : passez à la densification.`);
+    this.choisirOnglet('densification');
+  }
+
+  annulerGroupeHomogene(): void {
+    this.groupeHomogene = null;
+    if (this.densification) this.densificationPerimee = true;
+    this.rafraichirVue();
+  }
+
+  /** Membres du groupe validé dont la qualification a changé depuis. */
+  get groupeAltere(): string[] {
+    if (!this.groupeHomogene) return [];
+    const par = new Map(this.anciens.map(a => [a.nom_point, a]));
+    return this.groupeHomogene.points.filter(n => {
+      const a = par.get(n);
+      return !a || !a.retenu || this.qualiteDe(a) !== 'homogene';
+    });
+  }
+
+  // ================================================================== points nouveaux : déplacement
+
+  /** Déplacement d'un point nouveau sur la carte (glisser-déposer). */
+  deplacerNouveau(nom: string, lat: number, lon: number): void {
+    const n = this.nouveaux.find(p => p.nom_point === nom);
+    if (!n) return;
+    const [x, y] = wgs84VersLambert(lat, lon, this.zone);
+    n.x_m = Math.round(x * 100) / 100;
+    n.y_m = Math.round(y * 100) / 100;
+    this.nouveauxModifies();
+    if (this.recalculAuto && this.densification && !this.perso.densification) {
+      clearTimeout(this.minuteurDeplacement);
+      this.minuteurDeplacement = setTimeout(() => this.recalculerDensification(), 400);
+    }
+  }
+
+  /** Distance (m) à l'emplacement proposé, ou null sans référence. */
+  ecartAncre(n: PointNouveau): number | null {
+    if (!n.ancre || !ReseauGpsStore.coordonneesValides(n)) return null;
+    return Math.hypot(Number(n.x_m) - n.ancre.x_m, Number(n.y_m) - n.ancre.y_m);
+  }
+
+  horsRayon(n: PointNouveau): boolean {
+    const e = this.ecartAncre(n);
+    return e !== null && n.rayon_m !== undefined && e > n.rayon_m + 0.01;
+  }
+
+  recentrer(n: PointNouveau): void {
+    if (!n.ancre) return;
+    n.x_m = n.ancre.x_m;
+    n.y_m = n.ancre.y_m;
+    this.nouveauxModifies();
+  }
+
   // ================================================================== sélection et actions en masse
 
   static cleLigneSel(a: string, b: string): string { return 'l:' + [a, b].sort().join('\u0000'); }
@@ -880,7 +1129,7 @@ export class ReseauGpsStore {
   }
 
   marquerHomogeneSelection(homogene: boolean): void {
-    this.anciensSelectionnes.forEach(a => { a.homogene = homogene; });
+    this.anciensSelectionnes.forEach(a => { a.homogene = homogene; a.qualite = homogene ? 'homogene' : 'non_homogene'; });
     if (this.densification) this.densificationPerimee = true;
     this.rafraichirVue();
   }
@@ -971,7 +1220,8 @@ export class ReseauGpsStore {
     this.paramZone = { ...this.paramZone, zoneId };
     this.resultatZone = null;
     this.erreurZone = '';
-    if (this.onglet !== 'zones') this.choisirOnglet('zones');
+    this.paramZone.mode = 'triangulation';
+    if (this.onglet !== 'controle') this.choisirOnglet('controle');
     this.cadrerZones$.next([zoneId]);
   }
 
@@ -1076,6 +1326,8 @@ export class ReseauGpsStore {
       zones: this.zones, typeDessin: this.typeDessin, afficherZones: this.afficherZones,
       perso: { controle: this.perso.controle?.lignes ?? null, densification: this.perso.densification?.lignes ?? null },
       paramZone: this.paramZone, mesFonds: this.mesFonds,
+      zoneEtudeId: this.zoneEtudeId, iterations: this.iterations, groupeHomogene: this.groupeHomogene,
+      recalculAuto: this.recalculAuto,
     };
   }
 
@@ -1107,6 +1359,10 @@ export class ReseauGpsStore {
       this.typeDessin = c['typeDessin'] || 'densification';
       this.afficherZones = c['afficherZones'] ?? true;
       this.paramZone = { ...this.paramZone, ...(c['paramZone'] || {}) };
+      this.zoneEtudeId = c['zoneEtudeId'] ?? (this.zones[0]?.id || null);
+      this.iterations = c['iterations'] || [];
+      this.groupeHomogene = c['groupeHomogene'] || null;
+      this.recalculAuto = c['recalculAuto'] ?? true;
       this.resultatZone = null;
       this.selection = new Set();
       this.zoneSelectionnee = null;
@@ -1387,7 +1643,12 @@ export class ReseauGpsStore {
       };
     }
     const v = r.variantes.find(x => x.code === this.varianteActive) || r.variantes[0];
+    const observees = this.lignesObservees();
+    const nomsR = r.points.map(p => p.nom_point);
     return {
+      lignesAObserver: observees.size
+        ? v.lignes.filter(l => !observees.has(ReseauGpsStore.cleLigne(nomsR[l.de], nomsR[l.a]))).map(l => [nomsR[l.de], nomsR[l.a]].sort().join('\u0000'))
+        : undefined,
       points: [...r.points.map((pt, i) => ({
         ...pt, x_m: Number(pt.x_m), y_m: Number(pt.y_m), style: 'ancien' as StylePoint, degre: v.degres[i] ?? pt.degre,
         marque: aEcarter.has(pt.nom_point), note: aEcarter.get(pt.nom_point),
@@ -1415,7 +1676,21 @@ export class ReseauGpsStore {
     return { points, lignes, triangles: [] };
   }
 
+  /** Cercles des rayons de déplacement (centrés sur l'emplacement proposé) et points déplaçables. */
+  private complementDensification(): Partial<VueCarte> {
+    const cercles = this.nouveaux.filter(n => n.ancre && n.rayon_m !== undefined).map(n => {
+      const [lat, lon] = lambertVersWgs84(n.ancre!.x_m, n.ancre!.y_m, this.zone);
+      return { nom: n.nom_point, lat, lon, rayon_m: Math.max(n.rayon_m!, 10), depasse: this.horsRayon(n) };
+    });
+    return { cercles, deplacables: this.nouveaux.map(n => n.nom_point) };
+  }
+
   private vueDensification(): VueCarte | null {
+    const v = this.vueDensificationBase();
+    return v ? { ...v, ...this.complementDensification() } : null;
+  }
+
+  private vueDensificationBase(): VueCarte | null {
     const r = this.densification;
     if (this.perso.densification) {
       const pts = this.pointsContexte('densification').map(p => this.pointCarte(p,

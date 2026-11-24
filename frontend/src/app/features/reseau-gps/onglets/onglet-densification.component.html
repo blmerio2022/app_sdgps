@@ -1,11 +1,19 @@
-<p class="intro">À partir des <strong>points anciens homogènes</strong>, l'application propose l'emplacement des
+<p class="intro"><strong>Étape 5 — points nouveaux.</strong> À partir du <strong>groupe de points anciens homogènes</strong>,
+  l'application propose l'emplacement des
   <strong>points nouveaux</strong> pour un réseau optimisé (objectif : score de 100) qui respecte la règle du lever de
   détail : tout point de la zone à moins de {{ store.rayonCouvertureKm }} km d'au moins {{ store.pointsCouvertureMin }}
   points de densification (N11). Vous gardez la main : ajoutez, modifiez ou supprimez des points, puis recalculez.</p>
 
-<p class="rg-info" *ngIf="store.sansControleEcarts && store.anciensRetenus.length">
-  <i class="fas fa-exclamation-triangle"></i>Aucun contrôle des écarts n'a été fait : tous les points anciens retenus
-  servent d'appui. Faites l'analyse de l'onglet « Contrôle des écarts » pour ne garder que les points homogènes.</p>
+<p class="rg-info dn-groupe" *ngIf="store.groupeHomogene as g">
+  <i class="fas fa-check-circle"></i>Points d'appui : groupe homogène validé le {{ g.date | date:'dd/MM/yyyy' }} —
+  <strong>{{ store.anciensDensification.length }}</strong> point(s) ({{ g.points.join(', ') }}).
+  <ng-container *ngIf="store.groupeAltere.length"> Qualification modifiée depuis pour {{ store.groupeAltere.join(', ') }} :
+    revalidez le groupe à l'étape 3.</ng-container></p>
+<p class="rg-info" *ngIf="!store.groupeHomogene && store.anciensRetenus.length">
+  <i class="fas fa-exclamation-triangle"></i>Aucun groupe homogène n'est validé :
+  {{ store.sansControleEcarts ? 'tous les points anciens actifs' : 'les points actifs qualifiés homogènes' }} servent d'appui.
+  Terminez le cycle de contrôle et validez le groupe à l'étape 3.
+  <button type="button" class="dn-lien" (click)="store.choisirOnglet('controle')">Aller au contrôle</button></p>
 
 <app-rg-section titre="Paramètres" icone="fas fa-sliders-h" cle="densif.parametres"
                 [badge]="store.anciensDensification.length + ' ancien(s) d’appui'">
@@ -53,15 +61,25 @@
       <i class="fas fa-crosshairs"></i> {{ store.modeAjoutCarte ? 'Terminer le placement' : 'Placer sur la carte' }}</button>
     <button type="button" class="btn-ghost btn-sm" (click)="store.ajouterNouveau()"><i class="fas fa-plus"></i> Saisir</button>
     <span class="spacer"></span>
+    <button type="button" class="btn-ghost btn-sm" [disabled]="!!store.blocageDensification || store.calculDensification || !store.nouveaux.length"
+            (click)="store.calculerRayons()" title="Rayon de déplacement autour de la position actuelle de chaque point">
+      <i class="fas fa-circle-dot"></i> Calculer les rayons</button>
     <button type="button" class="btn-ghost btn-sm" [disabled]="!!store.blocageDensification || store.calculDensification"
             (click)="store.recalculerDensification()"><i class="fas fa-calculator"></i> Recalculer le score</button>
   </div>
+  <p class="hint dn-aide" *ngIf="store.nouveaux.length">
+    <i class="fas fa-hand-pointer"></i> Glissez un point nouveau sur la carte pour le déplacer. Le cercle pointillé est son
+    <strong>rayon de déplacement</strong> : dedans, le réseau reste aussi bon (± 2 points de score, couverture N11 conservée) ;
+    vous pouvez en sortir, le point est alors signalé.
+    <label class="dn-auto"><input type="checkbox" [(ngModel)]="store.recalculAuto"> Recalculer le score après chaque déplacement</label>
+  </p>
   <p class="rg-info" *ngIf="store.modeAjoutCarte"><i class="fas fa-crosshairs"></i>Cliquez sur la carte pour placer un point
     nouveau (ses coordonnées Lambert sont calculées dans la zone choisie).</p>
   <p class="hint" *ngIf="!store.nouveaux.length">Aucun point nouveau : lancez la proposition automatique ou placez-les vous-même.</p>
   <div class="rg-table-wrap" *ngIf="store.nouveaux.length">
     <table class="rg-table">
-      <thead><tr><th>Nom</th><th>X (m)</th><th>Y (m)</th><th>Origine</th><th></th></tr></thead>
+      <thead><tr><th>Nom</th><th>X (m)</th><th>Y (m)</th><th>Origine</th><th class="num">Rayon</th>
+        <th class="num" title="Distance à l'emplacement proposé">Écart</th><th></th></tr></thead>
       <tbody>
         <tr *ngFor="let n of store.nouveaux; let i = index; trackBy: trackIndex">
           <td><input [(ngModel)]="n.nom_point" class="w-nom"></td>
@@ -69,8 +87,17 @@
           <td><input type="number" step="0.01" [(ngModel)]="n.y_m" (ngModelChange)="store.nouveauxModifies()" class="w-coord"></td>
           <td><span class="rg-badge" [ngClass]="n.origine === 'propose' ? 'violet' : 'ko'">
             {{ n.origine === 'propose' ? 'Proposé' : 'Manuel' }}</span></td>
-          <td><button type="button" class="rg-icone" title="Supprimer ce point" (click)="store.supprimerNouveau(i)">
-            <i class="fas fa-times"></i></button></td>
+          <td class="num" [title]="n.rayon_m === 0 ? 'Position sensible : implanter au plus près de l’emplacement proposé' : ''">
+            {{ n.rayon_m === undefined ? '—' : n.rayon_m === 0 ? '< 25 m' : fr(n.rayon_m, 0) + ' m' }}</td>
+          <td class="num" [class.ko]="store.horsRayon(n)" [title]="store.horsRayon(n) ? 'Sorti du rayon de déplacement' : ''">
+            <ng-container *ngIf="store.ecartAncre(n) as e; else zero">{{ fr(e, 0) }} m
+              <i class="fas fa-exclamation-triangle" *ngIf="store.horsRayon(n)"></i></ng-container>
+            <ng-template #zero>{{ n.ancre ? '0 m' : '—' }}</ng-template></td>
+          <td class="dn-actions">
+            <button type="button" class="rg-icone" *ngIf="n.ancre && store.ecartAncre(n)" title="Revenir à l'emplacement proposé"
+                    (click)="store.recentrer(n)"><i class="fas fa-crosshairs"></i></button>
+            <button type="button" class="rg-icone" title="Supprimer ce point" (click)="store.supprimerNouveau(i)">
+              <i class="fas fa-times"></i></button></td>
         </tr>
       </tbody>
     </table>

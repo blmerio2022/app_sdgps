@@ -1,4 +1,9 @@
-<p class="intro">Délimitez les <strong>zones levées</strong> (lever de détail : chaque point doit y être à moins de
+<p class="intro"><strong>Étape 2 — zone d'étude.</strong> Dessinez ou importez la zone à traiter, puis désignez-la comme
+  <strong>zone d'étude</strong> (étoile) : le réseau de contrôle sera généré avec les points anciens à l'intérieur et
+  autour d'elle, et les points nouveaux y seront placés.</p>
+<p class="hint zn-etude" *ngIf="store.zoneEtude as ze"><i class="fas fa-star"></i> Zone d'étude : <strong>{{ ze.nom }}</strong>
+  <button type="button" class="zn-lien" (click)="store.choisirOnglet('controle')">Générer le réseau de contrôle →</button></p>
+<p class="intro">Vous pouvez aussi distinguer des <strong>zones levées</strong> (lever de détail : chaque point doit y être à moins de
   {{ store.rayonCouvertureKm }} km de {{ store.pointsCouvertureMin }} points de densification — N11) et les
   <strong>zones de densification</strong> (où placer les points nouveaux). Importez-les d'un fichier SIG ou dessinez-les
   sur la carte : la densification s'en sert à la place de l'enveloppe des points anciens.</p>
@@ -12,87 +17,6 @@
     </div>
   </div>
 </div>
-
-<app-rg-section titre="Générer un réseau pour une zone" icone="fas fa-wand-magic-sparkles" cle="zones.generation">
-  <p class="hint">L'application retient les points anciens <strong>dans la zone et autour</strong> (rayon de recherche),
-    encadre la zone dans les quatre quadrants (N9), optimise le choix selon les normes (N1…N10), puis construit le
-    réseau de <strong>triangulation</strong> ou de <strong>densification</strong> (points nouveaux placés dans la zone,
-    couverture N11).</p>
-  <div class="rg-grille">
-    <label class="field">
-      <span>Zone à traiter</span>
-      <select [(ngModel)]="store.paramZone.zoneId" (ngModelChange)="store.resultatZone = null">
-        <option [ngValue]="null">— Choisir —</option>
-        <option *ngFor="let z of store.zones" [ngValue]="z.id">{{ z.nom }} ({{ z.type === 'levee' ? 'levée' : 'densification' }})</option>
-      </select>
-    </label>
-    <label class="field">
-      <span>Rayon de recherche autour (km)</span>
-      <input type="number" min="0" max="100" step="0.5" [(ngModel)]="store.paramZone.rayonRechercheKm">
-    </label>
-    <label class="field">
-      <span>Points anciens retenus (max.)</span>
-      <input type="number" min="3" max="40" [(ngModel)]="store.paramZone.anciensMax">
-    </label>
-    <label class="field" *ngIf="store.paramZone.mode === 'densification'">
-      <span>Points nouveaux</span>
-      <input type="number" min="0" max="50" [(ngModel)]="store.paramZone.nbNouveaux">
-      <span class="hint">0 = automatique</span>
-    </label>
-  </div>
-  <div class="zn-choix">
-    <div class="segment rg-segment">
-      <button type="button" [class.active]="store.paramZone.mode === 'triangulation'" (click)="store.paramZone.mode = 'triangulation'">
-        <i class="fas fa-project-diagram"></i> Triangulation (anciens)</button>
-      <button type="button" [class.active]="store.paramZone.mode === 'densification'" (click)="store.paramZone.mode = 'densification'">
-        <i class="fas fa-map-pin"></i> Densification</button>
-    </div>
-    <div class="segment rg-segment">
-      <button type="button" [class.active]="store.paramZone.source === 'actifs'" (click)="store.paramZone.source = 'actifs'">
-        Points actifs ({{ store.anciensRetenus.length }})</button>
-      <button type="button" [class.active]="store.paramZone.source === 'selection'" (click)="store.paramZone.source = 'selection'"
-              title="Sélectionnez des points sur la carte avec les outils de sélection">
-        <i class="fas fa-object-group"></i> Sélection ({{ store.anciensSelectionnes.length }})</button>
-    </div>
-  </div>
-  <div class="rg-actions">
-    <button type="button" class="btn-primary" [disabled]="!!store.blocageZone || store.calculZone" (click)="store.genererPourZone()">
-      <i class="fas" [ngClass]="store.calculZone ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'"></i> Générer le réseau</button>
-    <span class="hint" *ngIf="store.blocageZone">{{ store.blocageZone }}</span>
-    <span class="hint" *ngIf="store.calculZone">Analyse des points et optimisation… (quelques secondes)</span>
-  </div>
-  <div class="rg-erreur" *ngIf="store.erreurZone">{{ store.erreurZone }}</div>
-
-  <div class="zn-resultat" *ngIf="store.resultatZone as r">
-    <div class="rg-kpis">
-      <div class="rg-kpi"><div class="val">{{ fr(r.score) }}<small>/100</small></div>
-        <div class="lib">{{ r.mode === 'densification' ? 'Score de densification' : 'Score du réseau' }}</div></div>
-      <div class="rg-kpi"><div class="val">{{ r.anciens_retenus.length }}<small> / {{ r.nb_candidats }}</small></div><div class="lib">Anciens retenus</div></div>
-      <div class="rg-kpi"><div class="val">{{ fr(r.part_zone_encadree * 100, 0) }}<small> %</small></div><div class="lib">Zone encadrée</div></div>
-      <div class="rg-kpi"><div class="val">{{ r.quadrants.length }}<small>/4</small></div><div class="lib">Quadrants (N9)</div></div>
-    </div>
-    <p class="rg-info"><i class="fas fa-info-circle"></i>{{ r.conclusion }}</p>
-    <div class="rg-table-wrap">
-      <table class="rg-table">
-        <thead><tr><th></th><th>Point</th><th class="num">Distance à la zone</th><th>Motif</th></tr></thead>
-        <tbody>
-          <tr *ngFor="let d of r.details" [class.attenue]="!d.retenu">
-            <td><i class="fas" [ngClass]="d.retenu ? 'fa-check zn-ok' : 'fa-minus'"></i></td>
-            <td><strong>{{ d.nom_point }}</strong></td>
-            <td class="num">{{ d.dans_zone ? 'dedans' : fr(d.distance_zone_m / 1000, 2) + ' km' }}</td>
-            <td class="zn-motif">{{ d.motif }}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="rg-actions">
-      <button type="button" class="btn-primary" (click)="store.appliquerResultatZone()">
-        <i class="fas fa-check"></i> Appliquer ({{ r.mode === 'densification' ? 'onglet Densification' : 'onglet Réseau de contrôle' }})</button>
-      <button type="button" class="btn-ghost btn-sm" (click)="store.abandonnerResultatZone()">Abandonner</button>
-      <span class="hint">Appliquer active les seuls points retenus ; le réseau reste modifiable ensuite.</span>
-    </div>
-  </div>
-</app-rg-section>
 
 <app-rg-section titre="Importer des zones" icone="fas fa-file-import" cle="zones.import">
   <div class="rg-grille">
@@ -157,8 +81,12 @@
              maxlength="120" [attr.aria-label]="'Nom de la zone'" placeholder="Nom de la zone">
       <label class="zn-actif" (click)="$event.stopPropagation()" title="Prise en compte dans la densification">
         <input type="checkbox" [(ngModel)]="z.active" (ngModelChange)="store.zonesModifiees()"> Active</label>
+      <button type="button" class="rg-icone zn-etoile" [class.actif]="z.id === store.zoneEtudeId"
+              (click)="store.definirZoneEtude(z.id); $event.stopPropagation()"
+              [title]="z.id === store.zoneEtudeId ? 'Zone d’étude' : 'Désigner comme zone d’étude'"
+              [attr.aria-pressed]="z.id === store.zoneEtudeId"><i class="fas fa-star"></i></button>
       <button type="button" class="rg-icone" (click)="store.preparerGenerationZone(z.id); $event.stopPropagation()"
-              title="Générer un réseau pour cette zone"><i class="fas fa-wand-magic-sparkles"></i></button>
+              title="Générer le réseau de contrôle pour cette zone"><i class="fas fa-wand-magic-sparkles"></i></button>
       <button type="button" class="rg-icone" (click)="store.selectionnerZone(z.id); $event.stopPropagation()" title="Centrer la carte">
         <i class="fas fa-crosshairs"></i></button>
       <button type="button" class="rg-icone" (click)="supprimer(z); $event.stopPropagation()" title="Supprimer la zone">

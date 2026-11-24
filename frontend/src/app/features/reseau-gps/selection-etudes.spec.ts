@@ -95,7 +95,7 @@ describe('Sélection et actions en masse', () => {
     expect(store.anciensRetenus.map(a => a.nom_point)).toEqual(['A', 'B', 'C']);
     cmp.genererDepuisSelection();
     expect(store.paramZone.source).toBe('selection');
-    expect(store.onglet).toBe('zones');
+    expect(store.onglet).toBe('controle');
     spyOn(window, 'confirm').and.returnValue(true);
     cmp.supprimer();
     expect(store.anciens.length).toBe(1);
@@ -282,6 +282,127 @@ describe('Études enregistrées', () => {
     cmp.validerFormulaire();
     expect(service.creerEtude.calls.mostRecent().args[0].nom).toBe('Mon étude');
     expect(cmp.statut).toContain('Enregistrée');
+  });
+});
+
+describe('Cycle de contrôle de stabilité et d’homogénéité', () => {
+  let store: ReseauGpsStore;
+  let service: jasmine.SpyObj<ReseauGpsService>;
+
+  const controle = (noms: string[]) => ({
+    points: noms.map((n, i) => ({ ...pts.find(p => p.nom_point === n)!, index: i, lat: 34, lon: -6, degre: 2 })),
+    recommandee: 'delaunay', justification: [], suppressions: [],
+    variantes: [{ code: 'delaunay', nom: 'Delaunay', recommandee: true, degres: noms.map(() => 2), triangles: [],
+                  indicateurs: { score: 70 },
+                  lignes: noms.slice(1).map((_, k) => ({ de: k, a: k + 1, distance_m: 1, distance_km: 0.001, azimut_deg: 0,
+                                                         en_boucle: true, trop_longue: false })) }],
+    parfaite: { code: 'parfaite', points: [], suggestions: [], lignes: [], triangles: [], indicateurs: { score: 80 } },
+  } as any);
+
+  beforeEach(() => {
+    ({ store, service } = creer());
+    store.definirAnciens(pts as any, 'x');
+  });
+
+  it('la première zone devient la zone d’étude, et la cible du générateur', () => {
+    store.ajouterZoneDessinee(carre);
+    expect(store.zoneEtudeId).toBe(store.zones[0].id);
+    expect(store.paramZone.zoneId).toBe(store.zones[0].id);
+    store.ajouterZoneDessinee(carre);
+    expect(store.zoneEtudeId).toBe(store.zones[0].id);           // la première reste la zone d'étude
+    store.definirZoneEtude(store.zones[1].id);
+    expect(store.zoneEtude!.nom).toBe('Zone 2');
+    store.supprimerZone(store.zones[1].id);
+    expect(store.zoneEtudeId).toBe(store.zones[0].id);
+    store.preparerGenerationZone(store.zones[0].id);
+    expect(store.onglet).toBe('controle');
+    expect(store.paramZone.mode).toBe('triangulation');
+  });
+
+  it('itérations : arrêt, observation, lignes complémentaires et exports CSV', () => {
+    store.choisirOnglet('controle');
+    expect(store.blocageArret).toContain('Générez');
+    store.controle = controle(['A', 'B', 'C']);
+    store.controlePerime = false;
+    store.varianteActive = 'parfaite';
+    expect(store.blocageArret).toContain('variante parfaite');
+    store.varianteActive = 'delaunay';
+    const it1 = store.arreterReseau('Campagne 1')!;
+    expect([it1.numero, it1.lignes, it1.points, it1.statut]).toEqual([1, [['A', 'B'], ['B', 'C']], ['A', 'B', 'C'], 'a_observer']);
+    store.marquerObservee(it1);
+    store.controle = controle(['A', 'B', 'C', 'D']);              // D ajouté : B-C déjà observée, C-D nouvelle
+    const it2 = store.arreterReseau()!;
+    expect(store.lignesComplementaires(it2)).toEqual([['C', 'D']]);
+    expect(store.construireVue()!.lignesAObserver).toEqual(['C\u0000D']);
+    const lignes = store.csvIteration(it2, 'lignes');
+    expect(lignes).toContain('"C";"D"');
+    expect(lignes).toContain('"Oui"');
+    expect(lignes).toContain('"Non (déjà observée)"');
+    expect(store.csvIteration(it2, 'points')).toContain('"À contrôler"');
+    store.supprimerIteration(it1);
+    expect(store.iterations.map(i => i.numero)).toEqual([1]);
+  });
+
+  it('qualification, désactivation des non conformes, validation du groupe homogène', () => {
+    const [a, b, c, d] = store.anciens;
+    store.qualifier(a, 'homogene'); store.qualifier(b, 'homogene');
+    store.qualifier(c, 'instable'); store.qualifier(d, 'non_retrouve');
+    expect([c.homogene, store.qualiteDe(c)]).toEqual([false, 'instable']);
+    expect(store.compteQualites().homogene).toBe(2);
+    expect(store.blocageGroupe).toContain('au moins 3');
+    expect(store.desactiverNonConformes()).toBe(2);
+    expect(store.anciensRetenus.map(x => x.nom_point)).toEqual(['A', 'B']);
+    expect(c.motifEcart).toBe('Instable');
+    store.basculerRetenu(c);
+    store.qualifier(c, 'homogene');
+    store.validerGroupeHomogene();
+    expect(store.groupeHomogene!.points).toEqual(['A', 'B', 'C']);
+    expect(store.onglet).toBe('densification');
+    expect(store.anciensDensification.map(x => x.nom_point)).toEqual(['A', 'B', 'C']);
+    store.qualifier(b, 'non_homogene');
+    expect(store.groupeAltere).toEqual(['B']);
+    store.annulerGroupeHomogene();
+    expect(store.groupeHomogene).toBeNull();
+    const contenu = JSON.parse(JSON.stringify(store.serialiser()));
+    const autre = creer().store;
+    autre.restaurer(contenu);
+    expect(autre.anciens.find(x => x.nom_point === 'C')!.qualite).toBe('homogene');
+  });
+
+  it('points nouveaux : rayon et emplacement proposé, déplacement, sortie du rayon, recentrage', () => {
+    jasmine.clock().install();
+    try {
+      service.densifier.and.returnValue(of({
+        score: 90, reseau: { lignes: [], triangles: [] }, couverture: { non_couverts: [] },
+        points: [...pts.map((p, i) => ({ ...p, index: i, statut: 'ancien', lat: 34, lon: -6 })),
+                 { nom_point: 'PN1', x_m: 421000, y_m: 381000, statut: 'nouveau', origine: 'propose', lat: 34, lon: -6,
+                   rayon_deplacement_m: 200 }],
+      } as any));
+      store.proposerNouveaux();
+      const n = store.nouveaux[0];
+      expect([n.rayon_m, n.ancre]).toEqual([200, { x_m: 421000, y_m: 381000 }]);
+      store.choisirOnglet('densification');
+      const vue = store.construireVue()!;
+      expect(vue.cercles![0].rayon_m).toBe(200);
+      expect(vue.deplacables).toEqual(['PN1']);
+      // À ~300 m de l'emplacement proposé : sorti du rayon ; un déplacement sur la carte relance le calcul.
+      n.x_m = 421300;
+      expect(Math.round(store.ecartAncre(n)!)).toBe(300);
+      expect(store.horsRayon(n)).toBeTrue();
+      service.densifier.calls.reset();
+      store.deplacerNouveau('PN1', 34.0, -6.3);
+      jasmine.clock().tick(500);
+      expect(service.densifier).toHaveBeenCalledTimes(1);
+      expect(service.densifier.calls.mostRecent().args[0].rayons).toBeUndefined();
+      expect(store.nouveaux[0].rayon_m).toBe(200);                    // nouveau rayon renvoyé → ancre remise à jour
+      store.nouveaux[0].x_m = 421100;
+      store.recentrer(store.nouveaux[0]);
+      expect(store.ecartAncre(store.nouveaux[0])).toBe(0);
+      store.calculerRayons();
+      expect(service.densifier.calls.mostRecent().args[0].rayons).toBeTrue();
+    } finally {
+      jasmine.clock().uninstall();
+    }
   });
 });
 

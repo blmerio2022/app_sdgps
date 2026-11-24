@@ -1,6 +1,8 @@
 import { Component } from '@angular/core';
 import { VarianteReseau } from '../../../core/services/reseau-gps.service';
-import { ReseauGpsStore } from '../reseau-gps.store';
+import {
+  IterationControle, LIBELLES_QUALITE, PointAncien, QUALITES_A_ECARTER, QualitePoint, ReseauGpsStore,
+} from '../reseau-gps.store';
 
 /** Ligne du tableau comparatif des variantes. */
 export interface LigneComparaison {
@@ -43,7 +45,11 @@ export const COMPARAISON: LigneComparaison[] = [
     brut: v => v.indicateurs.nb_violations_stations_voisines, valeur: v => String(v.indicateurs.nb_violations_stations_voisines) },
 ];
 
-/** Onglet 2 — réseau de contrôle de stabilité des points anciens et son optimisation. */
+/**
+ * Onglet 3 — réseau de contrôle de stabilité et d'homogénéité des points anciens : génération
+ * pour la zone d'étude (ou la sélection), variantes, personnalisation, itérations arrêtées et
+ * observées, qualification des points et validation du groupe homogène.
+ */
 @Component({
   selector: 'app-onglet-controle',
   templateUrl: './onglet-controle.component.html',
@@ -52,6 +58,9 @@ export const COMPARAISON: LigneComparaison[] = [
 export class OngletControleComponent {
   readonly comparaison = COMPARAISON;
   readonly fr = fr;
+  readonly qualites: QualitePoint[] = ['a_controler', 'homogene', 'non_homogene', 'instable', 'non_retrouve'];
+  readonly libelles = LIBELLES_QUALITE;
+  noteIteration = '';
 
   constructor(public store: ReseauGpsStore) {}
 
@@ -70,6 +79,43 @@ export class OngletControleComponent {
     const cible = ligne.plusGrandMieux ? Math.max(...valeurs) : Math.min(...valeurs);
     return ligne.brut(v) === cible;
   }
+
+  get comptes(): Record<QualitePoint, number> { return this.store.compteQualites(); }
+
+  get aEcarter(): number {
+    return this.store.anciensRetenus.filter(a => QUALITES_A_ECARTER.includes(this.store.qualiteDe(a))).length;
+  }
+
+  classeQualite(q: QualitePoint): string {
+    return q === 'homogene' ? 'ok' : q === 'a_controler' ? 'neutre' : q === 'instable' ? 'warn' : 'ko';
+  }
+
+  arreter(): void {
+    if (this.store.arreterReseau(this.noteIteration.trim())) this.noteIteration = '';
+  }
+
+  supprimer(it: IterationControle): void {
+    if (window.confirm(`Supprimer l'itération n°${it.numero} ?`)) this.store.supprimerIteration(it);
+  }
+
+  desactiverNonConformes(): void {
+    const n = this.store.desactiverNonConformes();
+    if (n) this.store.rafraichirVue();
+  }
+
+  exporter(it: IterationControle, quoi: 'points' | 'lignes'): void {
+    const blob = new Blob([this.store.csvIteration(it, quoi)], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `reseau-controle-iteration-${it.numero}-${quoi}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  trackNom(_: number, a: PointAncien): string { return a.nom_point; }
 
   get scoreRecommande(): number | null {
     const r = this.store.controle;

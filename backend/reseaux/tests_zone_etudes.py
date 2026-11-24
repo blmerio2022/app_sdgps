@@ -127,3 +127,48 @@ class ApiZoneEtudesTests(ApiTests):
             self.assertEqual(self.client.get(f'{URL}etudes/').data['etudes'], [])
         self.client.force_authenticate(None)
         self.assertEqual(self.client.get(f'{URL}etudes/').status_code, 401)
+
+
+class RayonDeplacementTests(SimpleTestCase):
+    ANCIENS = [_pt('A', 420000, 380000), _pt('B', 428000, 380000), _pt('C', 424000, 387000),
+               _pt('D', 416000, 386000), _pt('E', 432000, 386000)]
+
+    def test_rayon_calcule_lors_d_une_proposition_seulement(self):
+        from .densification import RAYONS_ESSAIS_M, densifier
+        r = densifier(self.ANCIENS, nb_nouveaux=3)
+        nouveaux = [p for p in r['points'] if p['statut'] == 'nouveau']
+        self.assertEqual(len(nouveaux), 3)
+        for p in nouveaux:
+            self.assertIn(p['rayon_deplacement_m'], (0,) + RAYONS_ESSAIS_M)
+        self.assertTrue(any(p['rayon_deplacement_m'] > 0 for p in nouveaux))
+        # Évaluation d'un déplacement : pas de recalcul (rapide) sauf demande explicite.
+        fixes = [{k: v for k, v in p.items() if k != 'rayon_deplacement_m'} for p in nouveaux]
+        r2 = densifier(self.ANCIENS, fixes, proposer=False)
+        self.assertNotIn('rayon_deplacement_m', [k for p in r2['points'] for k in p])
+        r3 = densifier(self.ANCIENS, fixes, proposer=False, rayons=True)
+        self.assertTrue(all('rayon_deplacement_m' in p for p in r3['points'] if p['statut'] == 'nouveau'))
+
+    def test_rayon_respecte_la_tolerance_de_score(self):
+        from .densification import (
+            ECHANTILLONS_CIBLE, Region, TOLERANCE_SCORE_RAYON, _evaluer, _grille, rayons_deplacement,
+        )
+        from .densification import densifier
+        r = densifier(self.ANCIENS, nb_nouveaux=2)
+        pts = r['points']
+        coords = [(p['x_m'], p['y_m']) for p in pts]
+        statuts = [p['statut'] for p in pts]
+        env = Region([[[(p['x_m'], p['y_m']) for p in (self.ANCIENS[0], self.ANCIENS[1], self.ANCIENS[4],
+                                                         self.ANCIENS[2], self.ANCIENS[3])]]])
+        ech, _ = _grille(env, ECHANTILLONS_CIBLE)
+        s0, _, t0, _, _ = _evaluer(coords, statuts, 10000, ech, 5000, 3)
+        idx = [k for k, s in enumerate(statuts) if s == 'nouveau']
+        from .densification import _variante_toleree
+        aretes = set(_variante_toleree(coords, longueur_max_m=10000))
+        s0, _, t0, _, _ = _evaluer(coords, statuts, 10000, ech, 5000, 3, aretes=aretes)
+        rayons = rayons_deplacement(coords, statuts, idx, 10000, ech, 5000, 3, aretes=aretes)
+        for k, rayon in rayons.items():
+            if rayon:
+                essai = list(coords)
+                essai[k] = (coords[k][0] + rayon, coords[k][1])
+                s, _, _, _, _ = _evaluer(essai, statuts, 10000, ech, 5000, 3, aretes=aretes)
+                self.assertGreaterEqual(s, s0 - TOLERANCE_SCORE_RAYON - 1e-6)

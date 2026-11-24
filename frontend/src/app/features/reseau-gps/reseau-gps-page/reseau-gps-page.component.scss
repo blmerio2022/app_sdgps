@@ -11,7 +11,7 @@
   margin-bottom: 10px; flex-shrink: 0;
   h1 { margin: 0; font-size: 20px; color: var(--text-color); display: flex; align-items: center; gap: 10px;
     i { color: var(--accent-color); } }
-  .subtitle { margin: 5px 0 0; font-size: 13px; color: var(--text-muted); max-width: 980px; }
+  .subtitle { margin: 5px 0 0; font-size: 13px; color: var(--text-muted); max-width: 980px; strong { color: var(--text-color); } }
 }
 
 /* Onglets = étapes du travail, numérotées ; « Fonds de carte » (annexe) à droite. */
@@ -80,7 +80,9 @@
     &.non-couvert { background: #e74c3c; border: none; opacity: 0.6; width: 8px; height: 8px; } }
   .ln { width: 18px; height: 3px; display: inline-block; border-radius: 2px;
     &.ok { background: #2ecc71; } &.long { background: #e74c3c; }
-    &.incompatible { background: repeating-linear-gradient(90deg, #e74c3c 0 5px, transparent 5px 9px); } }
+    &.incompatible { background: repeating-linear-gradient(90deg, #e74c3c 0 5px, transparent 5px 9px); }
+    &.a-observer { height: 5px; background: repeating-linear-gradient(90deg, #e67e22 0 2px, transparent 2px 6px); } }
+  .cercle { width: 13px; height: 13px; display: inline-block; border-radius: 50%; border: 1.5px dashed #8e44ad; }
   .tr { width: 14px; height: 10px; display: inline-block; border-radius: 2px; &.ko { background: rgba(217, 164, 65, 0.45); } }
   .zone { width: 16px; height: 10px; display: inline-block; border: 1.5px dashed #8e44ad; border-radius: 2px; }
   .zn { width: 16px; height: 10px; display: inline-block; border-radius: 2px; border: 1.5px solid;

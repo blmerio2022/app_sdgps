@@ -59,6 +59,7 @@
     text-shadow: 0 0 3px #000, 0 0 2px #000;
     &::before { display: none; }
   }
+  path.rg-deplacable { cursor: grab; &:active { cursor: grabbing; } }
   .rg-mesure-direct, .rg-mesure-fixe {
     background: rgba(0, 60, 70, 0.88); color: #fff; border: 1px solid #00bcd4; border-radius: 6px;
     font-size: 11px; font-weight: 600; padding: 3px 7px; box-shadow: none;

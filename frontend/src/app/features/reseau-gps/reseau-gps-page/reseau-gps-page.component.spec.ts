@@ -40,11 +40,11 @@ describe('ReseauGpsPageComponent', () => {
     fixture.detectChanges();
   });
 
-  it('affiche les 4 étapes dans l\'ordre du travail, puis les zones et les fonds de carte', () => {
+  it('suit le workflow : points, zone d’étude, contrôle de stabilité, écarts (facultatif), points nouveaux', () => {
     const titres = Array.from(fixture.nativeElement.querySelectorAll('.rg-onglet-titre'))
       .map((e: any) => e.textContent.trim());
-    expect(titres).toEqual(['Points anciens', 'Réseau de contrôle', 'Contrôle des écarts', 'Densification', 'Zones',
-      'Fonds de carte']);
+    expect(titres).toEqual(['Points anciens', 'Zone d’étude', 'Contrôle de stabilité', 'Écarts (facultatif)',
+      'Points nouveaux', 'Fonds de carte']);
   });
 
   it('titre GNSS, plein écran (Échap pour quitter) et mode de clic transmis à la carte', () => {
@@ -63,12 +63,12 @@ describe('ReseauGpsPageComponent', () => {
     store.arreterModesCarte();
     store.editionLignes = 'controle';
     expect(comp.outilCarte).toBe('lignes');
-    expect(comp.resume('zones')).toBe('Import ou tracé');
+    expect(comp.resume('zones')).toBe('À dessiner ou importer');
   });
 
   it('change d\'onglet au clic', () => {
     const boutons = fixture.nativeElement.querySelectorAll('.rg-onglet');
-    boutons[2].click();
+    boutons[3].click();
     expect(store.onglet).toBe('ecarts');
     expect(comp.legende).toContain('homogene');
   });
@@ -78,10 +78,17 @@ describe('ReseauGpsPageComponent', () => {
     expect(comp.termine('points')).toBeFalse();
     store.definirAnciens([{ nom_point: 'A', x_m: 1, y_m: 1 }, { nom_point: 'B', x_m: 2, y_m: 1 },
       { nom_point: 'C', x_m: 1, y_m: 2 }], '');
-    expect(comp.resume('points')).toBe('3 retenu(s)');
+    expect(comp.resume('points')).toBe('3 actif(s)');
     expect(comp.termine('points')).toBeTrue();
-    expect(comp.resume('controle')).toBe('À calculer');
+    expect(comp.resume('controle')).toBe('À générer');
     expect(comp.resume('ecarts')).toBe('RC à importer');
+    store.ajouterZoneDessinee([[34, -6.3], [34, -6.2], [34.05, -6.2]]);
+    expect(comp.resume('zones')).toBe('Zone 1');                  // désignée zone d'étude d'office
+    expect(comp.termine('zones')).toBeTrue();
+    store.anciens.forEach(a => store.qualifier(a, 'homogene'));
+    store.validerGroupeHomogene();
+    expect(comp.resume('controle')).toBe('Groupe de 3 validé');
+    expect(comp.termine('controle')).toBeTrue();
   });
 
   it('transmet un clic de carte au store uniquement en mode placement', () => {

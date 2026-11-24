@@ -26,6 +26,8 @@ export interface PointResultat extends PointReseau {
   lat: number;
   lon: number;
   degre: number;
+  /** Points nouveaux : rayon (m) dans lequel les déplacer sans dégrader le réseau. */
+  rayon_deplacement_m?: number;
 }
 
 export interface LigneBase {
@@ -131,6 +133,8 @@ export interface DemandeDensification {
   zones_levee?: number[][][][];
   /** Réseau personnalisé : paires d'indices dans anciens + nouveaux (dans cet ordre). */
   lignes?: number[][] | null;
+  /** Calculer le rayon de déplacement des points nouveaux (défaut serveur : lors d'une proposition). */
+  rayons?: boolean;
 }
 
 export interface ResultatDensification {

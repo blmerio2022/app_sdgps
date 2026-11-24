@@ -1,8 +1,9 @@
 <div class="rg-page">
   <header class="page-header">
     <h1><i class="fas fa-draw-polygon"></i> Réseau de triangulation GNSS</h1>
-    <p class="subtitle">Densification par triangulation GNSS : des points anciens disponibles au réseau de points anciens
-      et nouveaux le plus optimisé possible, selon les normes de triangulation et de réseaux GNSS.</p>
+    <p class="subtitle">Des points anciens importés, autour d'une zone d'étude, au <strong>réseau de contrôle de stabilité
+      et d'homogénéité</strong> (observé, analysé et corrigé autant de fois que nécessaire), puis au choix des
+      <strong>points nouveaux</strong> de densification, selon les normes de triangulation par GNSS.</p>
   </header>
 
   <app-rg-etudes class="rg-etudes"></app-rg-etudes>
@@ -63,7 +64,8 @@
                           (clicPoint)="store.clicPointEdition($event)" (clicLigne)="store.clicLigneEdition($event.a, $event.b)"
                           (actionPoint)="store.basculerRetenuParNom($event)" (annulerOutil)="store.arreterModesCarte(); store.rafraichirVue()"
                           (selection)="store.appliquerSelection($event)" (viderSelection)="store.viderSelection()"
-                          (toutSelectionner)="store.selectionnerTout()">
+                          (toutSelectionner)="store.selectionnerTout()"
+                          (deplacementPoint)="store.deplacerNouveau($event.nom, $event.lat, $event.lon)">
         </app-reseau-carte>
         <app-rg-selection></app-rg-selection>
         <div class="rg-vide" *ngIf="!(store.vue$ | async)">
@@ -97,6 +99,8 @@
           <span><i class="tr ko"></i> Triangle hors [30°;120°]</span>
         </ng-container>
         <span *ngIf="store.onglet === 'controle'"><i class="pt marque"></i> Proposé à l'écart</span>
+        <span *ngIf="store.onglet === 'controle' && store.iterations.length"><i class="ln a-observer"></i> Ligne à observer (complémentaire)</span>
+        <span *ngIf="store.onglet === 'densification' && store.nouveaux.length"><i class="cercle"></i> Rayon de déplacement (glisser le point)</span>
         <ng-container *ngIf="store.afficherZones && store.zones.length">
           <span><i class="zn levee"></i> Zone levée</span>
           <span><i class="zn densification"></i> Zone de densification</span>

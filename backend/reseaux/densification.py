@@ -37,6 +37,14 @@ POIDS_RESEAU = 0.8
 CANDIDATS_EVALUES = 25
 DEPLACEMENTS_MAX_POINTS = 15
 POIDS_COUVERTURE = 20.0
+# Rayon de déplacement d'un point nouveau : plus grand rayon essayé tel que le point, déplacé
+# dans chacune des directions, ne fasse pas perdre plus de TOLERANCE_SCORE_RAYON points de
+# score ni de couverture N11.
+RAYONS_ESSAIS_M = (25, 50, 100, 200, 400, 800, 1600)
+DIRECTIONS_RAYON = 6
+TOLERANCE_SCORE_RAYON = 2.0
+TOLERANCE_COUVERTURE_RAYON = 0.01
+RAYONS_POINTS_MAX = 25
 
 
 class ErreurDensification(ValueError):
@@ -112,6 +120,42 @@ def _evaluer(coords, statuts, longueur_max_m, echantillons, rayon_m, points_min,
     return s, ev, taux, non, progressif
 
 
+def rayons_deplacement(coords, statuts, indices, longueur_max_m, echantillons, rayon_m, points_min,
+                       aretes=None):
+    """{indice: rayon (m)} — zone de liberté de chaque point nouveau autour de sa position.
+
+    Les lignes de base sont FIGÉES (celles du réseau proposé, qui seront observées) : on mesure
+    ce que le déplacement fait perdre à la géométrie (angles, longueurs, couverture), sans
+    laisser le réseau se reconstruire autrement — un point posé par l'optimisation pile sur un
+    seuil (ligne de 10 km, angle de 30°) n'aurait sinon aucun rayon."""
+    if aretes is None:
+        aretes = _variante_toleree(coords, longueur_max_m=longueur_max_m)
+    aretes = set(aretes)
+    score_ref, _, taux_ref, _, _ = _evaluer(coords, statuts, longueur_max_m, echantillons, rayon_m, points_min,
+                                            aretes=aretes)
+    dirs = [(math.cos(2 * math.pi * k / DIRECTIONS_RAYON), math.sin(2 * math.pi * k / DIRECTIONS_RAYON))
+            for k in range(DIRECTIONS_RAYON)]
+    out = {}
+    for idx in indices:
+        x0, y0 = coords[idx]
+        rayon = 0
+        for r in RAYONS_ESSAIS_M:
+            ok = True
+            for dx, dy in dirs:
+                essai = list(coords)
+                essai[idx] = (x0 + r * dx, y0 + r * dy)
+                s, _, taux, _, _ = _evaluer(essai, statuts, longueur_max_m, echantillons, rayon_m, points_min,
+                                            aretes=aretes)
+                if s < score_ref - TOLERANCE_SCORE_RAYON or taux < taux_ref - TOLERANCE_COUVERTURE_RAYON:
+                    ok = False
+                    break
+            if not ok:
+                break
+            rayon = r
+        out[idx] = rayon
+    return out
+
+
 def _objectif(r):
     """Critère d'optimisation : score affiché + crédit de couverture progressive."""
     s, _, _, _, progressif = r
@@ -151,7 +195,7 @@ def _candidats(coords, region, grille, echantillons, non_couverts, espacement_mi
 def densifier(anciens, nouveaux_fixes=(), nb_nouveaux=0, zone='nord',
               longueur_max_km=N.LONGUEUR_MAX_KM_DEFAUT, rayon_km=RAYON_KM_DEFAUT,
               points_min=POINTS_MIN_DEFAUT, proposer=True, zones_densification=(), zones_levee=(),
-              lignes=None):
+              lignes=None, rayons=None):
     """Propose (ou seulement évalue) les points nouveaux.
 
     `anciens` / `nouveaux_fixes` : dicts au format LPA (x_m, y_m, nom_point…).
@@ -163,6 +207,9 @@ def densifier(anciens, nouveaux_fixes=(), nb_nouveaux=0, zone='nord',
     enveloppe convexe des points anciens.
     `lignes` : réseau PERSONNALISÉ (paires d'indices dans anciens + nouveaux, dans cet ordre)
     évalué tel quel, sans proposition (`proposer` ignoré).
+    `rayons` : calculer le rayon de déplacement de chaque point nouveau (par défaut : lors d'une
+    proposition seulement — c'est la zone dans laquelle l'opérateur peut déplacer le point
+    proposé sans dégrader le réseau ; il reste libre d'en sortir).
     """
     anc = [{**p, 'statut': STATUT_ANCIEN} for p in anciens]
     nouv = [{**p, 'statut': STATUT_NOUVEAU, 'origine': p.get('origine') or 'manuel'}
@@ -276,6 +323,14 @@ def densifier(anciens, nouveaux_fixes=(), nb_nouveaux=0, zone='nord',
     pas_aff = max(1, len(non) // 400)
     non_couverts = [list(lambert_vers_wgs84(*echantillons[k], zone)) for k in non[::pas_aff]]
     sortie_points = _sortie_points(pts, coords, ev['degres'], zone)
+    if rayons is None:
+        rayons = proposer
+    nouveaux_idx = [k for k, p in enumerate(pts) if p['statut'] == STATUT_NOUVEAU]
+    if rayons and aretes_perso is None and 0 < len(nouveaux_idx) <= RAYONS_POINTS_MAX:
+        par_idx = rayons_deplacement(coords, statuts, nouveaux_idx, longueur_max_m, echantillons, rayon_m,
+                                     points_min)
+        for k, r in par_idx.items():
+            sortie_points[k]['rayon_deplacement_m'] = r
     nb_prop = len(proposes)
     if proposer and nb_prop:
         conclusion = (f"{nb_prop} point(s) nouveau(x) proposé(s) : score de densification "

@@ -12,7 +12,7 @@ const LEGENDE: Record<OngletReseau, StylePoint[]> = {
   controle: ['ancien', 'ecarte', 'suggere'],
   ecarts: ['homogene', 'non_homogene', 'non_controle'],
   densification: ['homogene', 'propose', 'nouveau'],
-  zones: ['ancien', 'ecarte'],
+  zones: ['ancien', 'ecarte', 'homogene', 'propose'],
   fonds: [],
 };
 
@@ -31,10 +31,10 @@ const LEGENDE: Record<OngletReseau, StylePoint[]> = {
 export class ReseauGpsPageComponent implements OnInit, OnDestroy {
   readonly onglets: DefOnglet[] = [
     { code: 'points', titre: 'Points anciens', icone: 'fas fa-map-marker-alt', etape: 1 },
-    { code: 'controle', titre: 'Réseau de contrôle', icone: 'fas fa-project-diagram', etape: 2 },
-    { code: 'ecarts', titre: 'Contrôle des écarts', icone: 'fas fa-ruler-combined', etape: 3 },
-    { code: 'densification', titre: 'Densification', icone: 'fas fa-map-pin', etape: 4 },
-    { code: 'zones', titre: 'Zones', icone: 'fas fa-draw-polygon', etape: null },
+    { code: 'zones', titre: 'Zone d’étude', icone: 'fas fa-draw-polygon', etape: 2 },
+    { code: 'controle', titre: 'Contrôle de stabilité', icone: 'fas fa-project-diagram', etape: 3 },
+    { code: 'ecarts', titre: 'Écarts (facultatif)', icone: 'fas fa-ruler-combined', etape: 4 },
+    { code: 'densification', titre: 'Points nouveaux', icone: 'fas fa-map-pin', etape: 5 },
     { code: 'fonds', titre: 'Fonds de carte', icone: 'fas fa-layer-group', etape: null },
   ];
   readonly couleurs = COULEURS_POINTS;
@@ -80,17 +80,19 @@ export class ReseauGpsPageComponent implements OnInit, OnDestroy {
     const s = this.store;
     const score = (x: number) => x.toFixed(1).replace('.', ',');
     switch (o) {
-      case 'points': return s.anciens.length ? `${s.anciensRetenus.length} retenu(s)` : 'À importer';
+      case 'points': return s.anciens.length ? `${s.anciensRetenus.length} actif(s)` : 'À importer';
       case 'controle': {
+        if (s.groupeHomogene) return `Groupe de ${s.groupeHomogene.points.length} validé`;
+        if (s.iterations.length) return `Itération ${s.iterations.length} · ${s.anciensHomogenes.length} homogène(s)`;
         const r = s.controle;
         const v = r?.variantes.find(x => x.code === r.recommandee);
-        return v ? `${score(v.indicateurs.score)}/100${s.controlePerime ? ' · à recalculer' : ''}` : 'À calculer';
+        return v ? `${score(v.indicateurs.score)}/100${s.controlePerime ? ' · à recalculer' : ''}` : 'À générer';
       }
       case 'ecarts': return s.analyse ? `${s.nbHomogenes} homogène(s)` : 'RC à importer';
       case 'densification': return s.densification
         ? `${score(s.densification.score)}/100${s.densificationPerimee ? ' · à recalculer' : ''}`
         : `${s.nouveaux.length} point(s) nouveau(x)`;
-      case 'zones': return s.zones.length ? `${s.zones.length} zone(s)` : 'Import ou tracé';
+      case 'zones': return s.zoneEtude ? s.zoneEtude.nom : (s.zones.length ? `${s.zones.length} zone(s)` : 'À dessiner ou importer');
       default: return `${s.listeFonds.length} fond(s)`;
     }
   }
@@ -98,7 +100,8 @@ export class ReseauGpsPageComponent implements OnInit, OnDestroy {
   termine(o: OngletReseau): boolean {
     const s = this.store;
     return (o === 'points' && s.anciensRetenus.length >= 3)
-      || (o === 'controle' && !!s.controle && !s.controlePerime)
+      || (o === 'zones' && !!s.zoneEtude)
+      || (o === 'controle' && !!s.groupeHomogene)
       || (o === 'ecarts' && !!s.analyse)
       || (o === 'densification' && !!s.densification && !s.densificationPerimee);
   }

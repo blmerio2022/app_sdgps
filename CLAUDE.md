@@ -613,9 +613,33 @@ viennent de `docs/normes-reseau-triangulation-gps.md` (codes **N1…N12** : angl
 triangles équilatéraux, 100 % des lignes en boucle, ≥ 2 liaisons par station, lignes ≤ 10/15 km
 selon l'Instruction GPS ANCFCC 2007, règle des stations voisines, ≥ 3 quadrants, ≥ 3 anciens,
 **N11** tout point de la zone à ≤ 5 km de 3 points de densification, **N12** points anciens
-homogènes à ΔD ≤ 15 cm). L'écran suit le **workflow de densification** en onglets numérotés :
-1 Points anciens → 2 Réseau de contrôle (points à rechercher / à écarter) → 3 Contrôle des
-écarts (RC, points homogènes) → 4 Densification (points nouveaux), + Zones + Fonds de carte.
+homogènes à ΔD ≤ 15 cm). L'écran suit le **workflow métier** en onglets numérotés :
+1 Points anciens → 2 Zone d'étude → 3 Contrôle de stabilité (réseau de contrôle de stabilité et
+d'homogénéité des points anciens, en itérations) → 4 Écarts (facultatif : l'analyse des écarts
+se fait pour l'instant hors de l'application) → 5 Points nouveaux (densification), + Fonds.
+- **cycle de contrôle** (onglet 3) : générer le réseau pour la zone d'étude (points dans la zone
+  et autour, `generer-zone/` en mode triangulation) ou à partir de la SÉLECTION → activer /
+  désactiver les points encore matérialisés, personnaliser les lignes → **arrêter** le réseau
+  (`IterationControle` : points, lignes, score, note, statut « à observer » / « observée ») →
+  observer sur le terrain → **qualifier** chaque point actif (`QualitePoint` : à contrôler,
+  homogène et stable, non homogène, instable, non retrouvé — synchronisé avec `homogene`) →
+  « Désactiver les non homogènes / instables / non retrouvés », ajouter d'autres points,
+  régénérer → itération suivante, dont seules les lignes JAMAIS observées sont à faire
+  (`lignesComplementaires`, surlignées sur la carte, colonne « À observer » de l'export CSV des
+  lignes ; export CSV des points) → **valider le groupe homogène** (`groupeHomogene`, ≥ 3 points
+  homogènes actifs) : seul appui de la densification ; un membre requalifié est signalé ;
+- **zone d'étude** (`zoneEtudeId`) : la première zone tracée / importée d'office, changeable
+  (étoile dans la liste des zones) ; cible par défaut du générateur et de la densification ;
+- **points nouveaux** (onglet 5) : nombre imposé ou automatique ; chaque point proposé reçoit
+  un **rayon de déplacement** (`densification.rayons_deplacement` : plus grand rayon essayé —
+  25 m à 1,6 km, 6 directions — tel que, LIGNES DE BASE FIGÉES, le score ne perde pas plus de
+  `TOLERANCE_SCORE_RAYON` (2) points ni la couverture N11 plus de 1 % ; calculé lors d'une
+  proposition, ou sur demande `rayons=true`) et un emplacement de référence (`ancre`). Sur la
+  carte : cercle pointillé centré sur l'emplacement proposé, point déplaçable à la souris
+  (glisser-déposer maison — celui des marqueurs Leaflet lève une erreur interne dans cette
+  page), recalcul automatique du score après le dépôt (désactivable), point sorti du rayon
+  signalé (cercle orange, écart en rouge), bouton « revenir à l'emplacement proposé ». La
+  carte ne se recadre que si l'ENSEMBLE des points change (pas après un déplacement).
 - **zones** (onglet « Zones ») : zones LEVÉES (lever de détail : couverture N11 calculée sur
   elles) et zones de DENSIFICATION (points nouveaux placés dedans) — une seule sorte fournie
   sert aux deux, aucune : enveloppe des anciens. Import `POST zones/importer/` (multipart
@@ -640,7 +664,7 @@ homogènes à ΔD ≤ 15 cm). L'écran suit le **workflow de densification** en 
 - **points actifs** : case « Actif » de la liste + Tout activer / désactiver / inverser + bouton
   de la fiche du point sur la carte. Les coordonnées des pièces (« 353 108.16 ») sont
   converties en nombres au chargement (`ReseauGpsStore.nombre`) ;
-- **génération pour une zone** (`reseaux/zone_reseau.py`, `POST generer-zone/` : `anciens`,
+- **génération pour une zone** (onglet 3 ; `reseaux/zone_reseau.py`, `POST generer-zone/` : `anciens`,
   `zones` Lambert, `mode` `triangulation`|`densification`, `rayon_recherche_km`, `anciens_max`…) :
   candidats = anciens dans la zone ou à moins du rayon de son contour ; encadrement N9 (le plus
   proche dans chaque quadrant autour du centre de la zone) + points dedans ; ajouts / retraits
@@ -648,7 +672,7 @@ homogènes à ΔD ≤ 15 cm). L'écran suit le **workflow de densification** en 
   l'enveloppe des retenus » ; puis `generer_reseau` (triangulation) ou `densifier` avec la zone
   en densification ET en levée. Chaque point reçoit un motif (retenu / écarté). Source côté
   écran : points actifs OU la seule sélection de la carte. « Appliquer » active les seuls retenus
-  et ouvre le réseau dans l'onglet Contrôle ou Densification ;
+  et ouvre le réseau dans l'onglet Contrôle (le mode densification reste disponible côté API) ;
 - **sélection en masse** (carte) : ponctuelle, rectangle, polygone, cercle, main levée (Maj =
   ajouter, Ctrl = retirer, Échap), tout sélectionner / désélectionner ; une ligne est prise si
   ses deux extrémités le sont. Clés dans `ReseauGpsStore.selection` (`p:<nom>`,
@@ -664,7 +688,8 @@ homogènes à ΔD ≤ 15 cm). L'écran suit le **workflow de densification** en 
   suppression logique. Écran : barre d'état (étude ouverte, « modifications non enregistrées »,
   autosauvegarde différée de `DELAI_AUTOSAUVEGARDE_MS`, préférence dans le navigateur) +
   panneau « Mes études » (`<app-rg-etudes>` : recherche, groupes par dossier, ouvrir, enregistrer
-  sous, renommer / ranger, épingler, dupliquer, supprimer, export / import JSON). Les fonds
+  sous, renommer / ranger, épingler, dupliquer, supprimer, export / import JSON) — zone d'étude,
+  itérations, qualifications, groupe homogène, ancres et rayons compris. Les fonds
   d'une étude s'AJOUTENT à « Mes fonds » à l'ouverture. Les résultats de calcul qui arrivent
   (`redessiner()`) ne comptent pas comme des modifications. ⚠ Boutons d'enregistrement en
   `type="button"` + `(click)` : un clic sur un bouton `submit` ne déclenchait pas l'envoi du
