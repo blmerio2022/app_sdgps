@@ -19,7 +19,7 @@ modifié ; le contrôle ne bloque rien.
 """
 from collections import OrderedDict, defaultdict
 
-from .rc import _cle
+from .rc import _cle, _squelette
 
 ERREUR, AVERTISSEMENT = 'erreur', 'avertissement'
 
@@ -196,6 +196,18 @@ def analyser_controle_croise(pieces, tolerances_config=None):
     ajouter('orthographe', AVERTISSEMENT, 'Même point écrit de plusieurs façons',
             'Le rapprochement les associe, mais la graphie diffère d’une pièce à l’autre.',
             [' / '.join(sorted(g)) for g in graphies.values() if len(g) > 1], tuple(sources))
+
+    # 8. Noms qui ne diffèrent que par des caractères qui se confondent (« AXI6 » /
+    # « AXl6 » / « AX16 », « O » / « 0 ») : presque toujours une faute de saisie. Le RC
+    # les rapproche quand c'est sans ambiguïté ; l'opérateur doit pouvoir la corriger.
+    par_squelette = defaultdict(set)
+    for cle, g in graphies.items():
+        par_squelette[_squelette(cle)].add(sorted(g)[0])
+    ajouter('confusion', AVERTISSEMENT, 'Noms de points presque identiques',
+            'Ces noms ne diffèrent que par des caractères qui se confondent (I / l / 1, '
+            'O / 0) : vérifiez la saisie, il s’agit sans doute du même point.',
+            [' / '.join(sorted(g)) for g in par_squelette.values() if len(g) > 1],
+            tuple(sources))
 
     # Contrôles des VALEURS (coordonnées, vecteurs, boucles, observations, RC) : même format.
     from .controle_valeurs import controler_valeurs

@@ -215,3 +215,56 @@ class CoordonneesTests(SimpleTestCase):
         ligne = next(r for r in rows if r['nom_point_calcule'] == 'B')
         self.assertEqual((ligne['x_m_fixe'], ligne['y_m_fixe']), ('150.00', '250.00'))
         self.assertEqual((ligne['x_m_calcule'], ligne['y_m_calcule']), ('150.05', '250.07'))
+
+
+class CaracteresConfondusTests(SimpleTestCase):
+    """Cas réel (PDC sdgps-test, 2026-11) : LPA « AXl6 » (L minuscule), RDIA « AXI6 »
+    (i majuscule). AXI6 manquait aux points de contrôle, et la détermination N°1, tenue
+    fixe sur lui, disparaissait entièrement du tableau (289 lignes au lieu de 324)."""
+
+    def setUp(self):
+        self.points = lpa(('AXl6', '100.00', '200.00'), ('B', '150.00', '250.00'),
+                          ('C', '300.00', '400.00'))
+        calculs = {'AXI6': ('100.03', '200.00'), 'B': ('150.00', '250.00'),
+                   'C': ('300.00', '400.04')}
+        self.determinations = [
+            det('N°1', {'AXI6'}, {**calculs, 'AXI6': ('100.00', '200.00')}),
+            det('N°2', {'B'}, calculs),
+        ]
+
+    def test_le_point_mal_saisi_dans_la_lpa_est_controle(self):
+        rows = compute_rapport_controle(self.points, self.determinations)
+        self.assertEqual(len(rows), 6)                       # 2 déterminations × 3 points
+        ligne = next(r for r in rows if r['nom_point_fixe'] == 'B'
+                     and r['nom_point_calcule'] == 'AXl6')
+        self.assertEqual(ligne['delta_d_m'], '0.03')
+
+    def test_la_determination_tenue_fixe_sur_le_point_n_est_plus_perdue(self):
+        rows = compute_rapport_controle(self.points, self.determinations)
+        fixe = [r for r in rows if r['nom_point_fixe'] == 'AXl6']   # libellé de la LPA
+        self.assertEqual(len(fixe), 3)
+        self.assertEqual(next(r for r in fixe if r['nom_point_calcule'] == 'AXl6')['delta_d_m'],
+                         '--')
+
+    def test_o_et_zero_se_rapprochent(self):
+        points = lpa(('P0', '1.00', '1.00'), ('B', '2.00', '2.00'))
+        dets = [det(1, {'B'}, {'B': ('2.00', '2.00'), 'PO': ('1.00', '1.02')})]
+        rows = compute_rapport_controle(points, dets)
+        self.assertEqual(paires(rows), [('B', 'P0'), ('B', 'B')])
+
+    def test_jamais_d_association_si_le_point_lpa_existe_tel_quel(self):
+        # « B1 » est recalculé tel quel ; « BI » est un AUTRE point (nouveau) : ne pas les fondre.
+        points = lpa(('B1', '1.00', '1.00'), ('F', '2.00', '2.00'))
+        dets = [det(1, {'F'}, {'BI': ('9.00', '9.00'), 'B1': ('1.00', '1.01'),
+                               'F': ('2.00', '2.00')})]
+        ligne = next(r for r in compute_rapport_controle(points, dets)
+                     if r['nom_point_calcule'] == 'B1')
+        self.assertEqual(ligne['x_m_calcule'], '1.00')
+
+    def test_pas_d_association_ambigue(self):
+        # Deux graphies des déterminations pour un seul point LPA : on ne choisit pas.
+        points = lpa(('AXl6', '1.00', '1.00'), ('F', '2.00', '2.00'))
+        dets = [det(1, {'F'}, {'AXI6': ('1.00', '1.00'), 'F': ('2.00', '2.00')}),
+                det(2, {'F'}, {'AX16': ('1.00', '1.00'), 'F': ('2.00', '2.00')})]
+        rows = compute_rapport_controle(points, dets)
+        self.assertNotIn('AXl6', {r['nom_point_calcule'] for r in rows})

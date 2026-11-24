@@ -56,6 +56,47 @@ def _cle(nom):
     return t.replace(' ', '').strip().casefold()
 
 
+# Caractères qui se confondent à la lecture (et à la saisie) d'un nom de point :
+# « AXl6 » (L minuscule) / « AXI6 » (i majuscule) / « AX16 », « P0 » / « PO ».
+_CONFUSABLES = str.maketrans({'l': '1', 'i': '1', '|': '1', 'o': '0'})
+
+
+def _squelette(nom):
+    """Clé de rapprochement TOLÉRANTE : `_cle` dont les caractères qui se confondent sont
+    ramenés à un seul (l / i / 1 → 1, o → 0).
+
+    Ne sert qu'en SECOURS (`_alias_lpa`) : deux points réellement distincts peuvent
+    partager un squelette (« B1 » et « BI »), on ne l'emploie donc que si l'association
+    est sans ambiguïté.
+    """
+    return _cle(nom).translate(_CONFUSABLES)
+
+
+def _alias_lpa(lpa_cles, cles_determinations):
+    """{clé d'une détermination: clé LPA} pour les noms qui ne diffèrent QUE par des
+    caractères qui se confondent.
+
+    Cas réel : LPA « AXl6 » (L minuscule), RDIA « AXI6 » (i majuscule). Le rapprochement
+    exact ignorait le point : il manquait aux points de contrôle ET la détermination tenue
+    fixe sur lui disparaissait du tableau, sans un mot.
+
+    Garde-fous (ne jamais associer deux points distincts) : la clé LPA n'apparaît
+    EXACTEMENT dans aucune détermination, son squelette est unique dans la LPA, et une
+    seule graphie des déterminations y correspond.
+    """
+    lpa_cles = set(lpa_cles)
+    cles_determinations = {c for c in cles_determinations if c}
+    par_squelette = {}
+    for cle in lpa_cles:
+        par_squelette.setdefault(cle.translate(_CONFUSABLES), []).append(cle)
+    candidats = {}
+    for cle in cles_determinations - lpa_cles:
+        cibles = par_squelette.get(cle.translate(_CONFUSABLES)) or []
+        if len(cibles) == 1 and cibles[0] not in cles_determinations:
+            candidats.setdefault(cibles[0], []).append(cle)
+    return {graphies[0]: cible for cible, graphies in candidats.items() if len(graphies) == 1}
+
+
 def _est_fixe(row):
     """Le point de cette ligne est-il tenu fixe (σx ou σy == « FIXE ») ?"""
     return (str(row.get('sigma_x_m', '')).strip().upper() == 'FIXE'
@@ -272,20 +313,28 @@ def compute_rapport_controle(lpa_rows, determinations):
             lpa[cle] = (name, r.get('x_m'), r.get('y_m'))
 
     # Détermination → (nom du point fixe, clés tenues fixes, {clé: (x, y) calculés}).
+    # Graphies qui ne diffèrent de la LPA que par des caractères qui se confondent
+    # (« AXI6 » / « AXl6 ») : ramenées à la clé LPA quand c'est sans ambiguïté.
+    alias = _alias_lpa(lpa.keys(), (
+        _cle(r.get('nom_point', '')) for det in determinations for r in det.get('rows') or []))
+
+    def resoudre(nom):
+        cle = _cle(nom)
+        return alias.get(cle, cle)
+
     det_info = []
-    control = []        # clés des points de contrôle, dans l'ordre de la LPA
     recalcules = set()  # points anciens recalculés dans au moins une détermination
     for det in determinations:
         rows = det.get('rows') or []
         fixes = _fixed_points(rows)
-        fname = fixes[0] if fixes else None
-        cles_fixes = {_cle(n) for n in fixes}
+        cle_fixe = resoudre(fixes[0]) if fixes else None
+        cles_fixes = {resoudre(n) for n in fixes}
         calc = {}
         for r in rows:
-            cle = _cle(r.get('nom_point', ''))
+            cle = resoudre(r.get('nom_point', ''))
             if cle and cle not in calc:
                 calc[cle] = (r.get('x_m'), r.get('y_m'))
-        det_info.append((fname, cles_fixes, calc))
+        det_info.append((cle_fixe, cles_fixes, calc))
         recalcules |= calc.keys() & lpa.keys()
 
     # Points de contrôle : TOUS les points anciens recalculés quelque part — pas seulement
@@ -295,12 +344,12 @@ def compute_rapport_controle(lpa_rows, determinations):
 
     out = []
     idx = 1
-    for fname, cles_fixes, calc in det_info:
+    for cle_fixe, cles_fixes, calc in det_info:
         # Détermination libre (aucun point fixe) ou tenue fixe sur un point hors LPA :
         # rien à contrôler, la colonne « Nom Point Fixe » n'aurait pas de sens.
-        if not fname or _cle(fname) not in lpa:
+        if not cle_fixe or cle_fixe not in lpa:
             continue
-        libelle_fixe = lpa[_cle(fname)][0]
+        libelle_fixe = lpa[cle_fixe][0]
         for pj in control:
             nom_affiche, fx, fy = lpa[pj]
             calc_xy = calc.get(pj)

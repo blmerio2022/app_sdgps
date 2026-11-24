@@ -77,6 +77,15 @@ class ControleCroiseTests(TestCase):
         self.assertNotIn('lpa_hors_rdd', c)                       # même point
         self.assertEqual(c['orthographe']['points'], ['GPS 1 / gps1'])
 
+    def test_noms_presque_identiques_signales(self):
+        # « AXl6 » (L minuscule) dans la LPA, « AXI6 » (i majuscule) ailleurs.
+        self.piece('LPA', lignes('nom_point', 'AXl6', 'B'))
+        self.piece('RDD', lignes('nom_point', 'AXI6', 'B'))
+        c = self.codes(self.analyse())
+        self.assertEqual(c['confusion']['points'], ['AXI6 / AXl6'])
+        self.assertEqual(c['confusion']['gravite'], 'avertissement')
+        self.assertNotIn('confusion', self.codes(analyser_controle_croise([])))
+
     def test_doublons_et_fiches_photo(self):
         self.piece('LPA', lignes('nom_point', 'A', 'A', 'B'))
         self.piece('PPA', lignes('nom_point', 'A', 'Q'))

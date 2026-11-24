@@ -276,6 +276,11 @@ détermination** — et non plus par point ancien *tenu fixe quelque part*.
 - les noms sont rapprochés **sans tenir compte de la casse ni des espaces** (`_cle`) — la
   LPA et les déterminations viennent de sources distinctes ; le libellé affiché est celui
   de la **LPA**, référence officielle du point ancien ;
+- **caractères qui se confondent** (`rc._alias_lpa` / `_squelette` : l / i / 1, o / 0) : une
+  graphie des déterminations qui ne diffère d'un point LPA que par eux (« AXI6 » / LPA
+  « AXl6 ») lui est rapprochée, en SECOURS et seulement sans ambiguïté (clé LPA absente
+  telle quelle des déterminations, squelette unique, une seule graphie candidate). Le
+  contrôle croisé le signale (`confusion`, « Noms de points presque identiques ») ;
 - ⚠️ les pièces RC **déjà enregistrées** gardent leurs lignes : il faut les **régénérer**
   pour bénéficier du correctif ;
 - tests : `backend/pieces/tests_rc.py` (17 cas).
