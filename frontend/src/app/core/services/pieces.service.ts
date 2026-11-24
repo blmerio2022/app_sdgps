@@ -17,6 +17,15 @@ interface PieceParent {
  * intermédiaires assemblé. */
 export type RcSource = 'rdn' | 'rdia';
 
+/** Bilan d'un recalcul de rapport de contrôle (`recompute-rc/`). */
+export interface RcRecalcul {
+  source: RcSource;
+  available_sources: RcSource[];
+  lignes_avant: number;
+  lignes_apres: number;
+  modifie: boolean;
+}
+
 /** Anomalie relevée par le contrôle de cohérence avant génération. */
 export interface AnomalieCoherence {
   /** Famille d'anomalie (`piece_non_validee`, `determination_manquante`…). */
@@ -265,6 +274,16 @@ export class PiecesService {
     formData.append('commit', '1');
     formData.append('payload', JSON.stringify({ rows }));
     return this.http.post<Piece>(`${this.base}compute-rc/`, formData);
+  }
+
+  /**
+   * RECALCULE sur place une pièce « Rapport de contrôle » existante à partir des pièces
+   * sources actuelles (LPA + RDN ou RDIA) — sans la supprimer. `source` facultative (sinon
+   * celle du calcul précédent). Ancien contenu archivé dans l'historique des versions.
+   */
+  recomputeRc(pieceId: string, source?: RcSource | null): Observable<Piece & { recalcul: RcRecalcul }> {
+    return this.http.post<Piece & { recalcul: RcRecalcul }>(
+      `${this.base}${pieceId}/recompute-rc/`, source ? { source } : {});
   }
 
   /**

@@ -201,6 +201,19 @@
           </button>
         </div>
 
+        <!-- Rapport de contrôle : recalcul sur place depuis la LPA et les déterminations -->
+        <div class="apply-sort-bar recompute-rc-bar" *ngIf="canRecomputeRc">
+          <span class="apply-sort-hint">
+            <i class="fas fa-calculator"></i>
+            Tableau calculé à partir de la liste des points anciens et des déterminations.
+            Recalculez-le après avoir corrigé l'une de ces pièces.
+          </span>
+          <button type="button" class="btn-apply-sort" [disabled]="recomputingRc" (click)="askRecomputeRc()">
+            <i class="fas" [class.fa-spinner]="recomputingRc" [class.fa-spin]="recomputingRc" [class.fa-rotate-right]="!recomputingRc"></i>
+            Recalculer le rapport de contrôle
+          </button>
+        </div>
+
         <!-- Source : image (galerie multi-images plate — hors PPA/PPN) -->
         <ng-container *ngIf="piece.source_saisie === 'image' && !isPhotoPoints">
           <app-piece-image-gallery
@@ -414,6 +427,44 @@
       <button class="btn-confirm" [disabled]="applyingSortConfig" (click)="confirmApplySort()">
         <i class="fas" [class.fa-spinner]="applyingSortConfig" [class.fa-spin]="applyingSortConfig" [class.fa-sort-amount-down]="!applyingSortConfig"></i>
         {{ applyingSortConfig ? 'Application…' : 'Appliquer' }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== Modale de confirmation : recalcul du rapport de contrôle ========== -->
+<div class="modal-overlay confirm-overlay" *ngIf="showRecomputeRcConfirm" (click)="cancelRecomputeRc()">
+  <div class="modal-content small" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-header-left">
+        <span class="header-icon"><i class="fas fa-calculator"></i></span>
+        <h3>Recalculer le rapport de contrôle</h3>
+      </div>
+      <button class="close-btn" (click)="cancelRecomputeRc()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="feuilles-classeur" *ngIf="rcSources.length > 1">
+        <label for="rc-source"><i class="fas fa-layer-group"></i> Coordonnées calculées</label>
+        <select id="rc-source" [ngModel]="rcSource" (ngModelChange)="onRcSourceChange($event)"
+                [disabled]="loadingRcApercu || recomputingRc">
+          <option *ngFor="let s of rcSources" [ngValue]="s">{{ rcSourceLabels[s] }}</option>
+        </select>
+      </div>
+      <p class="confirm-text" *ngIf="loadingRcApercu"><i class="fas fa-spinner fa-spin"></i> Calcul en cours…</p>
+      <p class="confirm-text" *ngIf="!loadingRcApercu && rcApercuLignes !== null">
+        <span>Le tableau recalculé compte <strong>{{ rcApercuLignes }} ligne(s)</strong>
+        (actuellement : {{ piece.payload?.rows?.length || 0 }}).</span>
+      </p>
+      <p class="confirm-note error" *ngIf="rcApercuErreur"><i class="fas fa-exclamation-circle"></i> <span>{{ rcApercuErreur }}</span></p>
+      <p class="confirm-note"><i class="fas fa-info-circle"></i>
+        <span>Les lignes actuelles seront <strong>remplacées</strong>, modifications manuelles comprises.
+          L'ancienne version reste consultable et restaurable dans l'<strong>historique</strong> de la pièce.</span></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" [disabled]="recomputingRc" (click)="cancelRecomputeRc()"><i class="fas fa-times"></i> Annuler</button>
+      <button class="btn-confirm" [disabled]="recomputingRc || loadingRcApercu || !!rcApercuErreur" (click)="confirmRecomputeRc()">
+        <i class="fas" [class.fa-spinner]="recomputingRc" [class.fa-spin]="recomputingRc" [class.fa-rotate-right]="!recomputingRc"></i>
+        {{ recomputingRc ? 'Recalcul…' : 'Recalculer' }}
       </button>
     </div>
   </div>

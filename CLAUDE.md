@@ -281,8 +281,15 @@ détermination** — et non plus par point ancien *tenu fixe quelque part*.
   « AXl6 ») lui est rapprochée, en SECOURS et seulement sans ambiguïté (clé LPA absente
   telle quelle des déterminations, squelette unique, une seule graphie candidate). Le
   contrôle croisé le signale (`confusion`, « Noms de points presque identiques ») ;
-- ⚠️ les pièces RC **déjà enregistrées** gardent leurs lignes : il faut les **régénérer**
-  pour bénéficier du correctif ;
+- ⚠️ les pièces RC **déjà enregistrées** gardent leurs lignes : il faut les **recalculer**
+  pour bénéficier d'un correctif ou d'une source corrigée ;
+- **recalcul sur place** : `POST /api/v1/pieces/<id>/recompute-rc/` (`source` facultative,
+  sinon `payload.source_rc` mémorisée à la génération, sinon RDN puis RDIA) — même calcul
+  que `compute-rc/` (`_calculer_rc`), lignes REMPLACÉES, autres clés du payload conservées,
+  ancien contenu archivé (historique des versions ; rien d'écrit si le tableau est identique), verrou du dossier figé, réponse
+  `recalcul` {lignes_avant, lignes_apres, modifie}. Front : barre « Recalculer le rapport de
+  contrôle » du détail de la pièce RC → aperçu (nombre de lignes, choix RDN / RDIA) puis
+  confirmation. Tests : `pieces/tests_rc_recalcul.py`, spec `piece-detail-modal` ;
 - tests : `backend/pieces/tests_rc.py` (17 cas).
 
 **Code projet généré ; titre / réquisition avec ou sans lettre.** Un projet créé sans code

@@ -266,4 +266,15 @@ describe('PiecesService', () => {
       req.flush([]);
     });
   });
+
+  it('recomputeRc recalcule le RC sur place (source facultative)', () => {
+    service.recomputeRc('rc1', 'rdia').subscribe();
+    const req = httpMock.expectOne(`${BASE}rc1/recompute-rc/`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ source: 'rdia' });
+    req.flush({ id: 'rc1', recalcul: { modifie: true } });
+
+    service.recomputeRc('rc1').subscribe();
+    expect(httpMock.expectOne(`${BASE}rc1/recompute-rc/`).request.body).toEqual({});
+  });
 });

@@ -1052,36 +1052,11 @@ class PieceViewSet(viewsets.ModelViewSet):
                 created.append(serializer.data)
         return Response({'created': created, 'count': len(created)}, status=status.HTTP_201_CREATED)
 
-    @action(detail=False, methods=['post'], url_path='compute-rc',
-            parser_classes=[parsers.MultiPartParser, parsers.FormParser])
-    def compute_rc(self, request):
-        """
-        POST /api/v1/pieces/compute-rc/
-        Génère le tableau de la pièce « Rapport de contrôle » (RC) en croisant la
-        « Liste des points anciens » (LPA, coordonnées fixes) avec, au choix, les
-        « Rapports de la détermination N°k » (RDN) OU le « Rapport des déterminations
-        intermédiaires assemblé » (RDIA) du même SSDGPS (et de la session, si précisée) —
-        cf. pieces/rc.py.
-
-        Sources de déterminations (coordonnées calculées) :
-        - `rdn`  : une ou plusieurs pièces RDN (comportement historique) ;
-        - `rdia` : les blocs `determination` d'une pièce RDIA assemblée.
-        La source est choisie via le champ `source` ; par défaut on privilégie les RDN
-        s'ils existent, sinon on se rabat sur la RDIA. Quand LES DEUX sont disponibles, le
-        client peut proposer le choix (la réponse d'aperçu expose `available_sources`).
-
-        Champs : ssdgps (requis) ; session (optionnelle) ; source (`rdn`/`rdia`, optionnelle) ;
-        commit (« 1 » → crée la pièce, sinon APERÇU sans persistance) ; payload (JSON des
-        lignes éditées, au commit). La pièce ne peut être générée que si la LPA et au moins
-        une source de déterminations existent avec des données.
-        """
-        type_piece = request.data.get('type_piece') or 'RC'
-        ssdgps_id = request.data.get('ssdgps')
-        if not ssdgps_id:
-            return Response({'detail': 'ssdgps est requis.'}, status=400)
-        session_id = request.data.get('session') or None
-        commit = str(request.data.get('commit', '')).lower() in ('1', 'true', 'yes')
-
+    def _calculer_rc(self, ssdgps_id, session_id, source=None):
+        """Lignes du rapport de contrôle d'un SDGPS (et d'une session) : LPA × déterminations
+        (RDN ou RDIA). Partagé par la génération (`compute-rc/`) et le recalcul d'un RC
+        existant (`<id>/recompute-rc/`). Renvoie `(rows, source, available)` ou une
+        `Response` 400 (source manquante, aucun point commun)."""
         scope = self._org_scoped_queryset().filter(ssdgps_id=ssdgps_id, is_deleted=False)
         lpa = scope.filter(type_piece='LPA').first()
         rdn_qs = scope.filter(type_piece='RDN')
@@ -1112,7 +1087,7 @@ class PieceViewSet(viewsets.ModelViewSet):
                 'données avant de générer le rapport de contrôle.')}, status=400)
 
         # Choix de la source : champ `source` s'il est valide/disponible, sinon la préférée.
-        source = str(request.data.get('source') or '').strip().lower()
+        source = str(source or '').strip().lower()
         if source not in available:
             source = available[0]
 
@@ -1128,6 +1103,42 @@ class PieceViewSet(viewsets.ModelViewSet):
                 "Aucun point de contrôle commun entre la LPA et les déterminations : "
                 "vérifiez que les points anciens tenus fixes figurent bien dans la LPA.")},
                 status=400)
+        return rows, source, available
+
+    @action(detail=False, methods=['post'], url_path='compute-rc',
+            parser_classes=[parsers.MultiPartParser, parsers.FormParser])
+    def compute_rc(self, request):
+        """
+        POST /api/v1/pieces/compute-rc/
+        Génère le tableau de la pièce « Rapport de contrôle » (RC) en croisant la
+        « Liste des points anciens » (LPA, coordonnées fixes) avec, au choix, les
+        « Rapports de la détermination N°k » (RDN) OU le « Rapport des déterminations
+        intermédiaires assemblé » (RDIA) du même SSDGPS (et de la session, si précisée) —
+        cf. pieces/rc.py.
+
+        Sources de déterminations (coordonnées calculées) :
+        - `rdn`  : une ou plusieurs pièces RDN (comportement historique) ;
+        - `rdia` : les blocs `determination` d'une pièce RDIA assemblée.
+        La source est choisie via le champ `source` ; par défaut on privilégie les RDN
+        s'ils existent, sinon on se rabat sur la RDIA. Quand LES DEUX sont disponibles, le
+        client peut proposer le choix (la réponse d'aperçu expose `available_sources`).
+
+        Champs : ssdgps (requis) ; session (optionnelle) ; source (`rdn`/`rdia`, optionnelle) ;
+        commit (« 1 » → crée la pièce, sinon APERÇU sans persistance) ; payload (JSON des
+        lignes éditées, au commit). La pièce ne peut être générée que si la LPA et au moins
+        une source de déterminations existent avec des données.
+        """
+        type_piece = request.data.get('type_piece') or 'RC'
+        ssdgps_id = request.data.get('ssdgps')
+        if not ssdgps_id:
+            return Response({'detail': 'ssdgps est requis.'}, status=400)
+        session_id = request.data.get('session') or None
+        commit = str(request.data.get('commit', '')).lower() in ('1', 'true', 'yes')
+
+        calcul = self._calculer_rc(ssdgps_id, session_id, request.data.get('source'))
+        if isinstance(calcul, Response):
+            return calcul
+        rows, source, available = calcul
 
         piece_def = get_piece_def(type_piece)
         if not commit:
@@ -1150,7 +1161,7 @@ class PieceViewSet(viewsets.ModelViewSet):
             'type_piece': type_piece,
             'ssdgps': ssdgps_id,
             'session': session_id,
-            'payload': {'rows': rows},
+            'payload': {'rows': rows, 'source_rc': source},
             'source_saisie': 'ui',
         }
         serializer = self.get_serializer(data=data)
@@ -1160,6 +1171,47 @@ class PieceViewSet(viewsets.ModelViewSet):
         max_ordre = Piece.objects.filter(ssdgps=ssdgps, is_deleted=False).aggregate(m=Max('ordre'))['m']
         serializer.save(created_by=request.user, ordre=(max_ordre + 1) if max_ordre is not None else 0)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='recompute-rc')
+    def recompute_rc(self, request, pk=None):
+        """
+        POST /api/v1/pieces/<id>/recompute-rc/   {source?: "rdn"|"rdia"}
+        RECALCULE le tableau d'une pièce « Rapport de contrôle » EXISTANTE à partir des
+        pièces sources actuelles (LPA + RDN ou RDIA, même SDGPS et même session que la
+        pièce) — sans avoir à la supprimer pour la régénérer.
+
+        Source : `source` si fournie et disponible, sinon celle du calcul précédent
+        (`payload.source_rc`), sinon la préférée (RDN puis RDIA). Les lignes sont
+        REMPLACÉES : l'ancien contenu est archivé dans l'historique des versions (signal de
+        `pieces/versions.py`) et reste restaurable. Les autres clés du payload (tri…) sont
+        conservées. Verrou du dossier figé appliqué par `get_object()`.
+        """
+        piece = self.get_object()
+        if piece.type_piece != 'RC':
+            return Response({'detail': 'Seule une pièce « Rapport de contrôle » (RC) se recalcule.'},
+                            status=400)
+        ancien = dict(piece.payload or {})
+        calcul = self._calculer_rc(piece.ssdgps_id, piece.session_id,
+                                   request.data.get('source') or ancien.get('source_rc'))
+        if isinstance(calcul, Response):
+            return calcul
+        rows, source, available = calcul
+
+        anciennes = ancien.get('rows') or []
+        modifie = anciennes != rows
+        if modifie:
+            payload = {**ancien, 'rows': rows, 'source_rc': source}
+            serializer = self.get_serializer(piece, data={'payload': payload}, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save(updated_by=request.user)
+        else:
+            # Tableau identique : rien à écrire — ni version archivée, ni « modifié par ».
+            serializer = self.get_serializer(piece)
+        return Response({**serializer.data, 'recalcul': {
+            'source': source, 'available_sources': available,
+            'lignes_avant': len(anciennes), 'lignes_apres': len(rows),
+            'modifie': modifie,
+        }})
 
     @action(detail=True, methods=['post'], url_path='compute-ecarts')
     def compute_ecarts(self, request, pk=None):

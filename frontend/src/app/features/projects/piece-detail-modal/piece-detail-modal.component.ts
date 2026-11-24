@@ -1,6 +1,6 @@
 import { Component, EventEmitter, HostListener, Input, OnDestroy, OnInit, Output } from '@angular/core';
 import { FormArray, FormBuilder, FormGroup } from '@angular/forms';
-import { PiecesService } from '../../../core/services/pieces.service';
+import { PiecesService, RcSource } from '../../../core/services/pieces.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { PieceSortConfigService, PieceSortConfig, PieceSortVersions, sortVersions } from '../../../core/services/piece-sort-config.service';
 import { PieceFieldsConfig, PieceFieldsConfigService } from '../../../core/services/piece-fields-config.service';
@@ -506,6 +506,81 @@ export class PieceDetailModalComponent implements OnInit, OnDestroy {
       error: (e) => {
         this.computingEcarts = false;
         this.toast.error('Calcul impossible', e?.error?.detail || 'Calcul des écarts impossible');
+      },
+    });
+  }
+
+  // --- Rapport de contrôle (RC) : recalcul sur place ---
+  /** La pièce est un rapport de contrôle (tableau calculé LPA × déterminations). */
+  get isRapportControle(): boolean { return this.piece?.type_piece === 'RC'; }
+  /** Recalcul proposé hors dossier figé (le serveur applique le verrou de toute façon). */
+  get canRecomputeRc(): boolean { return this.isRapportControle && !this.ssdgps?.verrouille; }
+  showRecomputeRcConfirm = false;
+  recomputingRc = false;
+  loadingRcApercu = false;
+  rcSources: RcSource[] = [];
+  rcSource: RcSource | null = null;
+  rcApercuLignes: number | null = null;
+  rcApercuErreur = '';
+  readonly rcSourceLabels: Record<RcSource, string> = {
+    rdn: 'Rapports de la détermination N°k (RDN)',
+    rdia: 'Rapport des déterminations intermédiaires assemblé (RDIA)',
+  };
+
+  /** Ouvre la confirmation et calcule un aperçu (nombre de lignes, sources disponibles). */
+  askRecomputeRc(): void {
+    if (this.recomputingRc) return;
+    this.showRecomputeRcConfirm = true;
+    this.rcSource = ((this.piece.payload as any)?.source_rc as RcSource) || null;
+    this.loadRcApercu();
+  }
+
+  onRcSourceChange(source: RcSource): void { this.rcSource = source; this.loadRcApercu(); }
+
+  private loadRcApercu(): void {
+    this.loadingRcApercu = true;
+    this.rcApercuErreur = '';
+    this.rcApercuLignes = null;
+    const parent = { ssdgps: this.piece.ssdgps, session: this.piece.session || undefined };
+    this.piecesService.previewComputeRc(parent, this.rcSource || undefined).subscribe({
+      next: (res) => {
+        this.loadingRcApercu = false;
+        this.rcSources = res.available_sources || [];
+        this.rcSource = res.source;
+        this.rcApercuLignes = res.total_rows;
+      },
+      error: (e) => {
+        this.loadingRcApercu = false;
+        this.rcApercuErreur = e?.error?.detail || 'Calcul du rapport de contrôle impossible.';
+      },
+    });
+  }
+
+  cancelRecomputeRc(): void { if (!this.recomputingRc) this.showRecomputeRcConfirm = false; }
+
+  /** Remplace les lignes du RC par le recalcul (ancien contenu archivé côté serveur). */
+  confirmRecomputeRc(): void {
+    if (this.recomputingRc || this.rcApercuErreur) return;
+    this.recomputingRc = true;
+    this.piecesService.recomputeRc(this.piece.id, this.rcSource).subscribe({
+      next: ({ recalcul, ...updated }) => {
+        this.recomputingRc = false;
+        this.showRecomputeRcConfirm = false;
+        this.piece = updated as Piece;
+        if (this.mode === 'edit') this.initManualForm();
+        this.resetSortSignal++;
+        if (recalcul?.modifie === false) {
+          this.toast.info('Rapport de contrôle à jour', 'Le recalcul donne le même tableau : rien n’a changé.');
+        } else {
+          this.toast.success('Rapport de contrôle recalculé',
+            `${recalcul?.lignes_apres ?? this.previewRows.length} ligne(s) (avant : ${recalcul?.lignes_avant ?? '—'}). `
+            + 'L’ancienne version reste disponible dans l’historique.');
+        }
+        this.saved.emit(this.piece);
+      },
+      error: (e) => {
+        this.recomputingRc = false;
+        this.toast.error('Recalcul impossible', e?.error?.detail || 'Recalcul du rapport de contrôle impossible.');
       },
     });
   }
